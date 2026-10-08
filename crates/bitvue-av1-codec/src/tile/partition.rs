@@ -37,6 +37,7 @@
 //! ```
 
 use crate::symbol::SymbolDecoder;
+use crate::tile::TileState;
 use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
@@ -275,7 +276,7 @@ impl BlockSize {
                     _ => vec![*self], // Fallback
                 }
             }
-            PartitionType::HorzA => {
+            PartitionType::HorzB => {
                 // Top row: full-width block at half height
                 // Bottom row: left half + right half, each at half height
                 // sub-block sizes: [top-full, bottom-left-half, bottom-right-half]
@@ -303,7 +304,7 @@ impl BlockSize {
                     _ => vec![*self],
                 }
             }
-            PartitionType::HorzB => {
+            PartitionType::HorzA => {
                 // Top row: left half + right half, each at half height
                 // Bottom row: full-width block at half height
                 // sub-block sizes: [top-left-half, top-right-half, bottom-full]
@@ -331,7 +332,7 @@ impl BlockSize {
                     _ => vec![*self],
                 }
             }
-            PartitionType::VertA => {
+            PartitionType::VertB => {
                 // Left column: full-height block at half width
                 // Right column: top half + bottom half, each at half width
                 // sub-block sizes: [left-full, top-right-half, bottom-right-half]
@@ -359,7 +360,7 @@ impl BlockSize {
                     _ => vec![*self],
                 }
             }
-            PartitionType::VertB => {
+            PartitionType::VertA => {
                 // Left column: top half + bottom half, each at half width
                 // Right column: full-height block at half width
                 // sub-block sizes: [top-left-half, bottom-left-half, right-full]
@@ -519,7 +520,7 @@ fn child_position(
                 _ => (parent_x, parent_y),
             }
         }
-        PartitionType::HorzA => {
+        PartitionType::HorzB => {
             // sub-blocks: [0]=top-full-width, [1]=bottom-left, [2]=bottom-right
             match child_index {
                 0 => (parent_x, parent_y),
@@ -528,7 +529,7 @@ fn child_position(
                 _ => (parent_x, parent_y),
             }
         }
-        PartitionType::HorzB => {
+        PartitionType::HorzA => {
             // sub-blocks: [0]=top-left, [1]=top-right, [2]=bottom-full-width
             match child_index {
                 0 => (parent_x, parent_y),
@@ -537,7 +538,7 @@ fn child_position(
                 _ => (parent_x, parent_y),
             }
         }
-        PartitionType::VertA => {
+        PartitionType::VertB => {
             // sub-blocks: [0]=left-full-height, [1]=top-right, [2]=bottom-right
             match child_index {
                 0 => (parent_x, parent_y),
@@ -546,7 +547,7 @@ fn child_position(
                 _ => (parent_x, parent_y),
             }
         }
-        PartitionType::VertB => {
+        PartitionType::VertA => {
             // sub-blocks: [0]=top-left, [1]=bottom-left, [2]=right-full-height
             match child_index {
                 0 => (parent_x, parent_y),
@@ -617,16 +618,19 @@ pub(crate) fn mi_units(pixels: u32) -> u32 {
 /// mismatch surfaced as outright decode errors -- found and fixed in the same pass rather than
 /// worked around, since real `has_rows`/`has_cols` is what makes these terminal choices reachable
 /// at all.
-pub(crate) fn parse_partition_recursive(
-    decoder: &mut SymbolDecoder,
+pub(crate) fn parse_partition_recursive<V>(
+    state: &mut TileState<'_>,
     x: u32,
     y: u32,
     block_size: BlockSize,
     mi_rows: u32,
     mi_cols: u32,
     depth: u8,
-    tile_ctx: &mut crate::tile::TileContext,
-) -> Result<Option<PartitionNode>> {
+    visit_leaf: &mut V,
+) -> Result<Option<PartitionNode>>
+where
+    V: FnMut(&mut TileState<'_>, &PartitionNode) -> Result<()>,
+{
     // Prevent infinite recursion from malformed bitstreams
     if depth >= MAX_PARTITION_DEPTH {
         return Err(BitvueError::InvalidData(format!(
@@ -659,13 +663,17 @@ pub(crate) fn parse_partition_recursive(
     let x8 = x / 8;
     let y8 = y / 8;
     let ctx = if bsize_log2 >= 3 {
-        tile_ctx.partition_context(x8, y8, crate::tile::context::partition_bl(bsize_log2))
+        state
+            .tile_ctx
+            .partition_context(x8, y8, crate::tile::context::partition_bl(bsize_log2))
     } else {
         0
     };
 
     // Read partition symbol from bitstream
-    let partition_symbol = decoder.read_partition(bsize_log2, ctx, has_rows, has_cols)?;
+    let partition_symbol = state
+        .decoder
+        .read_partition(bsize_log2, ctx, has_rows, has_cols)?;
 
     // Convert symbol to partition type
     let partition = PartitionType::from_u8(partition_symbol).ok_or_else(|| {
@@ -703,7 +711,9 @@ pub(crate) fn parse_partition_recursive(
     if bsize_log2 >= 3 && (partition != PartitionType::Split || bsize_log2 == 3) {
         let bl = crate::tile::context::partition_bl(bsize_log2);
         let hsz8 = 1u32 << (bsize_log2 - 3);
-        tile_ctx.set_partition(x8, y8, hsz8, bl, partition as u8);
+        state
+            .tile_ctx
+            .set_partition(x8, y8, hsz8, bl, partition as u8);
     }
 
     // Create node
@@ -721,14 +731,14 @@ pub(crate) fn parse_partition_recursive(
             // unchanged (frame-global); `None` means the child is fully outside the frame and
             // contributes no node at all (see this fn's doc).
             let child = parse_partition_recursive(
-                decoder,
+                state,
                 child_x,
                 child_y,
                 *sub_size,
                 mi_rows,
                 mi_cols,
                 depth + 1,
-                tile_ctx,
+                visit_leaf,
             )?;
 
             if let Some(child) = child {
@@ -754,14 +764,13 @@ pub(crate) fn parse_partition_recursive(
             let child_r = child_y / 4;
             let child_c = child_x / 4;
             if child_r < mi_rows && child_c < mi_cols {
-                node.children.push(PartitionNode::new(
-                    child_x,
-                    child_y,
-                    *sub_size,
-                    PartitionType::None,
-                ));
+                let leaf = PartitionNode::new(child_x, child_y, *sub_size, PartitionType::None);
+                visit_leaf(state, &leaf)?;
+                node.children.push(leaf);
             }
         }
+    } else {
+        visit_leaf(state, &node)?;
     }
 
     Ok(Some(node))
@@ -789,13 +798,18 @@ pub fn parse_partition_tree(
     tile_data: &[u8],
 ) -> Result<PartitionNode> {
     // Create symbol decoder for tile data
-    let mut decoder = SymbolDecoder::new(tile_data)?;
+    let decoder = SymbolDecoder::new(tile_data)?;
 
     // Throwaway context sized to just this one block -- this function has no real caller (see
     // `parse_partition_recursive`'s doc; production code goes through `parse_superblock`, which
     // threads a real tile-wide `TileContext` shared across the whole tile).
     let extent_4x4 = (block_size.width().max(block_size.height()) / 4).max(1);
-    let mut tile_ctx = crate::tile::TileContext::new(extent_4x4, extent_4x4);
+    let tile_ctx = crate::tile::TileContext::new(extent_4x4, extent_4x4);
+    let mut state = TileState {
+        decoder,
+        mv_ctx: crate::tile::MvPredictorContext::new(1, 1),
+        tile_ctx,
+    };
 
     // Recursively parse partition tree starting at depth 0. No real frame extent is known here
     // (see this fn's doc -- no real caller), so treat `block_size` itself as exactly filling the
@@ -805,14 +819,14 @@ pub fn parse_partition_tree(
     let mi_rows = mi_units(block_size.height());
     let mi_cols = mi_units(block_size.width());
     parse_partition_recursive(
-        &mut decoder,
+        &mut state,
         x,
         y,
         block_size,
         mi_rows,
         mi_cols,
         0,
-        &mut tile_ctx,
+        &mut |_, _| Ok(()),
     )
     .map(|node| node.unwrap_or_else(|| PartitionNode::new(x, y, block_size, PartitionType::None)))
 }
@@ -879,6 +893,53 @@ pub fn partition_tree_to_grid(
 
 #[cfg(test)]
 mod tests {
+    /// Block layout of the four "A/B" partitions, as AV1 spec 5.11.4 `decode_partition` decodes
+    /// them (the order matters: each block's symbols follow its predecessor's). Cross-checked
+    /// against dav1d, whose `T_*_SPLIT` names say which half is split:
+    ///
+    /// - `HORZ_A` (`T_TOP_SPLIT`):  TL square, TR square, then the full-width bottom block
+    /// - `HORZ_B` (`T_BOTTOM_SPLIT`): full-width top block, then BL, BR squares
+    /// - `VERT_A` (`T_LEFT_SPLIT`):  TL square, BL square, then the full-height right block
+    /// - `VERT_B` (`T_RIGHT_SPLIT`): full-height left block, then TR, BR squares
+    ///
+    /// Confirmed on a real stream: the dav1d oracle decodes the first block of a `bp=7` (`VERT_B`)
+    /// 16x16 partition as an 8x16 block.
+    #[test]
+    fn a_b_partitions_decode_blocks_in_spec_order() {
+        use BlockSize::*;
+        // (partition, expected [(size, x, y); 3]) for a 16x16 parent at the origin.
+        let cases = [
+            (
+                PartitionType::HorzA,
+                [(Block8x8, 0, 0), (Block8x8, 8, 0), (Block16x8, 0, 8)],
+            ),
+            (
+                PartitionType::HorzB,
+                [(Block16x8, 0, 0), (Block8x8, 0, 8), (Block8x8, 8, 8)],
+            ),
+            (
+                PartitionType::VertA,
+                [(Block8x8, 0, 0), (Block8x8, 0, 8), (Block8x16, 8, 0)],
+            ),
+            (
+                PartitionType::VertB,
+                [(Block8x16, 0, 0), (Block8x8, 8, 0), (Block8x8, 8, 8)],
+            ),
+        ];
+        for (partition, expected) in cases {
+            let sizes = Block16x16.sub_block_size(partition);
+            let got: Vec<_> = sizes
+                .iter()
+                .enumerate()
+                .map(|(i, &size)| {
+                    let (x, y) = child_position(0, 0, i, partition, Block16x16);
+                    (size, x, y)
+                })
+                .collect();
+            assert_eq!(got, expected.to_vec(), "{partition:?}");
+        }
+    }
+
     use super::*;
 
     #[test]

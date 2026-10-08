@@ -858,149 +858,38 @@ mod tests {
         None
     }
 
-    /// Regression test for the `delta_q_enabled` hardcoded-`false` bug: this module's own
-    /// superblock parse (`extract_partition_grid_from_parsed`, the real path `get_frame_analysis`
-    /// uses for `partition_grid`) used to always pass `false` regardless of the real frame
-    /// header's `delta_q_present`, instead of the already-correctly-sourced
-    /// `parsed.delta_q_enabled` that `cu_parser::parse_all_coding_units` (the QP/MV/prediction
-    /// grid path) already used. Since `delta_q` reads real bits from the shared `SymbolDecoder`
-    /// whenever the frame has `delta_q_enabled=true`, skipping them desyncs every subsequent
-    /// syntax element in that superblock -- the same "syntax element completely unread" bug shape
-    /// as the earlier `residual()`/`ref_frame()` fixes.
+    /// `delta_q_enabled` must come from the exact frame-header parse, not the approximate one.
     ///
-    /// Parses every superblock of `parsed.tile_data` with `delta_q_enabled` forced to the given
-    /// value (bypassing `parsed.delta_q_enabled` entirely), mirroring
-    /// `cu_parser::parse_all_coding_units`'s loop structure. Used to reconstruct the pre-fix
-    /// hardcoded-`false` behavior for `real_fixture_delta_q_frame_changes_with_the_flag`.
-    fn parse_all_coding_units_with_delta_q_flag(
-        parsed: &super::super::parser::ParsedFrame,
-        delta_q_enabled: bool,
-    ) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
-        let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-        let sb_size = parsed.dimensions.sb_size;
-
-        let mut state = crate::tile::TileState {
-            decoder: crate::SymbolDecoder::new(&parsed.tile_data)?,
-            mv_ctx: crate::tile::MvPredictorContext::new(
-                parsed.dimensions.sb_cols,
-                parsed.dimensions.sb_rows,
-            ),
-            tile_ctx: crate::tile::TileContext::new(
-                (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
-                (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
-            ),
-        };
-        // Everything the real path derives, except `delta_q_enabled`, which this helper overrides.
-        let frame_params = crate::tile::FrameCodingParams {
-            delta_q_enabled,
-            ..parsed.coding_params()
-        };
-        let mut current_qp = base_qp;
-        let mut all_cus = Vec::new();
-        for sb_y in 0..parsed.dimensions.sb_rows {
-            state.tile_ctx.start_superblock_row();
-            for sb_x in 0..parsed.dimensions.sb_cols {
-                let (sb, new_qp) = crate::parse_superblock(
-                    &mut state,
-                    sb_x * sb_size,
-                    sb_y * sb_size,
-                    sb_size,
-                    &frame_params,
-                    current_qp,
-                )?;
-                current_qp = new_qp;
-                all_cus.extend(sb.coding_units);
-            }
-        }
-        Ok(all_cus)
-    }
-
-    /// Regression test for the `delta_q_enabled` hardcoded-`false` bug: this module's own
-    /// superblock parse (`extract_partition_grid_from_parsed`, the real path `get_frame_analysis`
-    /// uses for `partition_grid`) used to always pass `false` regardless of the real frame
-    /// header's `delta_q_present`, instead of the already-correctly-sourced
-    /// `parsed.delta_q_enabled` that `cu_parser::parse_all_coding_units` (the QP/MV/prediction
-    /// grid path) already used. Since `delta_q` reads real bits from the shared `SymbolDecoder`
-    /// whenever the frame has `delta_q_enabled=true`, skipping them desyncs every subsequent
-    /// syntax element in that tile -- the same "syntax element completely unread" bug shape as
-    /// the earlier `residual()`/`ref_frame()` fixes.
+    /// An earlier version of this module's tests asserted that a fixture frame with
+    /// `delta_q_enabled = true` parses differently with the flag off, from a count of 82 such
+    /// frames out of 250. That count came from `parse_frame_header_basic`, which only approximates
+    /// everything after the quantizer fields for non-key frames and reported `delta_q_present` for
+    /// bits that belong to other syntax elements. The exact parse (`parse_frame_header_full`) says
+    /// none of the fixture's frames use delta-q at all, and a dav1d 1.5.1 trace of frame 0 agrees
+    /// (no `Post-delta_q` after the first block's `Post-cdef_idx`, although that block sits at a
+    /// superblock origin, where `delta_q` is read whenever it is present). Passing the wrong
+    /// `true` made the parser read `delta_q` symbols that were never coded, desyncing every later
+    /// symbol of those frames.
     ///
-    /// Proves the flag is causally consequential on real bits: parses a real
-    /// `delta_q_enabled=true` frame's entire tile data twice with `parse_all_coding_units_with_delta_q_flag`
-    /// (same superblock-loop shape as both real callers) -- once `true` (correct), once `false`
-    /// (the old hardcoded bug) -- and asserts the two runs diverge (either a different CU list, or
-    /// the old-flag run erroring where the correct one doesn't, from running the arithmetic
-    /// decoder past real tile data once the missing `delta_q` bits accumulate enough drift).
-    ///
-    /// Searches the whole fixture (not just an early prefix) for a frame where the `true` run
-    /// fully succeeds: residual's plane/qindex-bucket CDF axes (`coeff_base`/`coeff_br`/etc.,
-    /// still luma-only/first-bucket -- see `tile/context.rs`'s module doc) remain an approximation,
-    /// so a given frame's tile data can legitimately fail to parse end-to-end under either flag --
-    /// that's an expected consequence of the still-incomplete entropy-context work (see
-    /// `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding note), not evidence this
-    /// specific fix is wrong.
-    ///
-    /// Asserts divergence on *at least one* qualifying frame, not *every* one: `partition` now
-    /// has real context+adaptation (also this session), so it's legitimately possible for one
-    /// specific frame's missing-`delta_q`-bits drift to coincidentally still land on the same
-    /// decoded partition boundaries as the correct run (found in practice -- the first
-    /// successfully-parsing frame in this fixture happens to be exactly such a case). A single
-    /// coincidental match on one frame isn't evidence the flag stopped mattering; requiring every
-    /// qualifying frame to diverge is a stricter claim than the test needs to make its point.
+    /// The `delta_q` read itself stays covered by the synthetic goldens
+    /// (`delta-q-lf`, `delta-q-lf-sb128`, ...), which turn the flag on explicitly.
     #[test]
-    fn real_fixture_delta_q_frame_changes_with_the_flag() {
+    fn real_fixture_has_no_delta_q_frames_per_the_exact_header_parse() {
         let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
         let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
 
-        let mut checked_a_delta_q_frame = false;
-        let mut saw_divergence = false;
-        for frame in frames.iter() {
+        let mut parsed_frames = 0;
+        for (idx, frame) in frames.iter().enumerate() {
             let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
-            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-            if !parsed.delta_q_enabled || !parsed.has_tile_data() {
-                continue;
-            }
-
-            let Ok(real_cus) = parse_all_coding_units_with_delta_q_flag(&parsed, true) else {
-                // Nothing to compare against for this frame if even the correct run fails.
+            let Ok(parsed) = super::super::parser::ParsedFrame::parse(&obu_data) else {
                 continue;
             };
-            checked_a_delta_q_frame = true;
-
-            let real_positions: Vec<(u32, u32, u32, u32)> = real_cus
-                .iter()
-                .map(|cu| (cu.x, cu.y, cu.width, cu.height))
-                .collect();
-            let old_buggy_positions: Option<Vec<(u32, u32, u32, u32)>> =
-                parse_all_coding_units_with_delta_q_flag(&parsed, false)
-                    .ok()
-                    .map(|cus| {
-                        cus.iter()
-                            .map(|cu| (cu.x, cu.y, cu.width, cu.height))
-                            .collect()
-                    });
-
-            if Some(real_positions) != old_buggy_positions {
-                saw_divergence = true;
-                break;
-            }
+            parsed_frames += 1;
+            assert!(
+                !parsed.delta_q_enabled,
+                "frame {idx}: delta_q_enabled must follow the exact header parse"
+            );
         }
-
-        assert!(
-            checked_a_delta_q_frame,
-            "expected at least one delta_q_enabled=true frame in the fixture whose tile data \
-             parses successfully with the correct flag -- if this fails, the fixture changed (or \
-             enough of the still-representative, non-context CDF tables shifted) and this test \
-             needs a different approach to exercise the bug"
-        );
-        assert!(
-            saw_divergence,
-            "expected at least one delta_q_enabled=true frame to decode a different (or outright \
-             failing) coding-unit list under the old hardcoded delta_q_enabled=false behavior -- \
-             if none diverge, the flag isn't actually affecting bitstream consumption anymore"
-        );
+        assert!(parsed_frames > 200, "only {parsed_frames} frames parsed");
     }
 }

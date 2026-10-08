@@ -478,6 +478,12 @@ impl ParsedFrame {
                     if let Some(seq) = &seq_header {
                         if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
                         {
+                            // The exact header parse wins over `parse_frame_header_basic`'s
+                            // approximation for the two values it also supplied.
+                            delta_q_enabled = full_hdr.delta_q_present;
+                            if full_hdr.base_q_idx.is_some() {
+                                frame_type.base_qp = full_hdr.base_q_idx;
+                            }
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
                             allow_screen_content_tools = full_hdr.allow_screen_content_tools;
@@ -519,6 +525,12 @@ impl ParsedFrame {
                     if let Some(seq) = &seq_header {
                         if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
                         {
+                            // The exact header parse wins over `parse_frame_header_basic`'s
+                            // approximation for the two values it also supplied.
+                            delta_q_enabled = full_hdr.delta_q_present;
+                            if full_hdr.base_q_idx.is_some() {
+                                frame_type.base_qp = full_hdr.base_q_idx;
+                            }
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
                             allow_screen_content_tools = full_hdr.allow_screen_content_tools;
