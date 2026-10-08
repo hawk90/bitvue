@@ -40,6 +40,7 @@
 
 mod contexts;
 mod delta;
+mod is_inter;
 mod palette;
 mod segment;
 mod skip;
@@ -152,34 +153,16 @@ pub fn parse_coding_unit(
     // `SymbolDecoder::read_transform_type_is_1d`'s `y_mode_raw` param.
     let mut y_mode_raw: u8 = 0;
 
-    // is_inter (spec 5.11.5) -- real per-CU intra/inter dispatch, see
-    // `SymbolDecoder::read_is_inter`'s doc for the desync this closes (this crate previously
-    // treated every non-key-frame CU as unconditionally inter, never reading this bit at all --
-    // a real intra-coded CU within an inter frame is a legal, common case real content uses,
-    // e.g. scene-change intra refresh). Key frames are always intra (no bit read, matches real
-    // spec: `IS_INTER_OR_SWITCH` is false for an intra-only frame so this branch of `decode_b`
-    // never runs at all). `skip_mode` forces inter with no bit read (spec: a skip_mode block is
-    // always inter by construction). Segmentation's two real overrides (spec priority order,
-    // after `skip_mode`, before the real bit read): `SEG_LVL_REF_FRAME` forces `is_inter` from
-    // its `FeatureData` (an actual `RefFrame` value; `!= Intra` means inter), `SEG_LVL_GLOBALMV`
-    // (only checked when `SEG_LVL_REF_FRAME` isn't active) unconditionally forces inter.
-    let seg_ref_frame_feature = crate::frame_header_full::SEG_LVL_REF_FRAME;
-    let is_inter = if is_key_frame {
-        false
-    } else if cu.skip_mode {
-        true
-    } else if segmentation.seg_feature_active(cu.segment_id, seg_ref_frame_feature) {
-        segmentation.seg_feature_data(cu.segment_id, seg_ref_frame_feature)
-            != RefFrame::Intra as i16
-    } else if segmentation
-        .seg_feature_active(cu.segment_id, crate::frame_header_full::SEG_LVL_GLOBALMV)
-    {
-        true
-    } else {
-        let ictx = tile_ctx.intra_ctx(x4, y4);
-        decoder.read_is_inter(ictx)?
-    };
-    tile_ctx.set_intra_flag(x4, y4, width_4x4, height_4x4, !is_inter);
+    // is_inter (spec 5.11.5) -- see `is_inter`.
+    let is_inter = is_inter::read_is_inter(
+        decoder,
+        tile_ctx,
+        mi,
+        is_key_frame,
+        cu.skip_mode,
+        segmentation,
+        cu.segment_id,
+    )?;
 
     // Determine if INTRA or INTER
     if !is_inter {
