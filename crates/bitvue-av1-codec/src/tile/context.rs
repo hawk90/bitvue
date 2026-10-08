@@ -13,6 +13,11 @@
 //!
 //! Units throughout are 4x4 pixels (spec's context-array granularity).
 
+/// What dav1d's `reset_context` writes into the var-tx context arrays (`memset(ctx->tx, TX_64X64)`):
+/// a not-yet-coded neighbour counts as the largest transform, so it never makes `txfm_split`'s
+/// `a`/`l` context bits 1.
+const VAR_TX_UNSET: i8 = 4;
+
 /// Maps a raw intra prediction-mode symbol (0..=12, spec `y_mode`/`uv_mode` values -- matches
 /// `bitvue_av1_codec::tile::PredictionMode`'s intra-variant declaration order exactly) to one of
 /// 5 mode-context classes used to index the key-frame `kfym` CDF. Source: rav1d
@@ -135,6 +140,18 @@ pub struct SpatialRefContext {
     width_4x4: u32,
     height_4x4: u32,
     cells: Vec<SpatialRefCell>,
+    /// Frame extent in 4x4 units (dav1d `rt->tile_col.end`/`tile_row.end`, clipped to `iw4`/`ih4`):
+    /// neighbour scans stop there and candidate MVs are clamped against it. Defaults to the
+    /// allocated grid; `set_frame_extent` narrows it to the real frame.
+    col_end: u32,
+    row_end: u32,
+    /// Frame size in 4x4 units (dav1d `iw4`/`ih4`), the bound candidate MVs are clamped against.
+    iw4: u32,
+    ih4: u32,
+    /// `ref_frame_sign_bias[ref]` for `LAST..=ALTREF` (dav1d `rf->sign_bias`): whether the
+    /// reference lies after the current frame. All `false` when the caller has no reference
+    /// order hints (stateless parses), which makes the sign-flip of extended candidates a no-op.
+    sign_bias: [bool; 7],
     /// Real temporal motion field for this frame (spec 7.9/7.10, [`crate::tile::motion_field`]),
     /// set once via [`SpatialRefContext::set_temporal_context`] before any block is decoded --
     /// `None` for every existing caller that doesn't opt in (the crate's stateless, single-frame
@@ -151,6 +168,9 @@ struct TemporalMvContext {
     /// This frame's own `pocdiff[0..=6]` (spec 7.9.2, this crate's 0..=6 `ref0` convention) --
     /// `add_temporal_candidate`'s numerator (`refmvs.c:201`).
     pocdiff: [i32; 7],
+    /// Frame MV precision for `fix_mv_precision` of projected candidates.
+    allow_high_precision_mv: bool,
+    force_integer_mv: bool,
 }
 
 impl SpatialRefContext {
@@ -161,8 +181,28 @@ impl SpatialRefContext {
             width_4x4,
             height_4x4,
             cells: vec![SpatialRefCell::default(); (width_4x4 * height_4x4) as usize],
+            col_end: width_4x4,
+            row_end: height_4x4,
+            iw4: width_4x4,
+            ih4: height_4x4,
+            sign_bias: [false; 7],
             temporal: None,
         }
+    }
+
+    /// Sets the real frame extent in 4x4 units. See the `col_end` field.
+    pub fn set_frame_extent(&mut self, width: u32, height: u32) {
+        // Tile end is in 8x8-aligned 4x4 units (dav1d `f->bw`/`f->bh`); the clamp bound is exact.
+        self.col_end = (2 * width.div_ceil(8)).min(self.width_4x4);
+        self.row_end = (2 * height.div_ceil(8)).min(self.height_4x4);
+        // dav1d `rf->iw4 = iw8 << 1`: the clamp bound is 8x8-aligned too.
+        self.iw4 = 2 * width.div_ceil(8);
+        self.ih4 = 2 * height.div_ceil(8);
+    }
+
+    /// Sets the per-reference sign bias. See the `sign_bias` field.
+    pub fn set_sign_bias(&mut self, sign_bias: [bool; 7]) {
+        self.sign_bias = sign_bias;
     }
 
     /// Opt this frame's parse into real temporal MV candidates -- see [`crate::tile::motion_field`]
@@ -174,7 +214,109 @@ impl SpatialRefContext {
         projected: crate::tile::motion_field::ProjectedMotionField,
         pocdiff: [i32; 7],
     ) {
-        self.temporal = Some(TemporalMvContext { projected, pocdiff });
+        // `pocdiff` is current - reference; a reference after the current frame has sign bias 1.
+        self.sign_bias = std::array::from_fn(|i| pocdiff[i] < 0);
+        self.temporal = Some(TemporalMvContext {
+            projected,
+            pocdiff,
+            allow_high_precision_mv: true,
+            force_integer_mv: false,
+        });
+    }
+
+    /// Sets the frame's MV precision (`allow_high_precision_mv`, `force_integer_mv`), which
+    /// projected temporal candidates are rounded to. Call after `set_temporal_context`.
+    pub fn set_mv_precision(&mut self, allow_high_precision_mv: bool, force_integer_mv: bool) {
+        if let Some(t) = &mut self.temporal {
+            t.allow_high_precision_mv = allow_high_precision_mv;
+            t.force_integer_mv = force_integer_mv;
+        }
+    }
+
+    /// Whether any decoded neighbour on the block's top or left edge (or its top-left/top-right
+    /// corner) is a single-reference block using `ref0` -- the `mask[0] | mask[1] != 0` outcome of
+    /// dav1d's `find_matching_ref` (`src/decode.c`), which decides whether `motion_mode` may be
+    /// WARPED (a three-way symbol) or only OBMC (a boolean). `w4`/`h4` are the block's size
+    /// clipped to the frame, `bw4`/`bh4` its full size; `col_end` the tile's end column.
+    ///
+    /// Neighbours are walked block by block (a neighbour wider than the remaining edge ends the
+    /// walk), and the corner cells only count when the edge blocks line up with the block: a
+    /// top-left cell only if the top and left neighbours start at this block's origin, a
+    /// top-right cell only if the top neighbour ends where this block does. A cell that has not
+    /// been decoded yet is not `valid`, which stands in for dav1d's top-right availability flag.
+    #[allow(clippy::too_many_arguments)]
+    pub fn has_matching_edge_ref(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        w4: u32,
+        h4: u32,
+        col_end: u32,
+        ref0: i8,
+    ) -> bool {
+        let matches = |cell: Option<&SpatialRefCell>| {
+            cell.is_some_and(|c| c.valid && c.ref0 == ref0 && c.ref1 == -1)
+        };
+        let have_top = y4 > 0;
+        let have_left = x4 > 0;
+        let mut have_topleft = have_top && have_left;
+        let mut have_topright = bw4.max(bh4) < 32 && have_top && x4 + bw4 < col_end;
+        if have_top {
+            let top = self.cell(x4, y4 - 1);
+            if matches(top) {
+                return true;
+            }
+            let mut aw4 = top.map_or(1, |c| u32::from(c.width_4x4).max(1));
+            if aw4 >= bw4 {
+                let off = x4 & (aw4 - 1);
+                if off != 0 {
+                    have_topleft = false;
+                }
+                if aw4 - off > bw4 {
+                    have_topright = false;
+                }
+            } else {
+                let mut pos = x4;
+                let mut x = aw4;
+                while x < w4 {
+                    pos += aw4;
+                    let cell = self.cell(pos, y4 - 1);
+                    if matches(cell) {
+                        return true;
+                    }
+                    aw4 = cell.map_or(1, |c| u32::from(c.width_4x4).max(1));
+                    x += aw4;
+                }
+            }
+        }
+        if have_left {
+            let left = self.cell(x4 - 1, y4);
+            if matches(left) {
+                return true;
+            }
+            let mut lh4 = left.map_or(1, |c| u32::from(c.height_4x4).max(1));
+            if lh4 >= bh4 {
+                if y4 & (lh4 - 1) != 0 {
+                    have_topleft = false;
+                }
+            } else {
+                let mut pos = y4;
+                let mut y = lh4;
+                while y < h4 {
+                    pos += lh4;
+                    let cell = self.cell(x4 - 1, pos);
+                    if matches(cell) {
+                        return true;
+                    }
+                    lh4 = cell.map_or(1, |c| u32::from(c.height_4x4).max(1));
+                    y += lh4;
+                }
+            }
+        }
+        (have_topleft && matches(self.cell(x4 - 1, y4 - 1)))
+            || (have_topright && matches(self.cell(x4 + bw4, y4 - 1)))
     }
 
     fn cell(&self, x4: u32, y4: u32) -> Option<&SpatialRefCell> {
@@ -221,6 +363,24 @@ impl SpatialRefContext {
         }
     }
 
+    /// Records an intra block of an inter frame (dav1d `splat_intraref`): no MV, but its size
+    /// still steers the width-aware neighbour scans.
+    pub fn set_intra_block(&mut self, x4: u32, y4: u32, width_4x4: u32, height_4x4: u32) {
+        let cell = SpatialRefCell {
+            ref1: -1,
+            width_4x4: width_4x4.min(255) as u8,
+            height_4x4: height_4x4.min(255) as u8,
+            ..SpatialRefCell::default()
+        };
+        let x_end = (x4 + width_4x4).min(self.width_4x4);
+        let y_end = (y4 + height_4x4).min(self.height_4x4);
+        for y in y4..y_end {
+            for x in x4..x_end {
+                self.cells[(y * self.width_4x4 + x) as usize] = cell;
+            }
+        }
+    }
+
     /// Whether a decoded cell's ref matches the query block's `(ref0, ref1)` -- rav1d
     /// `add_spatial_candidate`: single-ref (`ref1 < 0`) matches if the cell's `ref0` *or* `ref1`
     /// equals the query's `ref0`; compound matches only on an exact `(ref0, ref1)` pair match.
@@ -244,38 +404,63 @@ impl SpatialRefContext {
     /// `cmp::min(bw4, 16)`/`cmp::min(bh4, 16)` -- the tile-bound clamp rav1d also applies is
     /// skipped here, matching the rest of this crate's "whole frame as one tile" simplification).
     fn scan(&self, x4: u32, y4: u32, bw4: u32, bh4: u32, ref0: i8, ref1: i8) -> (u8, u8, bool) {
-        let w4 = bw4.clamp(1, 16);
-        let h4 = bh4.clamp(1, 16);
+        let w4 = bw4.min(16).min(self.col_end.saturating_sub(x4)).max(1);
+        let h4 = bh4.min(16).min(self.row_end.saturating_sub(y4)).max(1);
         let mut have_newmv = false;
         let mut have_row_mvs = false;
         let mut have_col_mvs = false;
+        let matches = |cell: &SpatialRefCell| Self::ref_matches(cell, ref0, ref1);
 
-        // Primary above-row scan.
+        // `n_rows`/`n_cols` stay `u32::MAX` while the row/column is outside the tile.
+        let mut n_rows = u32::MAX;
+        let mut n_cols = u32::MAX;
+        let max_rows = if y4 > 0 {
+            y4.div_ceil(2).min(2 + u32::from(bh4 > 1))
+        } else {
+            0
+        } as i32;
+        let max_cols = if x4 > 0 {
+            x4.div_ceil(2).min(2 + u32::from(bw4 > 1))
+        } else {
+            0
+        } as i32;
+
         if y4 > 0 {
-            for x in x4..x4 + w4 {
-                if let Some(cell) = self.cell(x, y4 - 1) {
-                    if Self::ref_matches(cell, ref0, ref1) {
+            n_rows = self.walk_row(
+                y4 - 1,
+                x4,
+                bw4,
+                w4,
+                max_rows,
+                if bw4 >= 16 { 4 } else { 1 },
+                &mut |cell, _| {
+                    if matches(cell) {
                         have_row_mvs = true;
                         have_newmv |= cell.is_newmv;
                     }
-                }
-            }
+                },
+            );
         }
-        // Primary left-column scan.
         if x4 > 0 {
-            for y in y4..y4 + h4 {
-                if let Some(cell) = self.cell(x4 - 1, y) {
-                    if Self::ref_matches(cell, ref0, ref1) {
+            n_cols = self.walk_col(
+                x4 - 1,
+                y4,
+                bh4,
+                h4,
+                max_cols,
+                if bh4 >= 16 { 4 } else { 1 },
+                &mut |cell, _| {
+                    if matches(cell) {
                         have_col_mvs = true;
                         have_newmv |= cell.is_newmv;
                     }
-                }
-            }
+                },
+            );
         }
-        // Top-right corner (single cell, one unit right of the block's own top-right 4x4).
-        if y4 > 0 {
-            if let Some(cell) = self.cell(x4 + bw4.max(1), y4 - 1) {
-                if Self::ref_matches(cell, ref0, ref1) {
+        // Top-right.
+        if n_rows != u32::MAX && bw4.max(bh4) <= 16 && x4 + bw4 < self.col_end {
+            if let Some(cell) = self.cell(x4 + bw4, y4 - 1) {
+                if matches(cell) {
                     have_row_mvs = true;
                     have_newmv |= cell.is_newmv;
                 }
@@ -284,38 +469,37 @@ impl SpatialRefContext {
 
         let nearest_match = u8::from(have_row_mvs) + u8::from(have_col_mvs);
 
-        // Top-left corner -- contributes to `have_row_mvs` only, never `have_newmv` (rav1d uses a
-        // throwaway `have_dummy_newmv_match` for this candidate, see `rav1d_refmvs_find`).
-        if x4 > 0 && y4 > 0 {
+        // Top-left and the secondary scans never feed `have_newmv` (dav1d's
+        // `have_dummy_newmv_match`).
+        if n_rows != u32::MAX && n_cols != u32::MAX {
             if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
-                if Self::ref_matches(cell, ref0, ref1) {
+                if matches(cell) {
                     have_row_mvs = true;
                 }
             }
         }
-
-        // "Secondary" row/column scans at 2 and 3 units back -- also `have_newmv`-inert.
         for n in 2..=3u32 {
-            let back = 2 * n - 1;
-            if y4 >= back {
-                let ry = y4 - back;
-                for x in x4..x4 + w4 {
-                    if let Some(cell) = self.cell(x, ry) {
-                        if Self::ref_matches(cell, ref0, ref1) {
-                            have_row_mvs = true;
-                        }
-                    }
-                }
+            if n > n_rows && n as i32 <= max_rows {
+                n_rows += self.walk_row(
+                    (y4 + 1 - 2 * n) | 1,
+                    x4 | 1,
+                    bw4,
+                    w4,
+                    1 + max_rows - n as i32,
+                    if bw4 >= 16 { 4 } else { 2 },
+                    &mut |cell, _| have_row_mvs |= matches(cell),
+                );
             }
-            if x4 >= back {
-                let cx = x4 - back;
-                for y in y4..y4 + h4 {
-                    if let Some(cell) = self.cell(cx, y) {
-                        if Self::ref_matches(cell, ref0, ref1) {
-                            have_col_mvs = true;
-                        }
-                    }
-                }
+            if n > n_cols && n as i32 <= max_cols {
+                n_cols += self.walk_col(
+                    (x4 + 1 - 2 * n) | 1,
+                    y4 | 1,
+                    bh4,
+                    h4,
+                    1 + max_cols - n as i32,
+                    if bh4 >= 16 { 4 } else { 2 },
+                    &mut |cell, _| have_col_mvs |= matches(cell),
+                );
             }
         }
 
@@ -367,24 +551,29 @@ impl SpatialRefContext {
         // Falls back to the pre-existing `use_ref_frame_mvs`-flag approximation when no temporal
         // context was set (this struct's doc) -- unchanged behavior for every caller that doesn't
         // opt in.
-        let globalmv_ctx = match &self.temporal {
-            Some(t) if use_ref_frame_mvs && ref0 >= 0 => {
-                let x8 = x4 >> 1;
-                let y8 = y4 >> 1;
-                match t.projected.get(x8, y8) {
-                    Some(cell) => {
-                        let mv = crate::tile::motion_field::mv_projection(
-                            cell.mv,
-                            t.pocdiff[ref0 as usize],
-                            cell.ref2ref,
-                        );
-                        u16::from(mv.x != 0 || mv.y != 0)
-                    }
-                    None => u16::from(use_ref_frame_mvs),
-                }
+        // dav1d `refmvs.c:417-428`: starts as the header's flag; the block's own top-left
+        // temporal sample, if it has one, overrides it with "differs from the global MV by at
+        // least 2 samples" (the global MV is zero here: no global-motion parameters).
+        let mut globalmv_ctx = u16::from(use_ref_frame_mvs);
+        if let (Some(t), true) = (&self.temporal, use_ref_frame_mvs && ref0 >= 0) {
+            let w4 = bw4.min(16).min(self.col_end.saturating_sub(x4)).max(1);
+            let h4 = bh4.min(16).min(self.row_end.saturating_sub(y4)).max(1);
+            let samples = Self::temporal_samples(
+                t,
+                x4,
+                y4,
+                bw4,
+                bh4,
+                w4,
+                h4,
+                ref0,
+                self.col_end,
+                self.row_end,
+            );
+            if let Some((mv, _)) = samples.iter().find(|(_, first)| *first) {
+                globalmv_ctx = u16::from((mv.x.abs() | mv.y.abs()) >= 16);
             }
-            _ => u16::from(use_ref_frame_mvs),
-        };
+        }
         (refmv_ctx as u16) << 4 | globalmv_ctx << 3 | newmv_ctx as u16
     }
 
@@ -425,6 +614,20 @@ impl SpatialRefContext {
             Some(cell.mv1)
         } else {
             None
+        }
+    }
+
+    /// dav1d `add_spatial_candidate` (single reference): the neighbour's MV for `ref0`, if it has
+    /// one in either slot, merged into the stack by value.
+    fn add_spatial_candidate(
+        stack: &mut [MvStackEntry; 8],
+        cnt: &mut usize,
+        weight: i32,
+        cell: &SpatialRefCell,
+        ref0: i8,
+    ) {
+        if let Some(mv) = Self::single_ref_candidate_mv(cell, ref0) {
+            Self::push_mv_candidate(stack, cnt, weight, mv);
         }
     }
 
@@ -488,10 +691,102 @@ impl SpatialRefContext {
         }
     }
 
-    /// Real neighbor-width-aware row scan (rav1d `scan_row`, `src/refmvs.rs`) -- unlike `scan`'s
-    /// per-cell OR (sufficient for a boolean match-count, `SpatialRefContext`'s doc), DRL's real
-    /// weight needs the actual overlap length with each distinct neighbor along the row, so this
-    /// steps by each neighbor's own stored width instead of visiting every 4x4 cell independently.
+    /// dav1d `scan_row` (`src/refmvs.c`): walks the neighbours along one row, stepping by each
+    /// neighbour's own width, and calls `visit(neighbour, weight)` for each. A neighbour at least
+    /// as wide as the block is visited once with a weight that grows with its height; narrower
+    /// ones are visited one by one with weight `2 * overlap`. Returns how many rows the scan
+    /// covered (`weight >> 1`, or 1), which gates the secondary scans. `step` is 4 for blocks
+    /// 16 or more units wide, which skips small neighbours -- exactly as dav1d does.
+    #[allow(clippy::too_many_arguments)]
+    fn walk_row(
+        &self,
+        row_y4: u32,
+        x4: u32,
+        bw4: u32,
+        w4: u32,
+        max_rows: i32,
+        step: u32,
+        visit: &mut dyn FnMut(&SpatialRefCell, i32),
+    ) -> u32 {
+        let Some(first) = self.cell(x4, row_y4) else {
+            return 1;
+        };
+        let mut cand = *first;
+        let mut len = step.max(bw4.min(u32::from(cand.width_4x4).max(1)));
+
+        if bw4 <= u32::from(cand.width_4x4).max(1) {
+            let weight = if bw4 == 1 {
+                2
+            } else {
+                u32::from(cand.height_4x4)
+                    .min((2 * max_rows).max(0) as u32)
+                    .max(2)
+            };
+            visit(&cand, (len * weight) as i32);
+            return weight >> 1;
+        }
+
+        let mut x = 0u32;
+        loop {
+            visit(&cand, (len * 2) as i32);
+            x += len;
+            if x >= w4 {
+                return 1;
+            }
+            let Some(next) = self.cell(x4 + x, row_y4) else {
+                return 1;
+            };
+            cand = *next;
+            len = step.max(u32::from(cand.width_4x4).max(1));
+        }
+    }
+
+    /// dav1d `scan_col`: [`Self::walk_row`] transposed.
+    #[allow(clippy::too_many_arguments)]
+    fn walk_col(
+        &self,
+        col_x4: u32,
+        y4: u32,
+        bh4: u32,
+        h4: u32,
+        max_cols: i32,
+        step: u32,
+        visit: &mut dyn FnMut(&SpatialRefCell, i32),
+    ) -> u32 {
+        let Some(first) = self.cell(col_x4, y4) else {
+            return 1;
+        };
+        let mut cand = *first;
+        let mut len = step.max(bh4.min(u32::from(cand.height_4x4).max(1)));
+
+        if bh4 <= u32::from(cand.height_4x4).max(1) {
+            let weight = if bh4 == 1 {
+                2
+            } else {
+                u32::from(cand.width_4x4)
+                    .min((2 * max_cols).max(0) as u32)
+                    .max(2)
+            };
+            visit(&cand, (len * weight) as i32);
+            return weight >> 1;
+        }
+
+        let mut y = 0u32;
+        loop {
+            visit(&cand, (len * 2) as i32);
+            y += len;
+            if y >= h4 {
+                return 1;
+            }
+            let Some(next) = self.cell(col_x4, y4 + y) else {
+                return 1;
+            };
+            cand = *next;
+            len = step.max(u32::from(cand.height_4x4).max(1));
+        }
+    }
+
+    /// `walk_row` feeding the single-reference candidate stack.
     #[allow(clippy::too_many_arguments)]
     fn scan_row_weighted(
         &self,
@@ -504,46 +799,13 @@ impl SpatialRefContext {
         w4: u32,
         max_rows: i32,
         step: u32,
-    ) {
-        let Some(first) = self.cell(x4, row_y4) else {
-            return;
-        };
-        let mut cand = *first;
-        let mut cand_bw4 = (cand.width_4x4 as u32).max(1);
-        let mut len = step.max(bw4.min(cand_bw4));
-
-        if bw4 <= cand_bw4 {
-            let weight = if bw4 == 1 {
-                2
-            } else {
-                (cand.height_4x4 as u32).clamp(2, (2 * max_rows.max(1)) as u32)
-            };
-            if let Some(mv) = Self::single_ref_candidate_mv(&cand, ref0) {
-                Self::push_mv_candidate(stack, cnt, (len * weight) as i32, mv);
-            }
-            return;
-        }
-
-        let mut x = 0u32;
-        loop {
-            if let Some(mv) = Self::single_ref_candidate_mv(&cand, ref0) {
-                Self::push_mv_candidate(stack, cnt, (len * 2) as i32, mv);
-            }
-            x += len;
-            if x >= w4 {
-                return;
-            }
-            let Some(next) = self.cell(x4 + x, row_y4) else {
-                return;
-            };
-            cand = *next;
-            cand_bw4 = (cand.width_4x4 as u32).max(1);
-            len = step.max(cand_bw4);
-        }
+    ) -> u32 {
+        self.walk_row(row_y4, x4, bw4, w4, max_rows, step, &mut |cell, weight| {
+            Self::add_spatial_candidate(stack, cnt, weight, cell, ref0);
+        })
     }
 
-    /// Real neighbor-height-aware column scan -- `scan_row_weighted`'s doc, transposed (rav1d
-    /// `scan_col`).
+    /// `walk_col` feeding the single-reference candidate stack.
     #[allow(clippy::too_many_arguments)]
     fn scan_col_weighted(
         &self,
@@ -556,42 +818,10 @@ impl SpatialRefContext {
         h4: u32,
         max_cols: i32,
         step: u32,
-    ) {
-        let Some(first) = self.cell(col_x4, y4) else {
-            return;
-        };
-        let mut cand = *first;
-        let mut cand_bh4 = (cand.height_4x4 as u32).max(1);
-        let mut len = step.max(bh4.min(cand_bh4));
-
-        if bh4 <= cand_bh4 {
-            let weight = if bh4 == 1 {
-                2
-            } else {
-                (cand.width_4x4 as u32).clamp(2, (2 * max_cols.max(1)) as u32)
-            };
-            if let Some(mv) = Self::single_ref_candidate_mv(&cand, ref0) {
-                Self::push_mv_candidate(stack, cnt, (len * weight) as i32, mv);
-            }
-            return;
-        }
-
-        let mut y = 0u32;
-        loop {
-            if let Some(mv) = Self::single_ref_candidate_mv(&cand, ref0) {
-                Self::push_mv_candidate(stack, cnt, (len * 2) as i32, mv);
-            }
-            y += len;
-            if y >= h4 {
-                return;
-            }
-            let Some(next) = self.cell(col_x4, y4 + y) else {
-                return;
-            };
-            cand = *next;
-            cand_bh4 = (cand.height_4x4 as u32).max(1);
-            len = step.max(cand_bh4);
-        }
+    ) -> u32 {
+        self.walk_col(col_x4, y4, bh4, h4, max_cols, step, &mut |cell, weight| {
+            Self::add_spatial_candidate(stack, cnt, weight, cell, ref0);
+        })
     }
 
     /// Compound counterpart of `scan_row_weighted` -- identical neighbor-width-aware stepping and
@@ -701,14 +931,24 @@ impl SpatialRefContext {
         }
     }
 
-    /// Real weighted single-ref DRL candidate stack (spec 7.10.2's `RefMvStack`, single-ref only
-    /// -- see `SymbolDecoder::read_drl_bit`'s doc for what this crate deliberately omits: temporal
-    /// candidates, compound extension, and the single-ref "non-self-reference" `sign_bias`
-    /// extension). Returns `(stack, cnt)` -- `cnt` (real spec's `NumMvFound`) gates whether DRL
-    /// bits are read at all; `stack[0]`/`stack[1]` are always safe to read as MV predictors
-    /// regardless of `cnt` (default-zero, matching this crate's existing GLOBALMV-as-zero
-    /// fallback -- `crate::tile::mv_prediction::MvPredictorContext::predict_global_mv`'s doc).
-    /// `get_drl_context`'s doc for how the real weight values this builds are consumed.
+    /// Real weighted single-ref candidate stack, a port of dav1d's `dav1d_refmvs_find` for a
+    /// single reference (`src/refmvs.c`): `(stack, cnt)` where `cnt` (spec `NumMvFound`) gates the
+    /// DRL bits and `stack[0..2]` are always safe to read (zero-filled past `cnt`, standing in for
+    /// the global MV). Structure, in dav1d's order:
+    ///
+    /// 1. top row, left column, top-right neighbour -- the "nearest" group, bumped by +640 so
+    ///    `get_drl_context` can tell it apart from the rest;
+    /// 2. temporal candidates (weight 2);
+    /// 3. top-left neighbour, then the "secondary" rows/columns 3 and 5 units back. These are
+    ///    gated by `n_rows`/`n_cols` (how many rows/columns the previous scans already covered)
+    ///    and read from the odd row/column of each 8x8 pair (`| 1`);
+    /// 4. each group sorted by weight, descending, stably;
+    /// 5. fewer than 2 candidates: neighbours using other references are added (sign-flipped by
+    ///    `sign_bias`) with weight 2;
+    /// 6. clamp to the frame, pad with the global MV (zero here: no global-motion parameters).
+    ///
+    /// Not covered: global-motion candidates (`mf & 1` blocks) and `fix_mv_precision` of temporal
+    /// candidates -- both need frame-header state this context does not carry.
     pub fn single_ref_mv_stack(
         &self,
         x4: u32,
@@ -720,24 +960,25 @@ impl SpatialRefContext {
     ) -> ([MvStackEntry; 8], usize) {
         let mut stack = [MvStackEntry::default(); 8];
         let mut cnt = 0usize;
-        let w4 = bw4.clamp(1, 16);
-        let h4 = bh4.clamp(1, 16);
+        let w4 = bw4.min(16).min(self.col_end.saturating_sub(x4)).max(1);
+        let h4 = bh4.min(16).min(self.row_end.saturating_sub(y4)).max(1);
 
-        let have_top = y4 > 0;
-        let have_left = x4 > 0;
-        let max_rows = if have_top {
-            y4.div_ceil(2).min(2 + u32::from(bh4 > 1)) as i32
+        // `n_rows`/`n_cols` stay `u32::MAX` while the row/column is outside the tile.
+        let mut n_rows = u32::MAX;
+        let mut n_cols = u32::MAX;
+        let max_rows = if y4 > 0 {
+            y4.div_ceil(2).min(2 + u32::from(bh4 > 1))
         } else {
             0
-        };
-        let max_cols = if have_left {
-            x4.div_ceil(2).min(2 + u32::from(bw4 > 1)) as i32
+        } as i32;
+        let max_cols = if x4 > 0 {
+            x4.div_ceil(2).min(2 + u32::from(bw4 > 1))
         } else {
             0
-        };
+        } as i32;
 
-        if have_top {
-            self.scan_row_weighted(
+        if y4 > 0 {
+            n_rows = self.scan_row_weighted(
                 &mut stack,
                 &mut cnt,
                 ref0,
@@ -749,8 +990,8 @@ impl SpatialRefContext {
                 if bw4 >= 16 { 4 } else { 1 },
             );
         }
-        if have_left {
-            self.scan_col_weighted(
+        if x4 > 0 {
+            n_cols = self.scan_col_weighted(
                 &mut stack,
                 &mut cnt,
                 ref0,
@@ -762,103 +1003,185 @@ impl SpatialRefContext {
                 if bh4 >= 16 { 4 } else { 1 },
             );
         }
-        // Top-right corner.
-        if have_top {
-            if let Some(cell) = self.cell(x4 + bw4.max(1), y4 - 1) {
-                if let Some(mv) = Self::single_ref_candidate_mv(cell, ref0) {
-                    Self::push_mv_candidate(&mut stack, &mut cnt, 4, mv);
-                }
+        // Top-right: only a decoded cell can be there (dav1d's `EDGE_I444_TOP_HAS_RIGHT`).
+        if n_rows != u32::MAX && bw4.max(bh4) <= 16 && x4 + bw4 < self.col_end {
+            if let Some(cell) = self.cell(x4 + bw4, y4 - 1) {
+                Self::add_spatial_candidate(&mut stack, &mut cnt, 4, cell, ref0);
             }
         }
 
-        // Real spec bumps every candidate found so far (the "nearest" group: top row + left col +
-        // top-right) by a flat +640 -- `get_drl_context`'s `>= 640` threshold exists specifically
-        // to distinguish this group from the lower-weight "secondary" group added below, so the
-        // exact pre-bump weight magnitude stops mattering the moment this runs.
-        for cand in &mut stack[..cnt] {
+        let nearest_cnt = cnt;
+        for cand in &mut stack[..nearest_cnt] {
             cand.weight += 640;
         }
 
-        // Temporal candidates (spec 7.10, rav1d `add_temporal_candidate`'s call site,
-        // `refmvs.c:416-431` -- main grid scan only, see `crate::tile::motion_field::
-        // add_temporal_candidates`'s doc for the small extra-corner-samples simplification).
-        // Weight 2, same low tier as the secondary spatial group below -- both get sorted
-        // together by the final whole-stack sort, matching real dav1d's structural ordering.
+        // Temporal candidates (`refmvs.c:416-452`).
         if use_ref_frame_mvs && ref0 >= 0 {
             if let Some(temporal) = &self.temporal {
-                let by8 = y4 >> 1;
-                let bx8 = x4 >> 1;
-                let w8 = ((w4 + 1) >> 1).min(8);
-                let h8 = ((h4 + 1) >> 1).min(8);
-                let step_h = if bw4 >= 16 { 2 } else { 1 };
-                let step_v = if bh4 >= 16 { 2 } else { 1 };
-                for mv in crate::tile::motion_field::add_temporal_candidates(
-                    &temporal.projected,
-                    temporal.pocdiff[ref0 as usize],
-                    bx8,
-                    by8,
-                    w8,
-                    h8,
-                    step_h,
-                    step_v,
+                for (mv, _) in Self::temporal_samples(
+                    temporal,
+                    x4,
+                    y4,
+                    bw4,
+                    bh4,
+                    w4,
+                    h4,
+                    ref0,
+                    self.col_end,
+                    self.row_end,
                 ) {
                     Self::push_mv_candidate(&mut stack, &mut cnt, 2, mv);
                 }
             }
         }
 
-        // Top-left corner (secondary group).
-        if have_top && have_left {
+        // Top-left, then the secondary rows/columns -- only where both edges exist.
+        if n_rows != u32::MAX && n_cols != u32::MAX {
             if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
-                if let Some(mv) = Self::single_ref_candidate_mv(cell, ref0) {
-                    Self::push_mv_candidate(&mut stack, &mut cnt, 4, mv);
-                }
+                Self::add_spatial_candidate(&mut stack, &mut cnt, 4, cell, ref0);
             }
         }
-        // "Secondary" row/col scans 2-3 units further back -- approximated via this same
-        // neighbor-width-aware stepping at the real spec offsets, rather than porting rav1d's
-        // separate 8x8-resolution indexing for this specific sub-scan (`single_ref_mv_stack`'s
-        // doc: these entries stay well under the 640 threshold either way, so this only risks a
-        // rare tie-break-ordering difference among already-low-weight secondary candidates, never
-        // the primary-vs-secondary classification `get_drl_context` actually depends on).
         for n in 2..=3u32 {
-            let back = 2 * n - 1;
-            if have_top && y4 >= back {
-                self.scan_row_weighted(
+            if n > n_rows && n as i32 <= max_rows {
+                n_rows += self.scan_row_weighted(
                     &mut stack,
                     &mut cnt,
                     ref0,
-                    y4 - back,
-                    x4,
+                    (y4 + 1 - 2 * n) | 1,
+                    x4 | 1,
                     bw4,
                     w4,
-                    (1 + max_rows - n as i32).max(1),
+                    1 + max_rows - n as i32,
                     if bw4 >= 16 { 4 } else { 2 },
                 );
             }
-            if have_left && x4 >= back {
-                self.scan_col_weighted(
+            if n > n_cols && n as i32 <= max_cols {
+                n_cols += self.scan_col_weighted(
                     &mut stack,
                     &mut cnt,
                     ref0,
-                    x4 - back,
-                    y4,
+                    (x4 + 1 - 2 * n) | 1,
+                    y4 | 1,
                     bh4,
                     h4,
-                    (1 + max_cols - n as i32).max(1),
+                    1 + max_cols - n as i32,
                     if bh4 >= 16 { 4 } else { 2 },
                 );
             }
         }
 
-        // Sort each group (nearest, then secondary) by weight descending, matching real spec --
-        // `nearest_cnt` isn't tracked separately here since every "nearest" entry's weight is
-        // already `>= 640` (the bump above) and every "secondary" entry's is `< 640` (never
-        // bumped), so a single whole-stack sort by weight produces the identical grouped-and-
-        // ordered result without needing the boundary index.
-        stack[..cnt].sort_by_key(|c| -c.weight);
+        // Sort the nearest group, then the rest. Stable and descending, like dav1d's bubble sort
+        // (which only swaps on a strictly lower weight).
+        stack[..nearest_cnt].sort_by_key(|c| -c.weight);
+        stack[nearest_cnt..cnt].sort_by_key(|c| -c.weight);
+
+        // Neighbours using other references, sign-flipped when that reference lies on the other
+        // side of the current frame.
+        if cnt < 2 && ref0 >= 0 {
+            let sign = self.sign_bias[ref0 as usize];
+            let sz4 = w4.min(h4);
+            if n_rows != u32::MAX {
+                let mut x = 0;
+                while x < sz4 && cnt < 2 {
+                    let Some(cell) = self.cell(x4 + x, y4 - 1) else {
+                        break;
+                    };
+                    self.add_single_extended_candidate(&mut stack, &mut cnt, cell, sign);
+                    x += u32::from(cell.width_4x4).max(1);
+                }
+            }
+            if n_cols != u32::MAX {
+                let mut y = 0;
+                while y < sz4 && cnt < 2 {
+                    let Some(cell) = self.cell(x4 - 1, y4 + y) else {
+                        break;
+                    };
+                    self.add_single_extended_candidate(&mut stack, &mut cnt, cell, sign);
+                    y += u32::from(cell.height_4x4).max(1);
+                }
+            }
+        }
+
+        // Clamp to the frame (1/8-sample units: 4 samples per 4x4 unit, 8 units per sample).
+        let left = -((x4 + bw4 + 4) as i32) * 32;
+        let right = (self.iw4 as i32 - x4 as i32 + 4) * 32;
+        let top = -((y4 + bh4 + 4) as i32) * 32;
+        let bottom = (self.ih4 as i32 - y4 as i32 + 4) * 32;
+        for cand in &mut stack[..cnt] {
+            cand.mv.x = cand.mv.x.clamp(left, right);
+            cand.mv.y = cand.mv.y.clamp(top, bottom);
+        }
 
         (stack, cnt)
+    }
+
+    /// Projected, precision-fixed temporal samples for a block -- see
+    /// `motion_field::add_temporal_candidates`. The flag marks the block's own top-left sample.
+    #[allow(clippy::too_many_arguments)]
+    fn temporal_samples(
+        t: &TemporalMvContext,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        w4: u32,
+        h4: u32,
+        ref0: i8,
+        col_end: u32,
+        row_end: u32,
+    ) -> Vec<(crate::tile::coding_unit::MotionVector, bool)> {
+        crate::tile::motion_field::add_temporal_candidates(
+            &t.projected,
+            t.pocdiff[ref0 as usize],
+            crate::tile::motion_field::TemporalBlock {
+                bx4: x4,
+                by4: y4,
+                bw4,
+                bh4,
+                w4,
+                h4,
+                col_end,
+                row_end,
+            },
+        )
+        .into_iter()
+        .map(|(mv, first)| {
+            (
+                crate::tile::motion_field::fix_mv_precision(
+                    mv,
+                    t.allow_high_precision_mv,
+                    t.force_integer_mv,
+                ),
+                first,
+            )
+        })
+        .collect()
+    }
+
+    /// dav1d `add_single_extended_candidate`: a neighbour's MVs for any reference, negated when
+    /// that reference's `sign_bias` differs from the target's, appended (weight 2) unless already
+    /// on the stack.
+    fn add_single_extended_candidate(
+        &self,
+        stack: &mut [MvStackEntry; 8],
+        cnt: &mut usize,
+        cell: &SpatialRefCell,
+        sign: bool,
+    ) {
+        for (cand_ref, cand_mv) in [(cell.ref0, cell.mv0), (cell.ref1, cell.mv1)] {
+            if !cell.valid || cand_ref < 0 {
+                break;
+            }
+            let mut mv = cand_mv;
+            if sign != self.sign_bias[cand_ref as usize] {
+                mv.x = -mv.x;
+                mv.y = -mv.y;
+            }
+            if !stack[..*cnt].iter().any(|c| c.mv == mv) {
+                stack[*cnt] = MvStackEntry { mv, weight: 2 };
+                *cnt += 1;
+            }
+        }
     }
 
     /// Real weighted compound DRL candidate stack (spec 7.10.2's `RefMvStack`, compound pairs --
@@ -1399,8 +1722,8 @@ impl TileContext {
             left_cul_level: vec![0; tile_height_4x4.max(1) as usize],
             above_dc_sign_category: vec![1; tile_width_4x4.max(1) as usize],
             left_dc_sign_category: vec![1; tile_height_4x4.max(1) as usize],
-            above_var_tx: vec![0; tile_width_4x4.max(1) as usize],
-            left_var_tx: vec![0; tile_height_4x4.max(1) as usize],
+            above_var_tx: vec![VAR_TX_UNSET; tile_width_4x4.max(1) as usize],
+            left_var_tx: vec![VAR_TX_UNSET; tile_height_4x4.max(1) as usize],
             above_cul_level_chroma: [
                 vec![0; tile_width_4x4.max(1) as usize],
                 vec![0; tile_width_4x4.max(1) as usize],
@@ -1459,7 +1782,7 @@ impl TileContext {
         self.left_tx_class.iter_mut().for_each(|v| *v = -1);
         self.left_cul_level.iter_mut().for_each(|v| *v = 0);
         self.left_dc_sign_category.iter_mut().for_each(|v| *v = 1);
-        self.left_var_tx.iter_mut().for_each(|v| *v = 0);
+        self.left_var_tx.iter_mut().for_each(|v| *v = VAR_TX_UNSET);
         for plane in 0..2 {
             self.left_cul_level_chroma[plane]
                 .iter_mut()
@@ -1587,8 +1910,16 @@ impl TileContext {
         candidate_width_class: u8,
         candidate_height_class: u8,
     ) -> (u8, u8) {
-        let above = self.above_var_tx.get(x4 as usize).copied().unwrap_or(0);
-        let left = self.left_var_tx.get(y4 as usize).copied().unwrap_or(0);
+        let above = self
+            .above_var_tx
+            .get(x4 as usize)
+            .copied()
+            .unwrap_or(VAR_TX_UNSET);
+        let left = self
+            .left_var_tx
+            .get(y4 as usize)
+            .copied()
+            .unwrap_or(VAR_TX_UNSET);
         (
             u8::from(above < candidate_width_class as i8),
             u8::from(left < candidate_height_class as i8),
@@ -2593,6 +2924,31 @@ impl TileContext {
         );
     }
 
+    /// `(valid, width_4x4, height_4x4)` of the reference-map cell at `(x4, y4)`, for tests.
+    #[cfg(test)]
+    pub(crate) fn spatial_ref_cell(&self, x4: u32, y4: u32) -> Option<(bool, u8, u8)> {
+        self.spatial_ref
+            .cell(x4, y4)
+            .map(|c| (c.valid, c.width_4x4, c.height_4x4))
+    }
+
+    /// Records an intra block -- see `SpatialRefContext::set_intra_block`.
+    pub fn set_spatial_ref_intra_block(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+    ) {
+        self.spatial_ref
+            .set_intra_block(x4, y4, width_4x4, height_4x4);
+    }
+
+    /// Real frame size -- see `SpatialRefContext::set_frame_extent`.
+    pub fn set_frame_extent(&mut self, width: u32, height: u32) {
+        self.spatial_ref.set_frame_extent(width, height);
+    }
+
     /// Packed single-ref `inter_mode` context -- see `SpatialRefContext::inter_mode_context`.
     pub fn inter_mode_context(
         &self,
@@ -2605,6 +2961,23 @@ impl TileContext {
     ) -> u16 {
         self.spatial_ref
             .inter_mode_context(x4, y4, bw4, bh4, ref0, use_ref_frame_mvs)
+    }
+
+    /// See `SpatialRefContext::has_matching_edge_ref`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn has_matching_edge_ref(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        w4: u32,
+        h4: u32,
+        col_end: u32,
+        ref0: i8,
+    ) -> bool {
+        self.spatial_ref
+            .has_matching_edge_ref(x4, y4, bw4, bh4, w4, h4, col_end, ref0)
     }
 
     /// Real weighted single-ref DRL candidate stack -- see `SpatialRefContext::single_ref_mv_stack`.
@@ -2645,6 +3018,12 @@ impl TileContext {
         pocdiff: [i32; 7],
     ) {
         self.spatial_ref.set_temporal_context(projected, pocdiff);
+    }
+
+    /// Frame MV precision for temporal candidates -- see `SpatialRefContext::set_mv_precision`.
+    pub fn set_mv_precision(&mut self, allow_high_precision_mv: bool, force_integer_mv: bool) {
+        self.spatial_ref
+            .set_mv_precision(allow_high_precision_mv, force_integer_mv);
     }
 
     /// `compound_mode` context -- see `SpatialRefContext::compound_mode_context`.
@@ -3246,11 +3625,11 @@ mod tests {
     #[test]
     fn test_inter_mode_context_secondary_row_scan_finds_distant_match() {
         let mut ctx = SpatialRefContext::new(16, 16);
-        // 3 rows above the query, out of reach of the primary top scan (row y4-1) but within the
-        // secondary n=2 scan's `back = 2*2-1 = 3` reach.
+        // Out of reach of the primary top scan (row y4-1 = 4) but on the row the secondary n=2
+        // scan reads: `(y4 + 1 - 2n) | 1` = (5 + 1 - 4) | 1 = 3 (the odd row of each 8x8 pair).
         ctx.set_block(
             0,
-            2,
+            3,
             4,
             1,
             0,
@@ -3262,6 +3641,68 @@ mod tests {
         // Primary top scan (row 4) and top-right/top-left find nothing -> nearest_match=0.
         // Secondary scan finds the match -> ref_match_count=1 -> refmv_ctx=1, newmv_ctx=1.
         assert_eq!(ctx.inter_mode_context(0, 5, 4, 4, 0, false), 17);
+    }
+
+    fn mv_x(x: i32) -> MotionVector {
+        MotionVector { x, y: 0 }
+    }
+
+    /// dav1d reads the secondary rows at `((y4 - 2n + 1) | 1)`: the odd row of each 8x8 pair, so
+    /// for the odd `y4 = 5` the n = 2 row is 3, not 2.
+    #[test]
+    fn test_single_ref_stack_secondary_rows_use_the_odd_row_of_each_8x8_pair() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_frame_extent(64, 64);
+        let (a, b) = (mv_x(16), mv_x(24));
+        ctx.set_block(4, 3, 4, 1, 0, -1, false, a, MotionVector::zero());
+        ctx.set_block(4, 2, 4, 1, 0, -1, false, b, MotionVector::zero());
+        let (stack, cnt) = ctx.single_ref_mv_stack(4, 5, 2, 2, 0, false);
+        assert_eq!(cnt, 1);
+        assert_eq!(stack[0].mv, a);
+        // weight = len (2) * weight (max(2, min(2 * (1 + 3 - 2), 1)) = 2)
+        assert_eq!(stack[0].weight, 4);
+    }
+
+    /// A secondary row is only scanned when the rows scanned so far (`n_rows`) do not already
+    /// reach it: a 4-high neighbour above covers rows 1..=4, so n = 2 is skipped and only n = 3
+    /// (weight 2 * 2) adds to it, on top of 8 (primary row) + 4 (top-right) + 640.
+    #[test]
+    fn test_single_ref_stack_secondary_rows_are_gated_by_rows_already_covered() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_frame_extent(64, 64);
+        let c = mv_x(16);
+        ctx.set_block(4, 1, 4, 4, 0, -1, false, c, MotionVector::zero());
+        let (stack, cnt) = ctx.single_ref_mv_stack(4, 5, 2, 2, 0, false);
+        assert_eq!(cnt, 1);
+        assert_eq!(stack[0].mv, c);
+        assert_eq!(stack[0].weight, 8 + 4 + 640 + 4);
+    }
+
+    /// An intra block of an inter frame keeps its size in the reference map: a 4-high intra
+    /// neighbour makes the row scan cover 2 rows (`weight >> 1` with weight 4), an unrecorded
+    /// cell would count as 1 unit high.
+    #[test]
+    fn test_intra_cells_keep_their_size_for_the_neighbour_scan() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_frame_extent(64, 64);
+        ctx.set_intra_block(4, 4, 4, 4);
+        let mut stack = [MvStackEntry::default(); 8];
+        let mut cnt = 0;
+        let rows = ctx.scan_row_weighted(&mut stack, &mut cnt, 0, 7, 4, 4, 4, 3, 1);
+        assert_eq!(rows, 2);
+        assert_eq!(cnt, 0, "an intra block is never a candidate");
+    }
+
+    /// Candidates are clamped to the frame in dav1d's 8x8-aligned units (`iw4 = iw8 << 1`): a
+    /// 36-sample-wide frame is 10 units wide, so the limit is (10 - 0 + 4) * 32 = 448.
+    #[test]
+    fn test_single_ref_stack_clamps_to_the_8x8_aligned_frame() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_frame_extent(36, 36);
+        ctx.set_block(0, 0, 4, 1, 0, -1, false, mv_x(10_000), MotionVector::zero());
+        let (stack, cnt) = ctx.single_ref_mv_stack(0, 1, 2, 2, 0, false);
+        assert_eq!(cnt, 1);
+        assert_eq!(stack[0].mv.x, 448);
     }
 
     #[test]
@@ -3335,22 +3776,23 @@ mod tests {
     #[test]
     fn test_var_tx_context_no_neighbors_is_zero_zero() {
         let ctx = TileContext::new(16, 16);
-        // Default `0` < any real candidate class > 0 -- both should contribute.
-        assert_eq!(ctx.var_tx_context(0, 0, 3, 3), (1, 1));
+        // Unwritten neighbours count as the largest class (dav1d initialises the arrays to
+        // TX_64X64), so a smaller candidate gets no context from them.
+        assert_eq!(ctx.var_tx_context(0, 0, 3, 3), (0, 0));
     }
 
     #[test]
     fn test_var_tx_context_neighbor_at_least_as_large_does_not_contribute() {
         let mut ctx = TileContext::new(16, 16);
         ctx.set_var_tx_class(0, 0, 1, 1, 3, 3); // neighbor leaf class = Tx32x32 (3)
-        assert_eq!(ctx.var_tx_context(0, 1, 3, 3), (0, 1)); // above: 3 < 3 false; left default 0<3 true
+        assert_eq!(ctx.var_tx_context(0, 1, 3, 3), (0, 0)); // above: 3 < 3 false; left unset (64x64)
     }
 
     #[test]
     fn test_var_tx_context_neighbor_smaller_contributes() {
         let mut ctx = TileContext::new(16, 16);
         ctx.set_var_tx_class(0, 0, 1, 1, 1, 1); // neighbor leaf class = Tx8x8 (1)
-        assert_eq!(ctx.var_tx_context(0, 1, 3, 3), (1, 1)); // above: 1 < 3 true
+        assert_eq!(ctx.var_tx_context(0, 1, 3, 3), (1, 0)); // above: 1 < 3 true; left unset (64x64)
     }
 
     #[test]

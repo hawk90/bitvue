@@ -59,6 +59,7 @@ pub use types::*;
 
 use crate::tile::{BlockRect, FrameCodingParams, MiRect, SuperblockCtx, TileState};
 
+use crate::symbol::cdf::tx_size_class;
 use crate::symbol::SymbolDecoder;
 use bitvue_engine::Result;
 
@@ -167,6 +168,9 @@ pub fn parse_coding_unit(
         // dav1d uses for both cases -- see `SymbolDecoder::read_intra_mode_inter_frame`'s doc for
         // the one real difference (which CDF/context source `y_mode` draws from).
         cu.ref_frames = [RefFrame::Intra, RefFrame::Intra];
+        if !is_key_frame {
+            tile_ctx.set_spatial_ref_intra_block(mi.x4, mi.y4, mi.width, mi.height);
+        }
 
         // use_intrabc (spec 5.11.6) -- rare (screen-content-coding), only read at all when the
         // frame header allows it. Real spec: `allow_intrabc` is only ever true for an intra-only
@@ -223,17 +227,18 @@ pub fn parse_coding_unit(
         cu.ref_frames = ref_frames::read_ref_frames(decoder, tile_ctx, rect, mi, frame, &cu)?;
         let is_compound = cu.ref_frames[1] != RefFrame::Intra;
 
-        if is_compound {
+        let is_warp = if is_compound {
             compound::read_compound_mode_info(decoder, tile_ctx, mv_ctx, rect, mi, frame, &mut cu)?;
+            false
         } else {
             // INTER frame - read prediction mode
             single_ref::read_single_ref_mode_info(
                 decoder, tile_ctx, mv_ctx, rect, mi, frame, &mut cu,
-            )?;
-        }
+            )?
+        };
 
         // filter (spec 5.11.30) -- see `interp_filter`.
-        interp_filter::read_interp_filter(decoder, tile_ctx, mi, frame, &cu)?;
+        interp_filter::read_interp_filter(decoder, tile_ctx, mi, frame, &cu, is_warp)?;
 
         // read_block_tx_size() (spec 5.11.16/17/18) for INTER blocks -- real recursive var-tx
         // read, see `read_var_tx_size`'s doc for the exact scope (square CUs only) and why.
@@ -263,6 +268,18 @@ pub fn parse_coding_unit(
         tile_ctx.set_pal_size(0, x4, y4, width_4x4, height_4x4, 0);
         tile_ctx.set_pal_size(1, x4, y4, width_4x4, height_4x4, 0);
     }
+    if is_inter || cu.use_intrabc {
+        // Inter and IntraBC blocks record their size as the "intra transform size" their
+        // neighbours' `tx_size` context sees (dav1d's inter `set_ctx`: `tx_intra = b_dim`).
+        tile_ctx.set_tx_class(
+            x4,
+            y4,
+            width_4x4,
+            height_4x4,
+            tx_size_class(width) as u8,
+            tx_size_class(height) as u8,
+        );
+    }
     if is_inter {
         let is_compound = cu.ref_frames[1] != RefFrame::Intra;
         tile_ctx.set_ref_frames(
@@ -279,6 +296,16 @@ pub fn parse_coding_unit(
                 -1
             },
         );
+    } else if !cu.use_intrabc {
+        // An intra block in an inter frame leaves "no reference, no compound type, no filter" for
+        // its neighbours (dav1d's intra `set_ctx`: `ref = -1`, `comp_type = NONE`, `filter =
+        // N_SWITCHABLE_FILTERS`), so a neighbour's `interp_filter`/`comp_mode` context does not
+        // pick up whatever an earlier block left in those arrays.
+        tile_ctx.set_ref_frames(x4, y4, width_4x4, height_4x4, true, false, -1, -1);
+        tile_ctx.set_comp_type(x4, y4, width_4x4, height_4x4, 0);
+        for dir in 0..2 {
+            tile_ctx.set_filter(x4, y4, width_4x4, height_4x4, dir, 3);
+        }
     }
 
     // Add this CU to the MV predictor context for future blocks
@@ -292,6 +319,26 @@ pub fn parse_coding_unit(
         residual::read_residual(decoder, tile_ctx, rect, mi, frame, &mut cu, y_mode_raw)?;
     } else {
         cu.residual = None;
+        // A skipped block has no coefficients: its neighbours' `txb_skip`/`dc_sign` contexts must
+        // see "none" over its whole footprint (dav1d: `lcoef`/`ccoef` set to 0x40), not whatever
+        // an earlier block left there.
+        tile_ctx.set_residual_ctx(x4, y4, width_4x4, height_4x4, 0, None);
+        if frame.tx_type_flags.subsampling_x
+            && frame.tx_type_flags.subsampling_y
+            && contexts::has_chroma(mi, &frame.tx_type_flags)
+        {
+            for plane in 0..2 {
+                tile_ctx.set_residual_ctx_chroma(
+                    plane,
+                    x4 >> 1,
+                    y4 >> 1,
+                    (width_4x4 + 1) >> 1,
+                    (height_4x4 + 1) >> 1,
+                    0,
+                    None,
+                );
+            }
+        }
     }
 
     Ok((cu, new_qp))
@@ -308,18 +355,17 @@ pub fn parse_coding_unit(
 /// bitstream whenever mv_joint indicated a zero axis -- the same "syntax element not read at
 /// all" pattern as this session's earlier residual()/ref_frame() bugs, just not crash-visible
 /// here since a `SymbolDecoder` never panics on merely-wrong-but-in-range values.
-fn read_explicit_mv(decoder: &mut SymbolDecoder) -> Result<MotionVector> {
+fn read_explicit_mv(decoder: &mut SymbolDecoder, mv_prec: i8) -> Result<MotionVector> {
     let joint = decoder.read_mv_joint()?;
-    // MV_JOINT_HZVNZ(2)/MV_JOINT_HNZVNZ(3): vertical component is non-zero, read it (spec reads
-    // diffMv[0], the row/vertical component, first).
+    // MV_JOINT_HZVNZ(2)/MV_JOINT_HNZVNZ(3): the vertical component is coded, and comes first.
     let mv_y = if matches!(joint, 2 | 3) {
-        decoder.read_mv_component()?
+        decoder.read_mv_component_diff(0, mv_prec)?
     } else {
         0
     };
-    // MV_JOINT_HNZVZ(1)/MV_JOINT_HNZVNZ(3): horizontal component is non-zero, read it.
+    // MV_JOINT_HNZVZ(1)/MV_JOINT_HNZVNZ(3): the horizontal component is coded.
     let mv_x = if matches!(joint, 1 | 3) {
-        decoder.read_mv_component()?
+        decoder.read_mv_component_diff(1, mv_prec)?
     } else {
         0
     };

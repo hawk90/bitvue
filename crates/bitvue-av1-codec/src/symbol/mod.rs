@@ -71,6 +71,16 @@ impl<'a> SymbolDecoder<'a> {
         })
     }
 
+    /// Starts from an existing CDF context instead of the defaults: a frame whose
+    /// `primary_ref_frame` names a reference begins with that reference's saved CDFs (spec
+    /// `load_cdfs`), not the qindex-bucketed defaults.
+    pub fn with_cdf_context(data: &'a [u8], cdf_context: CdfContext) -> Result<Self> {
+        Ok(Self {
+            decoder: ArithmeticDecoder::new(data)?,
+            cdf_context,
+        })
+    }
+
     /// Read a `partition` symbol (spec 5.11.4), per its real above/left context (`ctx`, 0..=3,
     /// from `crate::tile::TileContext::partition_context`) -- real per-context default CDFs
     /// (`CdfContext`'s `partition_cdfs` doc) and real adaptation via `read_symbol_adaptive`,
@@ -736,161 +746,42 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.read_symbol_adaptive(cdf)
     }
 
-    /// Read motion vector component (horizontal or vertical)
-    ///
-    /// Per AV1 Spec Section 5.11.47 (Motion Vector Component)
-    ///
-    /// Returns MV component in quarter-pel units (divide by 4 for pixel units)
-    pub fn read_mv_component(&mut self) -> Result<i32> {
-        // Read MV class (magnitude range)
-        let mv_class_cdf = self.cdf_context.get_mv_class_cdf_mut();
-
-        tracing::trace!(
-            "  Before read_mv_class: decoder.value={:#06x}, decoder.range={:#06x}",
-            self.decoder.value,
-            self.decoder.range
-        );
-
-        let mv_class = self.decoder.read_symbol_adaptive(mv_class_cdf)?;
-
-        tracing::trace!(
-            "  After read_mv_class: decoder.value={:#06x}, decoder.range={:#06x}",
-            self.decoder.value,
-            self.decoder.range
-        );
-        tracing::debug!(
-            "  MV class={} (0=zero, 1..11=increasing magnitude ranges)",
-            mv_class
-        );
-
-        // Calculate magnitude based on class
-        let magnitude = if mv_class == 0 {
-            // Class 0: magnitude = 0
-            tracing::trace!("    Class 0 → magnitude = 0");
-            0
-        } else {
-            // Base magnitude for this class
-            let base = match mv_class {
-                1 => 1,
-                2 => 2,
-                3 => 4,
-                4 => 8,
-                5 => 16,
-                6 => 32,
-                7 => 64,
-                8 => 128,
-                9 => 256,
-                10 => 512,
-                11 => 1024,
-                _ => 0,
-            };
-
-            // Number of additional bits to read
-            let num_bits = if mv_class == 1 { 0 } else { mv_class - 1 };
-
-            tracing::trace!(
-                "    Class {} → base={}, reading {} additional bits",
-                mv_class,
-                base,
-                num_bits
-            );
-
-            // Read additional bits
-            let mut mag = base;
-            let mv_bit_cdf = self.cdf_context.get_mv_bit_cdf_mut();
-            for i in 0..num_bits {
-                let bit = self.decoder.read_symbol_adaptive(mv_bit_cdf)?;
-                mag = (mag << 1) | bit as i32;
-                tracing::trace!("      bit[{}] = {} → mag = {}", i, bit, mag);
+    /// Read one MV component's difference (dav1d `read_mv_component_diff`, `src/decode.c`), in
+    /// 1/8-sample units, sign applied. `component`: `0` = vertical, `1` = horizontal. `mv_prec`:
+    /// `-1` when the frame uses integer MVs (no fractional bits are coded), `0` for quarter-sample
+    /// precision (the high-precision bit is not coded and reads as 1), `1` for eighth-sample.
+    pub fn read_mv_component_diff(&mut self, component: usize, mv_prec: i8) -> Result<i32> {
+        let cdfs = self.cdf_context.get_mv_component_cdfs_mut(component);
+        let sign = self.decoder.read_symbol_adaptive(&mut cdfs.sign)? == 1;
+        let class = self.decoder.read_symbol_adaptive(&mut cdfs.classes)? as usize;
+        let (mut fp, mut hp) = (3i32, 1i32);
+        let up: i32;
+        if class == 0 {
+            up = self.decoder.read_symbol_adaptive(&mut cdfs.class0)? as i32;
+            if mv_prec >= 0 {
+                fp = self
+                    .decoder
+                    .read_symbol_adaptive(&mut cdfs.class0_fp[up as usize])?
+                    as i32;
+                if mv_prec > 0 {
+                    hp = self.decoder.read_symbol_adaptive(&mut cdfs.class0_hp)? as i32;
+                }
             }
-
-            tracing::trace!("    Final magnitude = {}", mag);
-            mag
-        };
-
-        // Read sign (0 = positive, 1 = negative)
-        let sign = if magnitude > 0 {
-            let mv_sign_cdf = self.cdf_context.get_mv_sign_cdf_mut();
-            tracing::trace!(
-                "  Before read_sign: decoder.value={:#06x}, decoder.range={:#06x}",
-                self.decoder.value,
-                self.decoder.range
-            );
-            let s = self.decoder.read_symbol_adaptive(mv_sign_cdf)?;
-            tracing::trace!(
-                "  After read_sign: decoder.value={:#06x}, decoder.range={:#06x}, sign={}",
-                self.decoder.value,
-                self.decoder.range,
-                s
-            );
-            s
         } else {
-            tracing::trace!("  Magnitude is 0, no sign bit");
-            0
-        };
-
-        // Apply sign
-        let signed_mag = if sign == 1 { -magnitude } else { magnitude };
-
-        tracing::debug!(
-            "  Signed magnitude = {} (magnitude={}, sign={})",
-            signed_mag,
-            magnitude,
-            sign
-        );
-
-        // Read fractional bits (AV1 spec Section 7.9.3)
-        // mv_fr: half-pel bit (0 or 2 qpel)
-        let mv_bit_cdf = self.cdf_context.get_mv_bit_cdf_mut();
-
-        tracing::trace!(
-            "  Before read_fr: decoder.value={:#06x}, decoder.range={:#06x}",
-            self.decoder.value,
-            self.decoder.range
-        );
-        let fr = self.decoder.read_symbol_adaptive(mv_bit_cdf)? as i32;
-        tracing::trace!(
-            "  After read_fr: decoder.value={:#06x}, decoder.range={:#06x}, fr={}",
-            self.decoder.value,
-            self.decoder.range,
-            fr
-        );
-
-        // mv_hp: quarter-pel bit (0 or 1 qpel)
-        // For MVP, always read hp bit (assume allow_high_precision_mv = true)
-        tracing::trace!(
-            "  Before read_hp: decoder.value={:#06x}, decoder.range={:#06x}",
-            self.decoder.value,
-            self.decoder.range
-        );
-        let hp = self.decoder.read_symbol_adaptive(mv_bit_cdf)? as i32;
-        tracing::trace!(
-            "  After read_hp: decoder.value={:#06x}, decoder.range={:#06x}, hp={}",
-            self.decoder.value,
-            self.decoder.range,
-            hp
-        );
-
-        // Combine: MV = (magnitude << 2) | (fr << 1) | hp
-        // This gives quarter-pel precision (0, 1, 2, 3 qpel)
-        let qpel_offset = (fr << 1) | hp;
-        let mv_qpel = (signed_mag * 4)
-            + if signed_mag < 0 {
-                -qpel_offset
-            } else {
-                qpel_offset
-            };
-
-        tracing::debug!(
-            "  MV breakdown: signed_mag={}, fr={}, hp={}, qpel_offset={} → {} qpel",
-            signed_mag,
-            fr,
-            hp,
-            qpel_offset,
-            mv_qpel
-        );
-
-        Ok(mv_qpel)
+            let mut bits = 1i32 << class;
+            for n in 0..class {
+                bits |= (self.decoder.read_symbol_adaptive(&mut cdfs.class_n[n])? as i32) << n;
+            }
+            up = bits;
+            if mv_prec >= 0 {
+                fp = self.decoder.read_symbol_adaptive(&mut cdfs.class_n_fp)? as i32;
+                if mv_prec > 0 {
+                    hp = self.decoder.read_symbol_adaptive(&mut cdfs.class_n_hp)? as i32;
+                }
+            }
+        }
+        let diff = ((up << 3) | (fp << 1) | hp) + 1;
+        Ok(if sign { -diff } else { diff })
     }
 
     /// Read delta Q (quantization parameter delta)
@@ -1024,7 +915,7 @@ impl<'a> SymbolDecoder<'a> {
     /// tx-size classes reach which family is a direct consequence of the branch conditions below,
     /// not arbitrary -- e.g. `txtp_intra1`/`txtp_inter1` only ever see tx classes 0..=1 (4x4/8x8)
     /// because every larger size is intercepted by an earlier branch first.
-    pub fn read_transform_type_is_1d(
+    pub fn read_transform_type(
         &mut self,
         is_intra: bool,
         coded_lossless: bool,
@@ -1033,7 +924,7 @@ impl<'a> SymbolDecoder<'a> {
         tx_width_px: u32,
         tx_height_px: u32,
         y_mode_raw: u8,
-    ) -> Result<TxClass1d> {
+    ) -> Result<LumaTxType> {
         // dav1d's `t_dim->max` / `t_dim->min`: size classes (log2 of px / 4) of the larger and the
         // smaller transform dimension. Which one applies depends on the decision (spec 5.11.47's
         // `get_tx_set` uses the square-up of the larger side for "too big" and the square of the
@@ -1044,7 +935,7 @@ impl<'a> SymbolDecoder<'a> {
         // tx-size class earlier than inter (at 32x32, not just 64x64) -- real spec asymmetry, not
         // a simplification.
         if coded_lossless || qidx_is_zero || max_class + usize::from(is_intra) >= 4 {
-            return Ok(TxClass1d::TwoD);
+            return Ok(LumaTxType::DCT);
         }
         if is_intra {
             if reduced_tx_set || min_class == 2 {
@@ -1054,34 +945,34 @@ impl<'a> SymbolDecoder<'a> {
                     .cdf_context
                     .get_txtp_intra2_cdf_mut(min_class, y_mode_raw);
                 self.decoder.read_symbol_adaptive(cdf)?;
-                Ok(TxClass1d::TwoD)
+                Ok(LumaTxType::DCT)
             } else {
                 // Intra1 alphabet: IDTX, DCT_DCT, V_DCT, H_DCT, ADST_ADST, ADST_DCT, DCT_ADST.
                 let cdf = self
                     .cdf_context
                     .get_txtp_intra1_cdf_mut(min_class, y_mode_raw);
                 let idx = self.decoder.read_symbol_adaptive(cdf)?;
-                Ok(match idx {
+                Ok(LumaTxType::of_class(match idx {
                     2 => TxClass1d::Vertical,
                     3 => TxClass1d::Horizontal,
                     _ => TxClass1d::TwoD,
-                })
+                }))
             }
         } else if reduced_tx_set || max_class == 3 {
             // Inter3 alphabet is a single bit choosing between IDTX and DCT_DCT -- both 2D.
             let cdf = self.cdf_context.get_txtp_inter3_cdf_mut(min_class);
             self.decoder.read_symbol_adaptive(cdf)?;
-            Ok(TxClass1d::TwoD)
+            Ok(LumaTxType::DCT)
         } else if min_class == 2 {
             // Inter2 alphabet: IDTX, V_DCT, H_DCT, DCT_DCT, ADST_DCT, DCT_ADST, FLIPADST_DCT,
             // DCT_FLIPADST, ADST_ADST, FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST.
             let cdf = self.cdf_context.get_txtp_inter2_cdf_mut();
             let idx = self.decoder.read_symbol_adaptive(cdf)?;
-            Ok(match idx {
+            Ok(LumaTxType::of_class(match idx {
                 1 => TxClass1d::Vertical,
                 2 => TxClass1d::Horizontal,
                 _ => TxClass1d::TwoD,
-            })
+            }))
         } else {
             // Inter1 alphabet: IDTX, V_DCT, H_DCT, V_ADST, H_ADST, V_FLIPADST, H_FLIPADST,
             // DCT_DCT, ADST_DCT, DCT_ADST, FLIPADST_DCT, DCT_FLIPADST, ADST_ADST,
@@ -1089,12 +980,42 @@ impl<'a> SymbolDecoder<'a> {
             // even idx (2,4,6), everything else (0, 7..=15) 2D.
             let cdf = self.cdf_context.get_txtp_inter1_cdf_mut(min_class);
             let idx = self.decoder.read_symbol_adaptive(cdf)?;
-            Ok(match idx {
-                1 | 3 | 5 => TxClass1d::Vertical,
-                2 | 4 | 6 => TxClass1d::Horizontal,
-                _ => TxClass1d::TwoD,
+            Ok(LumaTxType {
+                class: match idx {
+                    1 | 3 | 5 => TxClass1d::Vertical,
+                    2 | 4 | 6 => TxClass1d::Horizontal,
+                    _ => TxClass1d::TwoD,
+                },
+                // V_ADST/H_ADST/V_FLIPADST/H_FLIPADST (indices 3..=6): the 1D types a 16-wide
+                // chroma transform cannot inherit.
+                adst_1d: (3..=6).contains(&idx),
             })
         }
+    }
+
+    /// [`Self::read_transform_type`], keeping only the transform class.
+    #[allow(clippy::too_many_arguments)]
+    pub fn read_transform_type_is_1d(
+        &mut self,
+        is_intra: bool,
+        coded_lossless: bool,
+        qidx_is_zero: bool,
+        reduced_tx_set: bool,
+        tx_width_px: u32,
+        tx_height_px: u32,
+        y_mode_raw: u8,
+    ) -> Result<TxClass1d> {
+        Ok(self
+            .read_transform_type(
+                is_intra,
+                coded_lossless,
+                qidx_is_zero,
+                reduced_tx_set,
+                tx_width_px,
+                tx_height_px,
+                y_mode_raw,
+            )?
+            .class)
     }
 
     /// Read one transform block's residual coefficients (AV1 spec Section 5.11.39 `coeffs()`),
@@ -1238,7 +1159,7 @@ impl<'a> SymbolDecoder<'a> {
 
         let eob_bin_cdf = if chroma {
             self.cdf_context
-                .get_eob_bin_cdf_chroma_mut(capped_width, capped_height)
+                .get_eob_bin_cdf_chroma_mut(capped_width, capped_height, is_1d)
         } else {
             self.cdf_context
                 .get_eob_bin_cdf_mut(capped_width, capped_height, is_1d)
@@ -1481,6 +1402,7 @@ impl<'a> SymbolDecoder<'a> {
         height_px: u32,
         txb_skip_ctx: u8,
         dc_sign_ctx: u8,
+        class: TxClass1d,
     ) -> Result<ResidualBlockStats> {
         // Spec `txSzCtx` (see `tx_size_ctx`): not the larger side's class for a 4:1 tile such as
         // the 4x16 chroma block of an 8x32 luma block.
@@ -1497,8 +1419,9 @@ impl<'a> SymbolDecoder<'a> {
             });
         }
 
-        // Chroma transform types are derived from the chroma mode and are always 2D here.
-        self.read_coefficients(true, width_px, height_px, TxClass1d::TwoD, dc_sign_ctx)
+        // The chroma transform type is not coded: intra blocks map it from the chroma mode (always
+        // 2D), inter blocks inherit the luma type -- `LumaTxType::chroma_class`.
+        self.read_coefficients(true, width_px, height_px, class, dc_sign_ctx)
     }
 }
 
@@ -1530,6 +1453,42 @@ pub(crate) fn tx_size_ctx(tx_width_px: u32, tx_height_px: u32) -> usize {
     let a = cdf::tx_size_class(tx_width_px);
     let b = cdf::tx_size_class(tx_height_px);
     (a.min(b) + a.max(b) + 1) >> 1
+}
+
+/// What the chroma transform type derivation needs to know about a luma transform type: its class
+/// and whether it is one of the 1D ADST/flip-ADST types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LumaTxType {
+    pub class: TxClass1d,
+    pub adst_1d: bool,
+}
+
+impl LumaTxType {
+    /// `DCT_DCT` -- what an all-zero or uncoded luma block counts as.
+    pub const DCT: Self = Self {
+        class: TxClass1d::TwoD,
+        adst_1d: false,
+    };
+
+    fn of_class(class: TxClass1d) -> Self {
+        Self {
+            class,
+            adst_1d: false,
+        }
+    }
+
+    /// The class of the transform an inter block's chroma inherits (dav1d `get_uv_inter_txtp`):
+    /// a 32-point chroma transform keeps only IDTX (2D either way); a chroma transform with a
+    /// 16-point short side drops the ADST/flip 1D types to `DCT_DCT`.
+    pub fn chroma_class(self, uv_width_px: u32, uv_height_px: u32) -> TxClass1d {
+        if uv_width_px.max(uv_height_px) >= 32 {
+            return TxClass1d::TwoD;
+        }
+        if uv_width_px.min(uv_height_px) == 16 && self.adst_1d {
+            return TxClass1d::TwoD;
+        }
+        self.class
+    }
 }
 
 /// Real transform class for one transform block -- `TwoD` (default scan table), or `Horizontal` /

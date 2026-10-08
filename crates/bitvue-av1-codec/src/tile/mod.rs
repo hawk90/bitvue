@@ -158,4 +158,82 @@ mod tests {
             SuperblockSize::Sb64x64
         );
     }
+
+    /// An intra block in an inter frame must be recorded in the reference map with its size and
+    /// no motion (dav1d `splat_intraref`): the neighbour scans step by the stored width/height.
+    /// Pseudo-random tile data reaches intra blocks in an inter frame without needing a stream.
+    #[test]
+    fn intra_blocks_in_an_inter_frame_are_recorded_in_the_reference_map() {
+        use crate::frame_header::TxfmMode;
+        use crate::frame_header_full::SegmentationInfo;
+        let params = FrameCodingParams {
+            is_key_frame: false,
+            delta_q_enabled: false,
+            reference_select: false,
+            allow_intrabc: false,
+            allow_screen_content_tools: false,
+            enable_filter_intra: false,
+            delta_lf_present: false,
+            delta_lf_multi: false,
+            use_ref_frame_mvs: false,
+            segmentation: SegmentationInfo::default(),
+            tx_type_flags: TxTypeFrameFlags {
+                coded_lossless: false,
+                qidx_is_zero: false,
+                reduced_tx_set: false,
+                txfm_mode: TxfmMode::default(),
+                mono_chrome: false,
+                subsampling_x: true,
+                subsampling_y: true,
+            },
+            inter_mode_flags: InterModeFlags {
+                switchable_motion_mode: true,
+                allow_warped_motion: true,
+                enable_interintra_compound: true,
+                enable_masked_compound: true,
+                enable_jnt_comp: true,
+                subpel_filter_switchable: true,
+                force_integer_mv: false,
+                allow_high_precision_mv: false,
+                gm_type: [0; 8],
+            },
+            mi_rows: 32,
+            mi_cols: 32,
+            cdef_bits: 2,
+            skip_mode_present: false,
+            skip_mode_refs: [0, 0],
+        };
+        let mut checked = 0;
+        for seed in 0..32u64 {
+            let mut x = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+            let data: Vec<u8> = (0..512)
+                .map(|_| {
+                    x ^= x << 13;
+                    x ^= x >> 7;
+                    x ^= x << 17;
+                    (x >> 24) as u8
+                })
+                .collect();
+            let mut state = TileState {
+                decoder: crate::SymbolDecoder::new(&data).unwrap(),
+                mv_ctx: MvPredictorContext::new(2, 2),
+                tile_ctx: TileContext::new(32, 32),
+            };
+            let Ok((sb, _)) = crate::parse_superblock(&mut state, 0, 0, 64, &params, 100) else {
+                continue;
+            };
+            for cu in &sb.coding_units {
+                if cu.is_intra() && !cu.use_intrabc {
+                    let (x4, y4) = (cu.x / 4, cu.y / 4);
+                    assert_eq!(
+                        state.tile_ctx.spatial_ref_cell(x4, y4),
+                        Some((false, (cu.width / 4) as u8, (cu.height / 4) as u8)),
+                        "seed {seed}: intra block at ({x4}, {y4})"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 0, "no intra block reached");
+    }
 }

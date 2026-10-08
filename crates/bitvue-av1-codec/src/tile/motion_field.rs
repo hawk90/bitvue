@@ -10,11 +10,8 @@
 //! reference-of-reference projection). Every function below cites the exact `refmvs.c` lines it
 //! ports.
 //!
-//! **Unit note**: dav1d stores MVs in 1/8-luma-sample units (`mv.x`/`mv.y`, spec's native MV
-//! precision). This crate's [`crate::tile::coding_unit::MotionVector`] uses 1/4-sample ("quarter-
-//! pel") units instead (see that type's doc) -- half as fine. Every magnitude/clip constant ported
-//! from `refmvs.c` below is therefore halved from its literal C value, and every `* 8` subpel-scale
-//! factor becomes `* 4`. This is a pure unit rescale, not a behavioral change.
+//! **Unit note**: MVs are in 1/8-luma-sample units (spec's native MV precision), same as dav1d's
+//! `mv.x`/`mv.y`, so every constant below is dav1d's literal value.
 //!
 //! **Scope**: implemented for correctness only, exercised by a sequential full-fixture test
 //! harness (`overlay_extraction::cu_parser`'s `temporal_mv` tests) -- not wired into
@@ -81,11 +78,10 @@ pub(crate) fn mv_projection(mv: MotionVector, num: i32, den: i32) -> MotionVecto
     let frac = num * DIV_MULT[den as usize];
     let y = mv.y * frac;
     let x = mv.x * frac;
-    // Real dav1d clips to 0x3fff (1/8-pel units) -- halved for this crate's quarter-pel units
-    // (see module doc). `(v + 8192 + (v>>31)) >> 14` is dav1d's round-to-nearest-ties-away-from-
+    // Real dav1d clips to 0x3fff (1/8-pel units). `(v + 8192 + (v>>31)) >> 14` is dav1d's round-to-nearest-ties-away-from-
     // zero via arithmetic shift; ported verbatim since it's unit-independent (round/shift on the
     // already-scaled product, before the unit-dependent clip).
-    const CLIP: i32 = 0x3fff / 2;
+    const CLIP: i32 = 0x3fff;
     let round = |v: i32| ((v + 8192 + (v >> 31)) >> 14).clamp(-CLIP, CLIP);
     MotionVector::new(round(x), round(y))
 }
@@ -131,9 +127,8 @@ pub fn store_motion_field(
 /// per-cell body (`refmvs.c:776-798`). Returns `None` for intra blocks and blocks whose eligible
 /// ref fails the gate (dav1d's "empty" `ref=0` cell).
 fn saved_mv_for_cu(cu: &CodingUnit, mfmv_sign: &[bool; 7]) -> Option<SavedMv> {
-    // Magnitude gate is `< 4096` in dav1d's 1/8-pel units -- halved for this crate's quarter-pel
-    // `MotionVector` (module doc).
-    const MAG_LIMIT: i32 = 4096 / 2;
+    // Magnitude gate is `< 4096` in 1/8-pel units.
+    const MAG_LIMIT: i32 = 4096;
     let eligible = |rf: RefFrame, mv: MotionVector| -> Option<SavedMv> {
         if rf == RefFrame::Intra {
             return None;
@@ -162,6 +157,10 @@ pub struct MfmvSource {
     /// (`mfmv_ref2ref[n][0..7]`), indexed by the *stored block's* ref (0..=6). `0` = invalid/skip
     /// this cell (dav1d: `if (!ref2ref) continue;`, `refmvs.c:727`).
     pub ref2ref: [i32; 7],
+    /// Whether this source is one of the four references before the current frame in the
+    /// reference list (LAST..GOLD, dav1d `ref - 4 < 0`): the projected position moves the
+    /// opposite way for those.
+    pub forward: bool,
 }
 
 /// Per-physical-DPB-slot state a sequential test harness threads across frames: this crate's
@@ -176,11 +175,28 @@ pub struct MotionFieldState {
     /// this slot was itself parsed.
     ref_ref_order_hint: [[u32; 7]; 8],
     grids: [Option<MotionFieldGrid>; 8],
+    /// slot -> the CDFs the frame that last refreshed this slot saved (spec `save_cdfs`), which a
+    /// later frame with that slot as its `primary_ref_frame` starts from.
+    cdfs: [Option<crate::symbol::CdfContext>; 8],
 }
 
 impl MotionFieldState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The CDFs saved in `slot`, if any frame has refreshed it.
+    pub fn saved_cdf(&self, slot: u8) -> Option<&crate::symbol::CdfContext> {
+        self.cdfs[slot as usize & 7].as_ref()
+    }
+
+    /// Saves `cdf` into every slot set in `refresh_frame_flags`.
+    pub fn store_cdf(&mut self, refresh_frame_flags: u8, cdf: &crate::symbol::CdfContext) {
+        for slot in 0..8 {
+            if refresh_frame_flags & (1 << slot) != 0 {
+                self.cdfs[slot] = Some(cdf.clone());
+            }
+        }
     }
 
     /// Called once per frame, after that frame's CUs are parsed, for every slot set in
@@ -282,6 +298,7 @@ pub fn select_motion_field_sources(
             slot,
             ref2cur,
             ref2ref,
+            forward: logical < 4,
         });
     }
     sources
@@ -362,13 +379,22 @@ pub fn project_motion_field(
                 }
                 let offset = mv_projection(cell.mv, src.ref2cur, ref2ref);
                 // Position offset: eighth-pel-to-8x8-cell shift is `>>6` in dav1d (8 px/cell * 8
-                // subpel-units/px = 64). This crate's quarter-pel units: 8 px/cell * 4
-                // subpel-units/px = 32 = `>>5`.
-                let off_x = (offset.x.unsigned_abs() >> 5) as i32 * offset.x.signum();
-                let off_y = (offset.y.unsigned_abs() >> 5) as i32 * offset.y.signum();
+                // subpel-units/px = 64).
+                // dav1d `apply_sign(abs(offset) >> 6, offset ^ ref_sign)`: forward sources flip.
+                let flip = if src.forward { -1 } else { 1 };
+                let off_x = (offset.x.unsigned_abs() >> 6) as i32 * offset.x.signum() * flip;
+                let off_y = (offset.y.unsigned_abs() >> 6) as i32 * offset.y.signum() * flip;
                 let px = x as i32 + off_x;
                 let py = y as i32 + off_y;
-                if px < 0 || py < 0 || px >= cols_8x8 as i32 || py >= rows_8x8 as i32 {
+                // The projection stays inside the superblock row of its source cell (8 cells)
+                // and at most one superblock (8 cells) to the left or 16 to the right of it
+                // (`load_tmvs_c`: dav1d works one superblock row at a time).
+                let (x_sb, y_sb) = ((x & !7) as i32, (y & !7) as i32);
+                if py < y_sb
+                    || py >= (y_sb + 8).min(rows_8x8 as i32)
+                    || px < (x_sb - 8).max(0)
+                    || px >= (x_sb + 16).min(cols_8x8 as i32)
+                {
                     continue;
                 }
                 out.set(
@@ -396,35 +422,96 @@ pub fn project_motion_field(
 /// `imin((w4+1)>>1,8)`/`imin((h4+1)>>1,8)`, `refmvs.c:420-424`). `step_h`/`step_v`: `2` for blocks
 /// >=16 4x4-units wide/tall, else `1` (`refmvs.c:423`).
 ///
-/// Scope note: dav1d also samples up to 3 extra positions (bottom-left/bottom-right/top-right-ish,
-/// tile/superblock-boundary-clamped) for blocks with `2 <= min(bw4,bh4)` and `max(bw4,bh4) < 16`
-/// (`refmvs.c:432-451`) -- omitted here (documented, not silent): these only ever add further
-/// low-weight (2) candidates on top of the main grid scan already covering the block's own
-/// footprint, so omitting them narrows candidate-set completeness for medium-sized blocks without
-/// affecting bit-position sync (weight-2 candidates never change `nearest_match`/`refmv_ctx`/
-/// `newmv_ctx`, which only count spatial matches -- `dav1d_refmvs_find`'s doc in this crate's
-/// `context.rs`).
+/// Block geometry for [`add_temporal_candidates`], in 4x4 units (dav1d `dav1d_refmvs_find`'s
+/// `bx4`/`by4`/`bw4`/`bh4`, the tile-clipped `w4`/`h4` and the tile end).
+#[derive(Debug, Clone, Copy)]
+pub struct TemporalBlock {
+    pub bx4: u32,
+    pub by4: u32,
+    pub bw4: u32,
+    pub bh4: u32,
+    pub w4: u32,
+    pub h4: u32,
+    pub col_end: u32,
+    pub row_end: u32,
+}
+
+/// dav1d `fix_mv_precision`: rounds a projected MV to the frame's MV precision.
+pub fn fix_mv_precision(
+    mv: MotionVector,
+    allow_high_precision_mv: bool,
+    force_integer_mv: bool,
+) -> MotionVector {
+    let neg = |v: i32| i32::from(v < 0);
+    if force_integer_mv {
+        MotionVector {
+            x: (mv.x + neg(mv.x) + 3) & !7,
+            y: (mv.y + neg(mv.y) + 3) & !7,
+        }
+    } else if !allow_high_precision_mv {
+        MotionVector {
+            x: (mv.x + neg(mv.x)) & !1,
+            y: (mv.y + neg(mv.y)) & !1,
+        }
+    } else {
+        mv
+    }
+}
+
+/// Every temporal sample dav1d takes for a block (`refmvs.c:416-452`): the main grid over the
+/// block's own footprint, then -- for blocks with `2 <= min(bw4,bh4)` and `max(bw4,bh4) < 16` --
+/// up to three more just below and to the right (clamped to the tile and the current 64x64).
+/// Returns the projected MVs in sample order, each with whether it is the block's own top-left
+/// sample (the one that feeds `globalmv_ctx`).
 pub fn add_temporal_candidates(
     projected: &ProjectedMotionField,
     pocdiff_ref0: i32,
-    x8_start: u32,
-    y8_start: u32,
-    w8: u32,
-    h8: u32,
-    step_h: u32,
-    step_v: u32,
-) -> Vec<MotionVector> {
+    block: TemporalBlock,
+) -> Vec<(MotionVector, bool)> {
+    let TemporalBlock {
+        bx4,
+        by4,
+        bw4,
+        bh4,
+        w4,
+        h4,
+        col_end,
+        row_end,
+    } = block;
+    let (bx8, by8) = (bx4 >> 1, by4 >> 1);
+    let step_h = if bw4 >= 16 { 2 } else { 1 };
+    let step_v = if bh4 >= 16 { 2 } else { 1 };
+    let w8 = ((w4 + 1) >> 1).min(8);
+    let h8 = ((h4 + 1) >> 1).min(8);
     let mut out = Vec::new();
+    let mut sample = |x8: u32, y8: u32, first: bool| {
+        if let Some(cell) = projected.get(x8, y8) {
+            out.push((mv_projection(cell.mv, pocdiff_ref0, cell.ref2ref), first));
+        }
+    };
     let mut y = 0;
     while y < h8 {
         let mut x = 0;
         while x < w8 {
-            if let Some(cell) = projected.get(x8_start + x, y8_start + y) {
-                out.push(mv_projection(cell.mv, pocdiff_ref0, cell.ref2ref));
-            }
+            sample(bx8 + x, by8 + y, x == 0 && y == 0);
             x += step_h;
         }
         y += step_v;
+    }
+    if bw4.min(bh4) >= 2 && bw4.max(bh4) < 16 {
+        let (bh8, bw8) = (bh4 >> 1, bw4 >> 1);
+        let has_bottom = by8 + bh8 < (row_end >> 1).min((by8 & !7) + 8);
+        if has_bottom && bx8 > (bx8 & !7) {
+            sample(bx8 - 1, by8 + bh8, false);
+        }
+        if bx8 + bw8 < (col_end >> 1).min((bx8 & !7) + 8) {
+            if has_bottom {
+                sample(bx8 + bw8, by8 + bh8, false);
+            }
+            if by8 + bh8 - 1 < (row_end >> 1).min((by8 & !7) + 8) {
+                sample(bx8 + bw8, by8 + bh8 - 1, false);
+            }
+        }
     }
     out
 }
@@ -462,4 +549,153 @@ pub fn add_temporal_compound_candidates(
         y += step_v;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mv(x: i32, y: i32) -> MotionVector {
+        MotionVector { x, y }
+    }
+
+    /// dav1d `fix_mv_precision` / `fix_int_mv_precision` (`src/env.h`), worked by hand:
+    /// `(v - (v >> 15)) & ~1` without high precision, `(v - (v >> 15) + 3) & ~7` for integer MVs.
+    #[test]
+    fn mv_precision_rounds_like_dav1d() {
+        assert_eq!(fix_mv_precision(mv(3, -3), true, false), mv(3, -3));
+        assert_eq!(fix_mv_precision(mv(3, -3), false, false), mv(2, -2));
+        assert_eq!(fix_mv_precision(mv(-4, 5), false, false), mv(-4, 4));
+        assert_eq!(fix_mv_precision(mv(5, -5), true, true), mv(8, -8));
+        assert_eq!(fix_mv_precision(mv(4, -4), true, true), mv(0, 0));
+    }
+
+    fn projected_with(cells: &[(u32, u32, MotionVector)]) -> ProjectedMotionField {
+        let mut field = ProjectedMotionField::empty(32, 32);
+        for &(x, y, mv) in cells {
+            field.set(x, y, ProjectedMv { mv, ref2ref: 1 });
+        }
+        field
+    }
+
+    /// A 2x2-unit (8x8 sample) block takes its own sample, then the cells below-left,
+    /// below-right and right of it (`refmvs.c:432-451`), in that order.
+    #[test]
+    fn small_blocks_also_sample_the_cells_around_them() {
+        let field = projected_with(&[
+            (1, 1, mv(1, 0)),
+            (0, 2, mv(2, 0)),
+            (2, 2, mv(3, 0)),
+            (2, 1, mv(4, 0)),
+        ]);
+        let block = TemporalBlock {
+            bx4: 2,
+            by4: 2,
+            bw4: 2,
+            bh4: 2,
+            w4: 2,
+            h4: 2,
+            col_end: 64,
+            row_end: 64,
+        };
+        let got = add_temporal_candidates(&field, 1, block);
+        assert_eq!(
+            got,
+            vec![
+                (mv(1, 0), true),
+                (mv(2, 0), false),
+                (mv(3, 0), false),
+                (mv(4, 0), false)
+            ]
+        );
+
+        // 16 units wide is no longer "small": only the main grid is sampled.
+        let wide = TemporalBlock {
+            bw4: 16,
+            w4: 16,
+            ..block
+        };
+        assert!(add_temporal_candidates(&field, 1, wide)
+            .iter()
+            .all(|&(m, _)| m != mv(2, 0) && m != mv(3, 0)));
+    }
+
+    fn state_with_one_saved_mv(x: u32, y: u32, saved: MotionVector) -> MotionFieldState {
+        let mut grid = MotionFieldGrid::empty(32, 32);
+        grid.set(
+            x,
+            y,
+            Some(SavedMv {
+                mv: saved,
+                ref_frame: RefFrame::Last,
+            }),
+        );
+        let mut state = MotionFieldState::new();
+        state.grids[0] = Some(grid);
+        state
+    }
+
+    fn source(forward: bool) -> MfmvSource {
+        MfmvSource {
+            slot: 0,
+            ref2cur: 2,
+            ref2ref: [2; 7],
+            forward,
+        }
+    }
+
+    fn only_projected_cell(field: &ProjectedMotionField) -> Option<(u32, u32)> {
+        let mut found = None;
+        for y in 0..32 {
+            for x in 0..32 {
+                if field.get(x, y).is_some() {
+                    assert!(found.is_none(), "more than one projected cell");
+                    found = Some((x, y));
+                }
+            }
+        }
+        found
+    }
+
+    /// With `ref2cur == ref2ref` the projected offset equals the saved MV, so 1280 (1/8 sample)
+    /// is 20 cells. Backward sources move that way, forward sources the opposite way
+    /// (`apply_sign(abs(offset) >> 6, offset ^ ref_sign)`).
+    #[test]
+    fn projection_direction_depends_on_the_source_side() {
+        let state = state_with_one_saved_mv(10, 3, mv(128, 0)); // two cells
+        let backward = project_motion_field(&[source(false)], &state, 32, 32);
+        assert_eq!(only_projected_cell(&backward), Some((12, 3)));
+        let forward = project_motion_field(&[source(true)], &state, 32, 32);
+        assert_eq!(only_projected_cell(&forward), Some((8, 3)));
+    }
+
+    /// dav1d projects one superblock row at a time: a cell lands at most 8 cells left and 16
+    /// cells right of its own 64-sample column, and never leaves its 8-cell row (`load_tmvs_c`).
+    #[test]
+    fn projection_stays_inside_the_source_superblock_window() {
+        // Column 0 moving 20 cells right would land at 20 >= 16: dropped.
+        let far = state_with_one_saved_mv(0, 3, mv(1280, 0));
+        assert_eq!(
+            only_projected_cell(&project_motion_field(&[source(false)], &far, 32, 32)),
+            None
+        );
+        // 15 cells right is the last column inside the window.
+        let near = state_with_one_saved_mv(0, 3, mv(960, 0));
+        assert_eq!(
+            only_projected_cell(&project_motion_field(&[source(false)], &near, 32, 32)),
+            Some((15, 3))
+        );
+        // Row 7 moving one row down would leave the 8-cell row.
+        let down = state_with_one_saved_mv(4, 7, mv(0, 64));
+        assert_eq!(
+            only_projected_cell(&project_motion_field(&[source(false)], &down, 32, 32)),
+            None
+        );
+        // Row 8 starts the next 8-cell row: moving one row up would leave it too.
+        let up = state_with_one_saved_mv(4, 8, mv(0, -64));
+        assert_eq!(
+            only_projected_cell(&project_motion_field(&[source(false)], &up, 32, 32)),
+            None
+        );
+    }
 }

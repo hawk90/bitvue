@@ -75,8 +75,10 @@ pub fn parse_all_coding_units_with_temporal(
         (sb_cols * sb_size).div_ceil(4),
         (sb_rows * sb_size).div_ceil(4),
     );
+    tile_ctx.set_frame_extent(parsed.dimensions.width, parsed.dimensions.height);
     if let Some((projected, pocdiff)) = temporal {
         tile_ctx.set_temporal_context(projected.clone(), pocdiff);
+        tile_ctx.set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
     }
 
     let mut state = crate::tile::TileState {
@@ -588,19 +590,10 @@ mod tests {
         assert_eq!(hints[0], 0, "slot 0 still holds the key frame");
     }
 
-    /// A temporal unit can hold two frames (the fixture's IVF chunk 1 is a hidden frame followed
-    /// by the shown one). Reference-slot state must be threaded through both, or every later
-    /// frame's `skip_mode_params()` reads the wrong slot order hints and the tile data starts at
-    /// the wrong byte. Expected tile sizes and the first symbols come from the dav1d oracle
-    /// (`TILEGRP` size and the per-symbol `(rng, cnt, dif)` trace); the prefixes are as long as
-    /// the decoder currently agrees with dav1d (see the PR description for what follows).
-    #[test]
-    fn frames_after_a_two_frame_temporal_unit_start_where_dav1d_starts() {
-        // (IVF chunk, tile bytes, agreeing symbol prefix, FNV-1a digest of that prefix)
-        const ORACLE: &[(usize, usize, usize, u64)] = &[
-            (1, 461, 109, 0x5cb8_ece2_e1e6_e26e),
-            (2, 182, 66, 0xdc61_cf0f_473d_09b2),
-        ];
+    /// Decodes the first `count` frames of the fixture in decode order (one entry per Frame OBU,
+    /// so a hidden frame is its own entry), threading reference state and the motion field, and
+    /// returns each frame's `(rng, cnt, dif)` trace.
+    fn decode_fixture_traces(count: usize) -> Vec<Vec<(u32, i32, usize)>> {
         let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
         let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
         let seq = crate::parse_sequence_header(
@@ -612,47 +605,172 @@ mod tests {
                 .payload,
         )
         .unwrap();
-        for &(idx, tile_bytes, prefix, digest) in ORACLE {
-            let mut ref_state =
-                crate::frame_header_full::thread_ref_state_before(&frames, &seq, idx).unwrap();
-            let obu_data = [seq_bytes.as_slice(), frames[idx].data.as_slice()].concat();
-            let parsed =
-                super::super::parser::ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state)
-                    .unwrap();
-            assert_eq!(parsed.tile_data.len(), tile_bytes, "chunk {idx} tile bytes");
-
-            let params = parsed.coding_params();
-            let base_qp = parsed.frame_type.base_qp.unwrap() as i16;
-            let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-            let dims = &parsed.dimensions;
-            let mut state = crate::tile::TileState {
-                decoder: crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat).unwrap(),
-                mv_ctx: crate::tile::MvPredictorContext::new(dims.sb_cols, dims.sb_rows),
-                tile_ctx: crate::tile::TileContext::new(
+        let order_hint_bits = seq
+            .order_hint_bits_minus_1
+            .map(|v| v as u32 + 1)
+            .unwrap_or(0);
+        let mut mf_state = crate::tile::MotionFieldState::new();
+        let mut traces = Vec::new();
+        for chunk in &frames {
+            let mut iter = crate::obu::ObuIterator::new(&chunk.data);
+            while let Some(Ok(found)) = iter.next_obu_with_offset() {
+                if found.obu.header.obu_type != crate::obu::ObuType::Frame {
+                    continue;
+                }
+                if traces.len() == count {
+                    return traces;
+                }
+                let raw = &chunk.data[found.offset..found.offset + found.consumed];
+                let obu_data = [seq_bytes.as_slice(), raw].concat();
+                let prev_ref_order_hint = *mf_state.ref_state.ref_order_hint();
+                let parsed = super::super::parser::ParsedFrame::parse_with_ref_state(
+                    &obu_data,
+                    &mut mf_state.ref_state,
+                )
+                .unwrap();
+                let params = parsed.coding_params();
+                let base_qp = parsed.frame_type.base_qp.unwrap() as i16;
+                let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+                let dims = &parsed.dimensions;
+                let mut tile_ctx = crate::tile::TileContext::new(
                     (dims.sb_cols * dims.sb_size).div_ceil(4),
                     (dims.sb_rows * dims.sb_size).div_ceil(4),
-                ),
-            };
-            state.decoder.decoder.range_trace = Some(Vec::new());
-            state.tile_ctx.start_superblock_row();
-            // Parsing stops at the first divergence (an error), which is expected past the prefix.
-            let _ = crate::parse_superblock(&mut state, 0, 0, dims.sb_size, &params, base_qp);
-            let trace = state.decoder.decoder.range_trace.take().unwrap();
-            assert!(
-                trace.len() >= prefix,
-                "chunk {idx}: only {} symbols",
-                trace.len()
-            );
+                );
+                tile_ctx.set_frame_extent(dims.width, dims.height);
+                if let (true, Some(ref_frame_idx)) =
+                    (parsed.use_ref_frame_mvs, parsed.ref_frame_idx)
+                {
+                    let sources = crate::tile::select_motion_field_sources(
+                        &mf_state,
+                        &prev_ref_order_hint,
+                        &ref_frame_idx,
+                        parsed.order_hint,
+                        seq.enable_order_hint,
+                        order_hint_bits,
+                    );
+                    let projected = crate::tile::project_motion_field(
+                        &sources,
+                        &mf_state,
+                        dims.width.div_ceil(8).max(1),
+                        dims.height.div_ceil(8).max(1),
+                    );
+                    let pocdiff: [i32; 7] = std::array::from_fn(|i| {
+                        crate::frame_header_full::relative_dist(
+                            parsed.order_hint,
+                            prev_ref_order_hint[ref_frame_idx[i] as usize],
+                            seq.enable_order_hint,
+                            order_hint_bits,
+                        )
+                        .clamp(-31, 31) as i32
+                    });
+                    tile_ctx.set_temporal_context(projected, pocdiff);
+                    tile_ctx
+                        .set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
+                }
+                // A frame with a `primary_ref_frame` starts from that reference's saved CDFs.
+                let initial_cdf = match (parsed.primary_ref_frame, parsed.ref_frame_idx) {
+                    (slot @ 0..=6, Some(idx)) => mf_state
+                        .saved_cdf(idx[slot as usize])
+                        .cloned()
+                        .unwrap_or_else(|| crate::symbol::CdfContext::new_with_qcat(qcat)),
+                    _ => crate::symbol::CdfContext::new_with_qcat(qcat),
+                };
+                assert!(
+                    parsed.disable_frame_end_update_cdf,
+                    "saving end-of-frame CDFs is not implemented"
+                );
+                let mut state = crate::tile::TileState {
+                    decoder: crate::SymbolDecoder::with_cdf_context(
+                        &parsed.tile_data,
+                        initial_cdf.clone(),
+                    )
+                    .unwrap(),
+                    mv_ctx: crate::tile::MvPredictorContext::new(dims.sb_cols, dims.sb_rows),
+                    tile_ctx,
+                };
+                state.decoder.decoder.range_trace = Some(Vec::new());
+                let mut qp = base_qp;
+                let mut cus = Vec::new();
+                'frame: for sb_y in 0..dims.sb_rows {
+                    state.tile_ctx.start_superblock_row();
+                    for sb_x in 0..dims.sb_cols {
+                        match crate::parse_superblock(
+                            &mut state,
+                            sb_x * dims.sb_size,
+                            sb_y * dims.sb_size,
+                            dims.sb_size,
+                            &params,
+                            qp,
+                        ) {
+                            Ok((sb, new_qp)) => {
+                                cus.extend(sb.coding_units);
+                                qp = new_qp;
+                            }
+                            Err(_) => break 'frame,
+                        }
+                    }
+                }
+                traces.push(state.decoder.decoder.range_trace.take().unwrap());
+
+                let mfmv_sign: [bool; 7] = match parsed.ref_frame_idx {
+                    Some(ref_frame_idx) => std::array::from_fn(|i| {
+                        crate::frame_header_full::relative_dist(
+                            prev_ref_order_hint[ref_frame_idx[i] as usize],
+                            parsed.order_hint,
+                            seq.enable_order_hint,
+                            order_hint_bits,
+                        ) < 0
+                    }),
+                    None => [false; 7],
+                };
+                let grid =
+                    crate::tile::store_motion_field(&cus, dims.width, dims.height, &mfmv_sign);
+                mf_state.store_cdf(parsed.refresh_frame_flags, &initial_cdf);
+                mf_state.update(
+                    &prev_ref_order_hint,
+                    parsed.refresh_frame_flags,
+                    parsed.ref_frame_idx.as_ref(),
+                    grid,
+                );
+            }
+        }
+        traces
+    }
+
+    /// Every symbol the decoder reads for the first five frames of the fixture (key frame, hidden
+    /// ARF, shown inter frame, two more inter frames) is identical to dav1d's: the arithmetic
+    /// decoder's `(rng, cnt, dif)` after each symbol, from a dav1d 1.5.1 debug build with its
+    /// `msac` instrumented. Comparing the full state (not only the decoded value) catches reads
+    /// with a wrong probability even when they decode to the same bit. Each tuple is the symbol
+    /// count and the FNV-1a digest of the `"{rng} {cnt} {dif}\n"` lines of the whole frame.
+    ///
+    /// Frames 1..=4 exercise: a temporal unit holding two frames (reference state threaded
+    /// through both), CDFs loaded from a reference (`primary_ref_frame`), MV candidate stacks and
+    /// contexts, temporal projection, the compound syntax, and chroma transform types inherited
+    /// from luma.
+    #[test]
+    fn first_five_frames_decode_symbol_for_symbol_like_dav1d() {
+        const ORACLE: [(usize, u64); 5] = [
+            (82_966, 0xe7c9_0862_8b33_a6a4),
+            (41_785, 0xf637_9543_fc90_f2b5),
+            (4_844, 0x7f2d_df0b_b44d_b942),
+            (4_149, 0x083f_d2d3_9c64_6428),
+            (2_194, 0x73ce_16d6_2ef2_1c03),
+        ];
+        let traces = decode_fixture_traces(ORACLE.len());
+        assert_eq!(traces.len(), ORACLE.len());
+        for (frame, (trace, &(symbols, digest))) in traces.iter().zip(&ORACLE).enumerate() {
             let mut hash = 0xcbf2_9ce4_8422_2325u64;
-            for (rng, cnt, dif) in &trace[..prefix] {
+            for (rng, cnt, dif) in trace {
                 for byte in format!("{rng} {cnt} {dif}\n").bytes() {
                     hash ^= u64::from(byte);
                     hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
                 }
             }
+            assert_eq!(trace.len(), symbols, "frame {frame}: number of symbols");
             assert_eq!(
                 hash, digest,
-                "chunk {idx}: first {prefix} symbols differ from dav1d"
+                "frame {frame}: decoder state diverges from dav1d"
             );
         }
     }

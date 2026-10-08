@@ -111,10 +111,52 @@ impl PartitionCdf {
     }
 }
 
+/// The CDFs of one motion-vector component (dav1d `CdfMvComponent`, `src/cdf.h`): sign, magnitude
+/// class, the class-0 integer bit, the class>0 integer bits, and the fractional/high-precision
+/// bits of each. Defaults are dav1d's `default_cdf.mv.comp` (`src/cdf.c`).
+#[derive(Debug, Clone)]
+pub struct MvComponentCdfs {
+    pub sign: Vec<u16>,
+    /// 11 symbols: class 0..=10.
+    pub classes: Vec<u16>,
+    pub class0: Vec<u16>,
+    /// Indexed by the class-0 integer bit.
+    pub class0_fp: [Vec<u16>; 2],
+    /// One per integer bit of a class > 0 magnitude.
+    pub class_n: [Vec<u16>; 10],
+    pub class_n_fp: Vec<u16>,
+    pub class0_hp: Vec<u16>,
+    pub class_n_hp: Vec<u16>,
+}
+
+impl MvComponentCdfs {
+    fn new() -> Self {
+        Self {
+            sign: binary_ctx_cdf(16384),
+            classes: multi_ctx_cdf(&[
+                28672, 30976, 31858, 32320, 32551, 32656, 32740, 32757, 32762, 32767,
+            ]),
+            class0: binary_ctx_cdf(27648),
+            class0_fp: [
+                multi_ctx_cdf(&[16384, 24576, 26624]),
+                multi_ctx_cdf(&[12288, 21248, 24128]),
+            ],
+            class_n: [
+                17408, 17920, 18944, 20480, 22528, 24576, 28672, 29952, 29952, 30720,
+            ]
+            .map(binary_ctx_cdf),
+            class_n_fp: multi_ctx_cdf(&[8192, 17408, 21248]),
+            class0_hp: binary_ctx_cdf(20480),
+            class_n_hp: binary_ctx_cdf(16384),
+        }
+    }
+}
+
 /// CDF context (collection of all CDF tables)
 ///
 /// For MVP, we maintain simplified CDFs.
 /// Full implementation would have many more contexts based on neighbors.
+#[derive(Debug, Clone)]
 pub struct CdfContext {
     /// Partition CDFs indexed by `[block_size_log2 - 2][context 0..=3]` (context from
     /// `crate::tile::TileContext::partition_context`, real above/left 8x8-granularity partition
@@ -265,12 +307,9 @@ pub struct CdfContext {
     /// - MV_JOINT_HZVNZ (horz zero, vert non-zero)
     /// - MV_JOINT_HNZVNZ (both non-zero)
     mv_joint_cdf: Vec<u16>,
-    /// MV sign CDF (2 symbols: positive, negative)
-    mv_sign_cdf: Vec<u16>,
-    /// MV class CDF (11 classes for magnitude range)
-    mv_class_cdf: Vec<u16>,
-    /// MV bit CDFs for reading magnitude bits
-    mv_bit_cdf: Vec<u16>,
+    /// Per-component MV CDFs, `[0]` = vertical (row), `[1]` = horizontal (column) -- dav1d's
+    /// `mv.comp[2]`. See [`MvComponentCdfs`].
+    mv_comp: [MvComponentCdfs; 2],
 
     /// `delta_q` CDF (spec 5.11.38 `read_delta_qindex`) -- real 4-symbol alphabet, see the
     /// construction site's doc. The sign bit is a real equi-probable (50/50) raw bit, not a CDF
@@ -379,15 +418,15 @@ pub struct CdfContext {
     /// above.
     txb_skip_cdf_chroma: [[Vec<u16>; 6]; 4],
     dc_sign_cdf_chroma: [Vec<u16>; 3],
-    eob_bin_16_cdf_chroma: Vec<u16>,
+    eob_bin_16_cdf_chroma: [Vec<u16>; 2],
     /// Real `eob_bin` default for a 4x8/8x4 chroma tile (rc area 32) -- only reachable once a
     /// non-square luma coding block's chroma plane isn't itself square (e.g. luma 16x8 -> chroma
     /// 8x4). See `eob_bin_16_cdf_chroma`'s doc for source/shape.
-    eob_bin_32_cdf_chroma: Vec<u16>,
-    eob_bin_64_cdf_chroma: Vec<u16>,
+    eob_bin_32_cdf_chroma: [Vec<u16>; 2],
+    eob_bin_64_cdf_chroma: [Vec<u16>; 2],
     /// Real `eob_bin` default for an 8x16/16x8 chroma tile (rc area 128).
-    eob_bin_128_cdf_chroma: Vec<u16>,
-    eob_bin_256_cdf_chroma: Vec<u16>,
+    eob_bin_128_cdf_chroma: [Vec<u16>; 2],
+    eob_bin_256_cdf_chroma: [Vec<u16>; 2],
     /// Real `eob_bin` default for a 16x32/32x16 chroma tile (rc area 512).
     eob_bin_512_cdf_chroma: Vec<u16>,
     eob_bin_1024_cdf_chroma: Vec<u16>,
@@ -793,7 +832,7 @@ impl CdfContext {
         // weighted-average bit within the jnt_comp branch) -- real spec/rav1d default CDFs, 6
         // contexts each (`TileContext::mask_comp_context`/`jnt_comp_context`'s doc).
         let mask_comp_cdf: [Vec<u16>; 6] =
-            [26828, 24035, 12031, 10640, 2901, 16384].map(binary_ctx_cdf);
+            [26607, 22891, 18840, 24594, 19934, 22674].map(binary_ctx_cdf);
         let jnt_comp_cdf: [Vec<u16>; 6] =
             [18244, 12865, 7053, 13259, 9334, 4644].map(binary_ctx_cdf);
 
@@ -1383,58 +1422,6 @@ impl CdfContext {
         }
         let mv_joint_cdf = to_descending(&mv_joint_cdf);
 
-        // MV sign CDF: 50/50 positive/negative (uniform)
-        let mv_sign_cdf = vec![
-            0,                               // Start
-            (CDF_SCALE as f32 * 0.5) as u16, // Positive: 50%
-            CDF_SCALE,                       // Negative: 50%
-        ];
-        let mv_sign_cdf = to_descending(&mv_sign_cdf);
-
-        // MV class CDF (11 classes for magnitude)
-        // Per AV1 spec Section 5.11.47 (Motion Vector Component)
-        // Default values from AV1 spec / rav1d reference implementation
-        // Source: https://github.com/memorysafety/rav1d (BSD-2-Clause license)
-        // Forward CDF calculation from probabilities
-        let mv_class_counts = [
-            28672, // Class 0 (0 qpel)
-            2304,  // Class 1 (±1 qpel)
-            882,   // Class 2 (±2-3 qpel)
-            462,   // Class 3 (±4-7 qpel)
-            231,   // Class 4 (±8-15 qpel)
-            105,   // Class 5 (±16-31 qpel)
-            84,    // Class 6 (±32-63 qpel)
-            17,    // Class 7 (±64-127 qpel)
-            5,     // Class 8 (±128-255 qpel)
-            5,     // Class 9 (±256-511 qpel)
-            1,     // Class 10 (±512-1023 qpel)
-        ];
-        let mut mv_class_cdf = Vec::with_capacity(mv_class_counts.len() + 1);
-        mv_class_cdf.push(0);
-        let mut cumulative = 0;
-        for &count in &mv_class_counts {
-            cumulative += count;
-            mv_class_cdf.push(cumulative);
-        }
-        // Runtime check that works in all builds (not just debug)
-        // These are hardcoded constants that should sum to CDF_SCALE
-        if *mv_class_cdf.last().unwrap_or(&0) != CDF_SCALE {
-            panic!(
-                "MV class CDF counts sum to {}, expected {} (CDF_SCALE) - counts may be miscalculated",
-                mv_class_cdf.last().unwrap_or(&0),
-                CDF_SCALE
-            );
-        }
-        let mv_class_cdf = to_descending(&mv_class_cdf);
-
-        // MV bit CDF: 50/50 for each bit (uniform)
-        let mv_bit_cdf = vec![
-            0,                               // Start
-            (CDF_SCALE as f32 * 0.5) as u16, // 0: 50%
-            CDF_SCALE,                       // 1: 50%
-        ];
-        let mv_bit_cdf = to_descending(&mv_bit_cdf);
-
         // delta_q (spec 5.11.38 `read_delta_qindex`) CDF -- real spec/rav1d default value
         // (`default_cdf.m.delta_q`, `src/cdf.c`, `CDF3(28160, 32120, 32677)`). Real 4-symbol
         // alphabet (`0..=2` used directly, `3` triggers `SymbolDecoder::read_delta_q`'s real
@@ -1875,38 +1862,98 @@ impl CdfContext {
             _ => unreachable!(),
         };
         let eob_bin_16_cdf_chroma = match qcat.min(3) {
-            0 => multi_ctx_cdf(&[3247, 4950, 9688, 14563]),
-            1 => multi_ctx_cdf(&[7637, 9498, 14259, 19108]),
-            2 => multi_ctx_cdf(&[11139, 13270, 18241, 23566]),
-            3 => multi_ctx_cdf(&[19575, 21766, 26044, 29709]),
+            0 => [
+                multi_ctx_cdf(&[3247, 4950, 9688, 14563]),
+                multi_ctx_cdf(&[1904, 3354, 7763, 14647]),
+            ],
+            1 => [
+                multi_ctx_cdf(&[7637, 9498, 14259, 19108]),
+                multi_ctx_cdf(&[2497, 4096, 8866, 16993]),
+            ],
+            2 => [
+                multi_ctx_cdf(&[11139, 13270, 18241, 23566]),
+                multi_ctx_cdf(&[3192, 5032, 10297, 19755]),
+            ],
+            3 => [
+                multi_ctx_cdf(&[19575, 21766, 26044, 29709]),
+                multi_ctx_cdf(&[7297, 10767, 19273, 28194]),
+            ],
             _ => unreachable!(),
         };
         let eob_bin_32_cdf_chroma = match qcat.min(3) {
-            0 => multi_ctx_cdf(&[2636, 4273, 7588, 11794, 20401]),
-            1 => multi_ctx_cdf(&[8394, 10352, 13932, 18855, 26014]),
-            2 => multi_ctx_cdf(&[13468, 16303, 20361, 25105, 29281]),
-            3 => multi_ctx_cdf(&[22086, 24282, 27010, 29770, 31743]),
+            0 => [
+                multi_ctx_cdf(&[2636, 4273, 7588, 11794, 20401]),
+                multi_ctx_cdf(&[1786, 3179, 6902, 11357, 19054]),
+            ],
+            1 => [
+                multi_ctx_cdf(&[8394, 10352, 13932, 18855, 26014]),
+                multi_ctx_cdf(&[2578, 4124, 8181, 13670, 24234]),
+            ],
+            2 => [
+                multi_ctx_cdf(&[13468, 16303, 20361, 25105, 29281]),
+                multi_ctx_cdf(&[3542, 5502, 10415, 16760, 25644]),
+            ],
+            3 => [
+                multi_ctx_cdf(&[22086, 24282, 27010, 29770, 31743]),
+                multi_ctx_cdf(&[7699, 10897, 20891, 26926, 31628]),
+            ],
             _ => unreachable!(),
         };
         let eob_bin_64_cdf_chroma = match qcat.min(3) {
-            0 => multi_ctx_cdf(&[3505, 5304, 10086, 13814, 17684, 23370]),
-            1 => multi_ctx_cdf(&[8609, 10612, 14624, 18714, 22614, 29024]),
-            2 => multi_ctx_cdf(&[15050, 17126, 21410, 24886, 28156, 30726]),
-            3 => multi_ctx_cdf(&[24212, 25708, 28268, 30035, 31307, 32049]),
+            0 => [
+                multi_ctx_cdf(&[3505, 5304, 10086, 13814, 17684, 23370]),
+                multi_ctx_cdf(&[1563, 2700, 4876, 10911, 14706, 22480]),
+            ],
+            1 => [
+                multi_ctx_cdf(&[8609, 10612, 14624, 18714, 22614, 29024]),
+                multi_ctx_cdf(&[1923, 3127, 5867, 9703, 14277, 27100]),
+            ],
+            2 => [
+                multi_ctx_cdf(&[15050, 17126, 21410, 24886, 28156, 30726]),
+                multi_ctx_cdf(&[4034, 6290, 10235, 14982, 21214, 28491]),
+            ],
+            3 => [
+                multi_ctx_cdf(&[24212, 25708, 28268, 30035, 31307, 32049]),
+                multi_ctx_cdf(&[8726, 12378, 19409, 26450, 30038, 32462]),
+            ],
             _ => unreachable!(),
         };
         let eob_bin_128_cdf_chroma = match qcat.min(3) {
-            0 => multi_ctx_cdf(&[5245, 7456, 12880, 15852, 20033, 23932, 27608]),
-            1 => multi_ctx_cdf(&[8045, 11200, 15497, 19595, 23948, 27408, 30938]),
-            2 => multi_ctx_cdf(&[13627, 16246, 20173, 24429, 27948, 30415, 31863]),
-            3 => multi_ctx_cdf(&[24313, 26062, 28385, 30107, 31217, 31898, 32345]),
+            0 => [
+                multi_ctx_cdf(&[5245, 7456, 12880, 15852, 20033, 23932, 27608]),
+                multi_ctx_cdf(&[2054, 3472, 5869, 14232, 18242, 20590, 26752]),
+            ],
+            1 => [
+                multi_ctx_cdf(&[8045, 11200, 15497, 19595, 23948, 27408, 30938]),
+                multi_ctx_cdf(&[2310, 4160, 7471, 14997, 17931, 20768, 30240]),
+            ],
+            2 => [
+                multi_ctx_cdf(&[13627, 16246, 20173, 24429, 27948, 30415, 31863]),
+                multi_ctx_cdf(&[6275, 9889, 14769, 23164, 27988, 30493, 32272]),
+            ],
+            3 => [
+                multi_ctx_cdf(&[24313, 26062, 28385, 30107, 31217, 31898, 32345]),
+                multi_ctx_cdf(&[9165, 13282, 21150, 30286, 31894, 32571, 32712]),
+            ],
             _ => unreachable!(),
         };
         let eob_bin_256_cdf_chroma = match qcat.min(3) {
-            0 => multi_ctx_cdf(&[2520, 3240, 5952, 8870, 12577, 17558, 19954, 24168]),
-            1 => multi_ctx_cdf(&[6402, 8148, 12623, 15072, 18728, 22847, 26447, 29377]),
-            2 => multi_ctx_cdf(&[11514, 13794, 17480, 20754, 24361, 27378, 29492, 31277]),
-            3 => multi_ctx_cdf(&[23110, 24597, 27140, 28894, 30167, 30927, 31392, 32094]),
+            0 => [
+                multi_ctx_cdf(&[2520, 3240, 5952, 8870, 12577, 17558, 19954, 24168]),
+                multi_ctx_cdf(&[2203, 4130, 7435, 10739, 20652, 23681, 25609, 27261]),
+            ],
+            1 => [
+                multi_ctx_cdf(&[6402, 8148, 12623, 15072, 18728, 22847, 26447, 29377]),
+                multi_ctx_cdf(&[1674, 3252, 5734, 10159, 22397, 23802, 24821, 30940]),
+            ],
+            2 => [
+                multi_ctx_cdf(&[11514, 13794, 17480, 20754, 24361, 27378, 29492, 31277]),
+                multi_ctx_cdf(&[6571, 9610, 15516, 21826, 29092, 30829, 31842, 32708]),
+            ],
+            3 => [
+                multi_ctx_cdf(&[23110, 24597, 27140, 28894, 30167, 30927, 31392, 32094]),
+                multi_ctx_cdf(&[9998, 17661, 25178, 28097, 31308, 32038, 32403, 32695]),
+            ],
             _ => unreachable!(),
         };
         let eob_bin_512_cdf_chroma = match qcat.min(3) {
@@ -4625,9 +4672,7 @@ impl CdfContext {
             refmv_mode_cdf,
             compound_mode_cdf,
             mv_joint_cdf,
-            mv_sign_cdf,
-            mv_class_cdf,
-            mv_bit_cdf,
+            mv_comp: [MvComponentCdfs::new(), MvComponentCdfs::new()],
             delta_q_cdf,
             delta_lf_cdf,
             txb_skip_cdf,
@@ -4908,19 +4953,9 @@ impl CdfContext {
         &mut self.mv_joint_cdf
     }
 
-    /// Get mutable MV sign CDF (2 symbols: positive, negative) -- adapted after every read.
-    pub fn get_mv_sign_cdf_mut(&mut self) -> &mut [u16] {
-        &mut self.mv_sign_cdf
-    }
-
-    /// Get mutable MV class CDF (12 symbols: magnitude class) -- adapted after every read.
-    pub fn get_mv_class_cdf_mut(&mut self) -> &mut [u16] {
-        &mut self.mv_class_cdf
-    }
-
-    /// Get mutable MV bit CDF (2 symbols: 0, 1) -- adapted after every read.
-    pub fn get_mv_bit_cdf_mut(&mut self) -> &mut [u16] {
-        &mut self.mv_bit_cdf
+    /// Get the mutable CDFs of one MV component (`0` = vertical, `1` = horizontal).
+    pub fn get_mv_component_cdfs_mut(&mut self, component: usize) -> &mut MvComponentCdfs {
+        &mut self.mv_comp[component.min(1)]
     }
 
     /// Get mutable `delta_q` CDF (spec 5.11.38) -- adapted after every read.
@@ -5003,13 +5038,19 @@ impl CdfContext {
     /// symmetric-in-width/height reasoning as `get_eob_bin_cdf_mut`'s doc. `is_1d` is always
     /// `false` for chroma in this crate's scope, so there's no axis for it (unlike
     /// `get_eob_bin_cdf_mut`).
-    pub fn get_eob_bin_cdf_chroma_mut(&mut self, width_px: u32, height_px: u32) -> &mut [u16] {
+    pub fn get_eob_bin_cdf_chroma_mut(
+        &mut self,
+        width_px: u32,
+        height_px: u32,
+        is_1d: bool,
+    ) -> &mut [u16] {
+        let axis = usize::from(is_1d);
         match width_px * height_px {
-            0..=16 => &mut self.eob_bin_16_cdf_chroma,
-            17..=32 => &mut self.eob_bin_32_cdf_chroma,
-            33..=64 => &mut self.eob_bin_64_cdf_chroma,
-            65..=128 => &mut self.eob_bin_128_cdf_chroma,
-            129..=256 => &mut self.eob_bin_256_cdf_chroma,
+            0..=16 => &mut self.eob_bin_16_cdf_chroma[axis],
+            17..=32 => &mut self.eob_bin_32_cdf_chroma[axis],
+            33..=64 => &mut self.eob_bin_64_cdf_chroma[axis],
+            65..=128 => &mut self.eob_bin_128_cdf_chroma[axis],
+            129..=256 => &mut self.eob_bin_256_cdf_chroma[axis],
             257..=512 => &mut self.eob_bin_512_cdf_chroma,
             _ => &mut self.eob_bin_1024_cdf_chroma, // 1024, this crate's chroma scope max
         }
@@ -5304,45 +5345,6 @@ mod tests {
     }
 
     #[test]
-    fn test_mv_class_cdf_spec_compliant() {
-        let mut context = CdfContext::new();
-        let cdf = context.get_mv_class_cdf_mut();
-
-        // Verify length: 11 classes + adaptation count = 12 values
-        assert_eq!(cdf.len(), 12);
-
-        // Real spec/rav1d descending convention (see `to_descending`'s doc): last real entry
-        // (index 10) is 0, and the trailing count slot starts at 0.
-        assert_eq!(cdf[10], 0, "last real entry should be 0");
-        assert_eq!(cdf[11], 0, "adaptation count should start at 0");
-
-        // Verify monotonically non-increasing
-        for i in 1..cdf.len() - 1 {
-            assert!(
-                cdf[i] <= cdf[i - 1],
-                "CDF should be monotonically non-increasing at index {}",
-                i
-            );
-        }
-
-        // Verify spec-compliant values from rav1d (converted from the ascending
-        // rav1d-sourced counts via `d[i] = CDF_SCALE - ascending[i+1]`; see `mv_class_counts`).
-        assert_eq!(cdf[0], 4096, "Class 0 (0 qpel) descending threshold");
-        assert_eq!(cdf[1], 1792, "Class 1 (±1 qpel) descending threshold");
-        assert_eq!(cdf[2], 910, "Class 2 (±2-3 qpel) descending threshold");
-        assert_eq!(cdf[3], 448, "Class 3 (±4-7 qpel) descending threshold");
-
-        // Verify realistic distribution (most MVs are small magnitude): class 0's interval width
-        // is CDF_SCALE - cdf[0] (the "u - v" width for val=0, since u starts at the full range).
-        let prob_class_0 = (CDF_SCALE - cdf[0]) as f32 / CDF_SCALE as f32;
-        assert!(
-            prob_class_0 > 0.85,
-            "Class 0 should be very common (>85%), got {:.1}%",
-            prob_class_0 * 100.0
-        );
-    }
-
-    #[test]
     fn test_mv_joint_cdf_spec_compliant() {
         let mut context = CdfContext::new();
         let cdf = context.get_mv_joint_cdf_mut();
@@ -5365,34 +5367,6 @@ mod tests {
         assert_eq!(cdf[0], 28672, "MV_JOINT_ZERO descending threshold");
         assert_eq!(cdf[1], 21504, "MV_JOINT_HNZVZ descending threshold");
         assert_eq!(cdf[2], 13440, "MV_JOINT_HZVNZ descending threshold");
-    }
-
-    #[test]
-    fn test_mv_sign_cdf() {
-        let mut context = CdfContext::new();
-        let cdf = context.get_mv_sign_cdf_mut();
-
-        // Verify length: 2 symbols + adaptation count = 3 values
-        assert_eq!(cdf.len(), 3);
-
-        // Verify uniform distribution (50/50): descending threshold at the midpoint.
-        assert_eq!(cdf[0], 16384, "Sign should be 50/50");
-        assert_eq!(cdf[1], 0, "last real entry should be 0");
-        assert_eq!(cdf[2], 0, "adaptation count should start at 0");
-    }
-
-    #[test]
-    fn test_mv_bit_cdf() {
-        let mut context = CdfContext::new();
-        let cdf = context.get_mv_bit_cdf_mut();
-
-        // Verify length: 2 symbols + adaptation count = 3 values
-        assert_eq!(cdf.len(), 3);
-
-        // Verify uniform distribution (50/50): descending threshold at the midpoint.
-        assert_eq!(cdf[0], 16384, "Bit should be 50/50");
-        assert_eq!(cdf[1], 0, "last real entry should be 0");
-        assert_eq!(cdf[2], 0, "adaptation count should start at 0");
     }
 
     #[test]
@@ -5558,5 +5532,23 @@ mod tests {
         assert_eq!(via_new.coeff_br_cdf, via_explicit.coeff_br_cdf);
         assert_eq!(via_new.dc_sign_cdf, via_explicit.dc_sign_cdf);
         assert_eq!(via_new.partition_cdfs, via_explicit.partition_cdfs);
+    }
+
+    #[test]
+    fn mv_component_cdfs_match_dav1d_defaults() {
+        let mut context = CdfContext::new();
+        let comp = context.get_mv_component_cdfs_mut(0);
+        assert_eq!(comp.sign[0], 16384);
+        assert_eq!(comp.classes.len(), 12);
+        assert_eq!(comp.classes[0], 32768 - 28672);
+        assert_eq!(comp.class0[0], 32768 - 27648);
+        assert_eq!(comp.class0_fp[1][1], 32768 - 21248);
+        assert_eq!(comp.class_n[9][0], 32768 - 30720);
+        assert_eq!(comp.class_n_fp[2], 32768 - 21248);
+        assert_eq!(comp.class0_hp[0], 32768 - 20480);
+        assert_eq!(comp.class_n_hp[0], 32768 - 16384);
+        // Both components start from identical defaults.
+        let other = context.get_mv_component_cdfs_mut(1).classes.clone();
+        assert_eq!(context.get_mv_component_cdfs_mut(0).classes, other);
     }
 }

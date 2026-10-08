@@ -251,26 +251,28 @@ mod tests {
         assert!(get_residual_analysis(AV1_IVF_FIXTURE, 999_999).is_err());
     }
 
-    /// Real regression coverage for the axis-7 `RefFrameState` fix: `ParsedFrame::parse` used to
-    /// thread a *fresh* `RefFrameState` internally for every frame (see its doc), which silently
-    /// desyncs `tile_data` extraction for any frame whose header needs real `skip_mode_params`
-    /// state -- symptom was a near-empty (not erroring) `block_residuals` array, not a
-    /// propagated `Err`, which is exactly why `get_residual_analysis_all_250_frames_parse_
-    /// without_error` above never caught it (only checks `.is_ok()`). Frame 4 confirmed via a
-    /// real before/after fixture probe: 0 blocks before this fix, 8 after -- a real,
-    /// independently-verified improvement, not a hypothesis. (Some other frames in this fixture
-    /// still legitimately return few/zero blocks -- AV1's `inter_mode`/`compound_mode` symbol
-    /// contexts are a separate, already-documented gap in this crate's entropy decoder, deferred
-    /// pending the `refmvs` subsystem -- so this asserts against frame 4 specifically, not "every
-    /// non-key frame has blocks".)
+    /// Regression coverage for the `RefFrameState` threading fix: `ParsedFrame::parse` threads a
+    /// *fresh* `RefFrameState` for every frame (see its doc), which makes the frame header of
+    /// any frame needing real `skip_mode_params` state read the wrong slot order hints and so
+    /// start `tile_data` at the wrong byte. IVF chunk 2's tile group is 182 bytes (dav1d's
+    /// `TILEGRP` size); a fresh-state parse gets a different length.
+    ///
+    /// This used to assert that the frame had residual blocks, which only held because a
+    /// misaligned decode still produced some. A stateless parse of an inter frame cannot decode
+    /// it correctly -- it starts from default CDFs and has no motion field -- so what is checked
+    /// is the property this fix is about.
     #[test]
-    fn get_residual_analysis_frame_4_has_real_blocks_after_ref_state_threading_fix() {
-        let result = get_residual_analysis(AV1_IVF_FIXTURE, 4).unwrap();
-        let blocks = result["block_residuals"].as_array().unwrap();
-        assert!(
-            !blocks.is_empty(),
-            "frame 4 should have real per-CU blocks once tile_data is sliced using the real \
-             threaded RefFrameState instead of a fresh one"
-        );
+    fn tile_data_of_a_later_frame_needs_the_threaded_ref_state() {
+        let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_sequence_header_bytes(&frames).expect("sequence header");
+        let seq = find_sequence_header(&frames).expect("sequence header");
+        let obu_data = [seq_bytes.as_slice(), frames[2].data.as_slice()].concat();
+
+        let mut threaded = thread_ref_state_before(&frames, &seq, 2).unwrap();
+        let parsed = ParsedFrame::parse_with_ref_state(&obu_data, &mut threaded).unwrap();
+        assert_eq!(parsed.tile_data.len(), 182);
+
+        let fresh = ParsedFrame::parse(&obu_data).unwrap();
+        assert_ne!(fresh.tile_data.len(), 182);
     }
 }

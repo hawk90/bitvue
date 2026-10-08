@@ -11,6 +11,13 @@ use super::cu_parser::{parse_all_coding_units, CuSpatialIndex};
 use super::parser::ParsedFrame;
 use crate::ivf::OVERLAY_BLOCK_SIZE;
 
+/// Converts a decoded 1/8-sample `MotionVector` to the overlay grid's quarter-sample units
+/// (rounding half away from zero).
+fn overlay_mv(mv: crate::tile::MotionVector) -> CoreMV {
+    let to_qpel = |v: i32| (v + v.signum()) / 2;
+    CoreMV::new(to_qpel(mv.x), to_qpel(mv.y))
+}
+
 /// Extract MV Grid from AV1 bitstream data
 ///
 /// **Current Implementation**: Parses tile group data and extracts
@@ -71,8 +78,7 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
                                 mv_l1.push(CoreMV::MISSING);
                                 mode.push(BlockMode::IntraBc);
                             } else if cu.is_inter() {
-                                // Use quarter-pel precision motion vector directly
-                                mv_l0.push(CoreMV::new(cu.mv[0].x, cu.mv[0].y));
+                                mv_l0.push(overlay_mv(cu.mv[0]));
                                 let is_compound = cu.ref_frames[1] != crate::tile::RefFrame::Intra;
                                 // L1 (backward reference MV) is only meaningful for compound
                                 // blocks -- `cu.mv[1]` is always zero for single-ref blocks (see
@@ -80,7 +86,7 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
                                 // than a misleading real-looking zero) matches how intra/no-CU
                                 // blocks already report MISSING for both planes.
                                 mv_l1.push(if is_compound {
-                                    CoreMV::new(cu.mv[1].x, cu.mv[1].y)
+                                    overlay_mv(cu.mv[1])
                                 } else {
                                     CoreMV::MISSING
                                 });
