@@ -46,6 +46,7 @@ mod intra;
 mod is_inter;
 mod palette;
 mod ref_frames;
+mod residual;
 mod segment;
 mod single_ref;
 mod skip;
@@ -57,7 +58,7 @@ pub use types::*;
 
 use crate::tile::{BlockRect, FrameCodingParams, MiRect, SuperblockCtx, TileState};
 
-use crate::symbol::{ResidualBlockStats, SymbolDecoder};
+use crate::symbol::SymbolDecoder;
 use bitvue_engine::Result;
 
 /// Parse coding unit from symbol decoder
@@ -258,163 +259,7 @@ pub fn parse_coding_unit(
     // alignment whenever skip == false, not just for producing residual statistics. See this
     // module's doc and `SymbolDecoder::read_residual_block`'s doc.
     if !cu.skip {
-        // Real `tx_blocks` (var-tx, inter only -- see `compute_inter_tx_blocks`'s doc) gives the
-        // true per-leaf positions/sizes directly, including genuinely rectangular leaves;
-        // everything else still tiles uniformly at `cu.tx_size` (a heuristic for those CUs, not a
-        // real bitstream-derived size, still square-only).
-        let tx_positions: Vec<(u32, u32, u32, u32)> = if let Some(blocks) = &cu.tx_blocks {
-            blocks
-                .iter()
-                .map(|b| (b.x4, b.y4, b.width_px, b.height_px))
-                .collect()
-        } else {
-            let tx_px = cu.tx_size.size();
-            let tx_cols = width.div_ceil(tx_px).max(1);
-            let tx_rows = height.div_ceil(tx_px).max(1);
-            let tx_wh4 = tx_px / 4;
-            (0..tx_rows)
-                .flat_map(|tx_row| {
-                    (0..tx_cols).map(move |tx_col| {
-                        (x4 + tx_col * tx_wh4, y4 + tx_row * tx_wh4, tx_px, tx_px)
-                    })
-                })
-                .collect()
-        };
-        // Real `txb_skip`/`dc_sign` neighbor context is only trustworthy where transform-block
-        // boundaries are real (regular key-frame intra via `tx_size()`, or inter/IntraBC via real
-        // `tx_blocks` -- both real bitstream-derived boundaries); other CUs keep the
-        // fixed-context-0 fallback and never touch `tile_ctx`'s residual arrays, matching
-        // `SymbolDecoder::read_residual_block`'s doc.
-        let use_real_residual_ctx = (is_key_frame && !cu.use_intrabc) || cu.tx_blocks.is_some();
-        let is_single_tx_block = tx_positions.len() == 1;
-        let mut summary = ResidualBlockStats::default();
-        for (tx_x4, tx_y4, tx_w_px, tx_h_px) in tx_positions {
-            let (tx_w4, tx_h4) = (tx_w_px / 4, tx_h_px / 4);
-
-            let (txb_skip_ctx, dc_sign_ctx) = if use_real_residual_ctx {
-                (
-                    tile_ctx.txb_skip_context(tx_x4, tx_y4, tx_w4, tx_h4, is_single_tx_block),
-                    tile_ctx.dc_sign_context(tx_x4, tx_y4, tx_w4, tx_h4),
-                )
-            } else {
-                (0, 0)
-            };
-
-            // Real spec order (`decode_coefs`, dav1d `src/recon_tmpl.c`): `all_zero` (`txb_skip`)
-            // is read FIRST, unconditionally; `transform_type()` (spec 5.11.47) is read only when
-            // that comes back `false` -- NOT unconditionally before it. Getting this backwards
-            // was a real, confirmed desync bug: every all-zero transform block (common) previously
-            // read a phantom `transform_type` symbol the real encoder never wrote. See
-            // `SymbolDecoder::read_txb_skip`'s doc for the full story.
-            let all_zero = decoder.read_txb_skip(tx_w_px.max(tx_h_px), txb_skip_ctx)?;
-            let block = if all_zero {
-                ResidualBlockStats {
-                    all_zero: true,
-                    ..Default::default()
-                }
-            } else {
-                let tx_class_1d = decoder.read_transform_type_is_1d(
-                    is_key_frame,
-                    tx_type_flags.coded_lossless,
-                    tx_type_flags.qidx_is_zero,
-                    tx_type_flags.reduced_tx_set,
-                    tx_w_px.max(tx_h_px),
-                    y_mode_raw,
-                )?;
-                decoder.read_residual_block(tx_w_px, tx_h_px, tx_class_1d, dc_sign_ctx)?
-            };
-
-            if use_real_residual_ctx {
-                let cul_level = block.sum_abs_level.min(63) as u8;
-                tile_ctx.set_residual_ctx(
-                    tx_x4,
-                    tx_y4,
-                    tx_w4,
-                    tx_h4,
-                    cul_level,
-                    block.dc_sign_value,
-                );
-            }
-
-            summary.nonzero_count += block.nonzero_count;
-            summary.sum_abs_level += block.sum_abs_level;
-            summary.max_level = summary.max_level.max(block.max_level);
-        }
-
-        // Chroma (U/V) residual -- required for bitstream sync (spec 5.11.34's `residual()`
-        // reads luma, then U, then V for every `HasChroma` block). Restricted to non-IntraBC luma
-        // coding blocks 8x8 through 128x128 in either dimension (real rectangular chroma tiles
-        // supported, since the luma CU itself can be non-square -- see `SymbolDecoder::
-        // read_chroma_residual_block`'s doc for the desync bug this closed: every non-square
-        // `HasChroma` block's chroma bits were previously never read at all once non-square inter
-        // var-tx made non-square CUs common). Chroma's real max transform size caps each axis at
-        // 32 independently -- spec `Max_Tx_Size_Rect`, confirmed against rav1d's
-        // `DAV1D_MAX_TXFM_SIZE_FOR_BS` table -- regardless of luma size, in a 4:2:0 stream. Not
-        // restricted to key frames: real fixture-verified on inter frames too (key-frame content
-        // here happens to only ever use unpartitioned 128x128 blocks, so an earlier
-        // key-frame-only version of this gate was accidentally *never exercised* by this fixture
-        // at all -- see `real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly`).
-        //
-        // Position tracking: chroma tile positions are tracked at the luma CU's `x4/2`/`y4/2`
-        // origin (a coordinate-scale approximation, not a truly independent chroma-plane grid --
-        // see `TileContext`'s chroma field doc) since only above/left *adjacency* matters for
-        // context selection here, not absolute physical distance.
-        if !cu.use_intrabc
-            && !tx_type_flags.mono_chrome
-            && tx_type_flags.subsampling_x
-            && tx_type_flags.subsampling_y
-            && (8..=128).contains(&width)
-            && (8..=128).contains(&height)
-        {
-            let (chroma_w, chroma_h) = (width / 2, height / 2);
-            let (chroma_tx_w, chroma_tx_h) = (chroma_w.min(32), chroma_h.min(32));
-            let (chroma_tx_w4, chroma_tx_h4) = (chroma_tx_w / 4, chroma_tx_h / 4);
-            let chroma_tiles_x = chroma_w.div_ceil(chroma_tx_w).max(1);
-            let chroma_tiles_y = chroma_h.div_ceil(chroma_tx_h).max(1);
-            let not_one_blk = chroma_tiles_x * chroma_tiles_y > 1;
-            let (cx4_base, cy4_base) = (x4 / 2, y4 / 2);
-            for plane in 0..2usize {
-                for tile_row in 0..chroma_tiles_y {
-                    for tile_col in 0..chroma_tiles_x {
-                        let cx4 = cx4_base + tile_col * chroma_tx_w4;
-                        let cy4 = cy4_base + tile_row * chroma_tx_h4;
-                        let txb_skip_ctx = tile_ctx.txb_skip_context_chroma(
-                            plane,
-                            cx4,
-                            cy4,
-                            chroma_tx_w4,
-                            chroma_tx_h4,
-                            not_one_blk,
-                        );
-                        let dc_sign_ctx = tile_ctx.dc_sign_context_chroma(
-                            plane,
-                            cx4,
-                            cy4,
-                            chroma_tx_w4,
-                            chroma_tx_h4,
-                        );
-                        let block = decoder.read_chroma_residual_block(
-                            chroma_tx_w,
-                            chroma_tx_h,
-                            txb_skip_ctx,
-                            dc_sign_ctx,
-                        )?;
-                        let cul_level = block.sum_abs_level.min(63) as u8;
-                        tile_ctx.set_residual_ctx_chroma(
-                            plane,
-                            cx4,
-                            cy4,
-                            chroma_tx_w4,
-                            chroma_tx_h4,
-                            cul_level,
-                            block.dc_sign_value,
-                        );
-                    }
-                }
-            }
-        }
-
-        cu.residual = Some(summary);
+        residual::read_residual(decoder, tile_ctx, rect, mi, frame, &mut cu, y_mode_raw)?;
     } else {
         cu.residual = None;
     }
