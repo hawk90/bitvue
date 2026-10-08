@@ -1350,6 +1350,13 @@ pub struct TileContext {
     left_pal_colors: [Vec<[u16; 8]>; 3],
 }
 
+/// dav1d `get_dc_sign_ctx`'s final step, `(s != 0) + (s > 0)`: `0` when the neighbours' DC signs
+/// balance out (or are all neutral), `1` when negative ones dominate, `2` when positive ones do.
+/// This is also the order of `dc_sign`'s default CDFs (`[16000, 13056, 18816]`, neutral first).
+fn dc_sign_ctx_from_sum(sum: i32) -> u8 {
+    u8::from(sum != 0) + u8::from(sum > 0)
+}
+
 impl TileContext {
     /// `tile_width_4x4`/`tile_height_4x4`: tile dimensions in 4x4 units.
     pub fn new(tile_width_4x4: u32, tile_height_4x4: u32) -> Self {
@@ -1862,14 +1869,7 @@ impl TileContext {
                     - 1
             })
             .sum();
-        let s = above_sum + left_sum;
-        if s < 0 {
-            0
-        } else if s == 0 {
-            1
-        } else {
-            2
-        }
+        dc_sign_ctx_from_sum(above_sum + left_sum)
     }
 
     /// Record one decoded transform block's `cul_level`/`dc_sign` state across its 4x4-unit
@@ -1951,14 +1951,7 @@ impl TileContext {
         let left_sum: i32 = (0..tx_h4)
             .map(|i| left.get((cy4 + i) as usize).copied().unwrap_or(1) as i32 - 1)
             .sum();
-        let s = above_sum + left_sum;
-        if s < 0 {
-            0
-        } else if s == 0 {
-            1
-        } else {
-            2
-        }
+        dc_sign_ctx_from_sum(above_sum + left_sum)
     }
 
     /// Chroma counterpart to `set_residual_ctx`, per plane (`0`=U, `1`=V).
@@ -3464,7 +3457,7 @@ mod tests {
     #[test]
     fn test_dc_sign_context_no_neighbors_is_neutral() {
         let ctx = TileContext::new(16, 16);
-        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 1);
+        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 0);
     }
 
     #[test]
@@ -3478,7 +3471,7 @@ mod tests {
     fn test_dc_sign_context_negative_neighbors_is_negative() {
         let mut ctx = TileContext::new(16, 16);
         ctx.set_residual_ctx(0, 0, 2, 2, 10, Some(1)); // dc_sign=1 -> negative category
-        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 0);
+        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 1);
     }
 
     #[test]
@@ -3486,7 +3479,7 @@ mod tests {
         let mut ctx = TileContext::new(16, 16);
         ctx.set_residual_ctx(5, 0, 1, 1, 5, Some(0)); // above[5] positive
         ctx.set_residual_ctx(0, 5, 1, 1, 5, Some(1)); // left[5] negative
-        assert_eq!(ctx.dc_sign_context(5, 5, 1, 1), 1); // +1 and -1 cancel to neutral
+        assert_eq!(ctx.dc_sign_context(5, 5, 1, 1), 0); // +1 and -1 cancel to neutral
     }
 
     #[test]
@@ -3497,7 +3490,7 @@ mod tests {
             ctx.txb_skip_context(0, 0, 2, 2, false),
             DAV1D_SKIP_CTX[0][0]
         );
-        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 1);
+        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 0);
     }
 
     #[test]

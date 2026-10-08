@@ -258,6 +258,11 @@ pub fn parse_coding_unit(
     // the *neighbours'* values; writing these any earlier makes them read the block itself.
     // dav1d does the same: its `decode_b` updates the context arrays after parsing the block.
     tile_ctx.set_intra_flag(x4, y4, width_4x4, height_4x4, !is_inter);
+    if is_inter || cu.use_intrabc {
+        // Inter and IntraBC blocks have no palette; record that for their neighbours.
+        tile_ctx.set_pal_size(0, x4, y4, width_4x4, height_4x4, 0);
+        tile_ctx.set_pal_size(1, x4, y4, width_4x4, height_4x4, 0);
+    }
     if is_inter {
         let is_compound = cu.ref_frames[1] != RefFrame::Intra;
         tile_ctx.set_ref_frames(

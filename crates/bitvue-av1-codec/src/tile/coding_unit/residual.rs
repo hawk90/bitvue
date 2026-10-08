@@ -20,7 +20,7 @@ pub(super) fn read_residual(
     y_mode_raw: u8,
 ) -> Result<()> {
     let summary = read_luma_residual(decoder, tile_ctx, rect, mi, frame, cu, y_mode_raw)?;
-    read_chroma_residual(decoder, tile_ctx, rect, mi, frame, cu)?;
+    read_chroma_residual(decoder, tile_ctx, mi, frame, cu)?;
     cu.residual = Some(summary);
     Ok(())
 }
@@ -88,7 +88,7 @@ fn read_luma_residual(
         // was a real, confirmed desync bug: every all-zero transform block (common) previously
         // read a phantom `transform_type` symbol the real encoder never wrote. See
         // `SymbolDecoder::read_txb_skip`'s doc for the full story.
-        let all_zero = decoder.read_txb_skip(tx_w_px.max(tx_h_px), txb_skip_ctx)?;
+        let all_zero = decoder.read_txb_skip(tx_w_px, tx_h_px, txb_skip_ctx)?;
         let block = if all_zero {
             ResidualBlockStats {
                 all_zero: true,
@@ -122,12 +122,10 @@ fn read_luma_residual(
 fn read_chroma_residual(
     decoder: &mut SymbolDecoder,
     tile_ctx: &mut TileContext,
-    rect: BlockRect,
     mi: MiRect,
     frame: &FrameCodingParams,
     cu: &CodingUnit,
 ) -> Result<()> {
-    let BlockRect { width, height, .. } = rect;
     let MiRect { x4, y4, .. } = mi;
     let tx_type_flags = frame.tx_type_flags;
     // Chroma (U/V) residual -- required for bitstream sync (spec 5.11.34's `residual()`
@@ -149,13 +147,13 @@ fn read_chroma_residual(
     // see `TileContext`'s chroma field doc) since only above/left *adjacency* matters for
     // context selection here, not absolute physical distance.
     if !cu.use_intrabc
-        && !tx_type_flags.mono_chrome
         && tx_type_flags.subsampling_x
         && tx_type_flags.subsampling_y
-        && (8..=128).contains(&width)
-        && (8..=128).contains(&height)
+        && super::contexts::has_chroma(mi, &tx_type_flags)
     {
-        let (chroma_w, chroma_h) = (width / 2, height / 2);
+        // The chroma block of an 8x8-or-larger luma block is half its size; a 4-wide/tall block
+        // (which shares its chroma with its neighbours) still has a 4-sample chroma side.
+        let (chroma_w, chroma_h) = (((mi.width + 1) >> 1) * 4, ((mi.height + 1) >> 1) * 4);
         let (chroma_tx_w, chroma_tx_h) = (chroma_w.min(32), chroma_h.min(32));
         let (chroma_tx_w4, chroma_tx_h4) = (chroma_tx_w / 4, chroma_tx_h / 4);
         let chroma_tiles_x = chroma_w.div_ceil(chroma_tx_w).max(1);

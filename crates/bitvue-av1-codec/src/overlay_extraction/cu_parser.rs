@@ -471,7 +471,15 @@ mod tests {
                 ))
             },
         );
-        let trace = state.decoder.decoder.range_trace.take().unwrap();
+        let trace: Vec<u32> = state
+            .decoder
+            .decoder
+            .range_trace
+            .take()
+            .unwrap()
+            .into_iter()
+            .map(|(rng, _, _)| rng)
+            .collect();
 
         // The four partition symbols come first, back to back.
         assert_eq!(&trace[..4], &ORACLE[..4]);
@@ -488,6 +496,73 @@ mod tests {
                 });
             at += found + 1;
         }
+    }
+
+    /// The whole key frame (frame 0, 320x240, 82,966 coded symbols) decodes bit-exactly like
+    /// dav1d 1.5.1: after every symbol of a multi-symbol alphabet the arithmetic decoder's
+    /// `(rng, cnt, dif)` equals the reference decoder's.
+    ///
+    /// The reference values come from a dav1d build with a one-line trace in `ctx_norm`
+    /// (`MS rng=%u cnt=%d dif=%llx` after each decode, `--threads 1 --limit 1`). They are folded into
+    /// an FNV-1a-64 of the lines `"{rng} {cnt} {dif}\n"` (`dif` in decimal) so the test needs no
+    /// 82,966-line fixture. Any wrong CDF, context, symbol order or missing/extra read changes the
+    /// digest; unlike the first-block test above, this covers every block of the frame --
+    /// palette maps, rectangular and 64-wide transforms, 1D transform classes, chroma, filter
+    /// intra, golomb tails.
+    ///
+    /// Symbols of one-symbol alphabets (the placeholder `partition` read of a 4x4 child) consume no
+    /// bits and are not part of the trace.
+    #[test]
+    fn frame_0_decodes_bit_exactly_like_dav1d() {
+        const ORACLE_SYMBOLS: usize = 82_966;
+        const ORACLE_DIGEST: u64 = 0xe7c9_0862_8b33_a6a4;
+
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let obu_data: Vec<u8> = [seq_bytes.as_slice(), frames[0].data.as_slice()].concat();
+        let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+        let params = parsed.coding_params();
+
+        let base_qp = parsed.frame_type.base_qp.unwrap() as i16;
+        let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+        let dims = &parsed.dimensions;
+        let mut state = crate::tile::TileState {
+            decoder: crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat).unwrap(),
+            mv_ctx: crate::tile::MvPredictorContext::new(dims.sb_cols, dims.sb_rows),
+            tile_ctx: crate::tile::TileContext::new(
+                (dims.sb_cols * dims.sb_size).div_ceil(4),
+                (dims.sb_rows * dims.sb_size).div_ceil(4),
+            ),
+        };
+        state.decoder.decoder.range_trace = Some(Vec::new());
+
+        let mut qp = base_qp;
+        for sb_y in 0..dims.sb_rows {
+            state.tile_ctx.start_superblock_row();
+            for sb_x in 0..dims.sb_cols {
+                let (_sb, new_qp) = crate::parse_superblock(
+                    &mut state,
+                    sb_x * dims.sb_size,
+                    sb_y * dims.sb_size,
+                    dims.sb_size,
+                    &params,
+                    qp,
+                )
+                .expect("frame 0 parses without error");
+                qp = new_qp;
+            }
+        }
+
+        let trace = state.decoder.decoder.range_trace.take().unwrap();
+        let mut digest = 0xcbf2_9ce4_8422_2325u64;
+        for (rng, cnt, dif) in &trace {
+            for byte in format!("{rng} {cnt} {dif}\n").bytes() {
+                digest ^= u64::from(byte);
+                digest = digest.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        assert_eq!(trace.len(), ORACLE_SYMBOLS, "number of coded symbols");
+        assert_eq!(digest, ORACLE_DIGEST, "decoder state diverges from dav1d");
     }
 
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential
