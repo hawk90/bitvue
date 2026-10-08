@@ -8,6 +8,7 @@
 //!
 //! To re-record after an intentional parsing change, run with `GOLDEN_PRINT=1`.
 
+use bitvue_av1_codec::frame_header::TxfmMode;
 use bitvue_av1_codec::frame_header_full::SegmentationInfo;
 use bitvue_av1_codec::tile::{
     FrameCodingParams, InterModeFlags, MvPredictorContext, TileContext, TileState, TxTypeFrameFlags,
@@ -202,6 +203,75 @@ fn configs() -> Vec<(&'static str, FrameCodingParams, u32)> {
             },
             128,
         ),
+        (
+            "lossless",
+            FrameCodingParams {
+                tx_type_flags: TxTypeFrameFlags {
+                    coded_lossless: true,
+                    ..b().tx_type_flags
+                },
+                ..b()
+            },
+            64,
+        ),
+        (
+            "txfm-only4x4",
+            FrameCodingParams {
+                tx_type_flags: TxTypeFrameFlags {
+                    txfm_mode: TxfmMode::Only4x4,
+                    ..b().tx_type_flags
+                },
+                ..b()
+            },
+            64,
+        ),
+        (
+            "txfm-switchable",
+            FrameCodingParams {
+                tx_type_flags: TxTypeFrameFlags {
+                    txfm_mode: TxfmMode::Switchable,
+                    ..b().tx_type_flags
+                },
+                ..b()
+            },
+            64,
+        ),
+        (
+            "gm-translation-compound",
+            FrameCodingParams {
+                reference_select: true,
+                inter_mode_flags: InterModeFlags {
+                    gm_type: [1; 8],
+                    ..b().inter_mode_flags
+                },
+                ..b()
+            },
+            64,
+        ),
+        (
+            "gm-rotzoom-compound",
+            FrameCodingParams {
+                reference_select: true,
+                inter_mode_flags: InterModeFlags {
+                    gm_type: [2; 8],
+                    ..b().inter_mode_flags
+                },
+                ..b()
+            },
+            64,
+        ),
+        (
+            "gm-mixed-compound",
+            FrameCodingParams {
+                reference_select: true,
+                inter_mode_flags: InterModeFlags {
+                    gm_type: [0, 1, 0, 1, 0, 1, 0, 1],
+                    ..b().inter_mode_flags
+                },
+                ..b()
+            },
+            64,
+        ),
     ]
 }
 
@@ -255,6 +325,12 @@ const GOLDEN: &[(&str, u64)] = &[
     ("seg-skip-feature", 0x42312e7288a5ad3e),
     ("seg-globalmv", 0xe347864a16d1857a),
     ("seg-everything", 0xd3e84481389b972c),
+    ("lossless", 0xf0508478ab13252f),
+    ("txfm-only4x4", 0x7c0a4426100f054c),
+    ("txfm-switchable", 0xede69ebe7fa45d62),
+    ("gm-translation-compound", 0x05afffb759249c37),
+    ("gm-rotzoom-compound", 0x61d7680bbe8e4e47),
+    ("gm-mixed-compound", 0xe62defdb14b03b89),
 ];
 
 #[test]
