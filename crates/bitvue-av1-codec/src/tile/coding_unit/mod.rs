@@ -43,6 +43,7 @@ mod delta;
 mod intra;
 mod is_inter;
 mod palette;
+mod ref_frames;
 mod segment;
 mod skip;
 mod types;
@@ -98,7 +99,6 @@ pub fn parse_coding_unit(
     } = state;
     let FrameCodingParams {
         is_key_frame,
-        reference_select,
         allow_intrabc,
         use_ref_frame_mvs,
         segmentation,
@@ -108,7 +108,6 @@ pub fn parse_coding_unit(
         mi_cols,
         cdef_bits,
         skip_mode_present,
-        skip_mode_refs,
         ..
     } = *frame;
     let mut cu = CodingUnit::new(x, y, width, height);
@@ -222,53 +221,9 @@ pub fn parse_coding_unit(
             )?;
         }
     } else {
-        // ref_frame() (spec 5.11.25) -- real per-context CDF + adaptation, see
-        // `SymbolDecoder::read_ref_frames`'s doc. Real spec priority order (dav1d `decode.c:1401`
-        // vs `1424`): `skip_mode` beats everything else, forcing `RefFrame` from the real
-        // `skip_mode_refs` (spec's `SkipModeFrame[0]/[1]`, `read_skip_mode_params`'s doc) with no
-        // bits read -- always a genuine compound pair (`skip_mode` can only be true when
-        // `skip_mode_present`, which itself requires deriving 2 distinct refs, `read_skip_mode_
-        // params`'s doc). Segmentation's two real overrides come next when not `skip_mode`:
-        // `SEG_LVL_REF_FRAME` forces `RefFrame[0]` from its `FeatureData` (`RefFrame[1] = Intra`,
-        // i.e. never compound); when that's inactive, `SEG_LVL_SKIP` or `SEG_LVL_GLOBALMV`
-        // (either one) forces `RefFrame[0] = Last`, `RefFrame[1] = Intra` (real spec: same
-        // `LAST_FRAME` fallback for both).
-        let seg_ref_frame_feature = crate::frame_header_full::SEG_LVL_REF_FRAME;
-        cu.ref_frames = if cu.skip_mode {
-            [
-                RefFrame::from_u8(skip_mode_refs[0]).unwrap_or(RefFrame::Last),
-                RefFrame::from_u8(skip_mode_refs[1]).unwrap_or(RefFrame::Intra),
-            ]
-        } else if segmentation.seg_feature_active(cu.segment_id, seg_ref_frame_feature) {
-            let raw = segmentation.seg_feature_data(cu.segment_id, seg_ref_frame_feature);
-            [
-                RefFrame::from_u8(raw.clamp(0, 7) as u8).unwrap_or(RefFrame::Last),
-                RefFrame::Intra,
-            ]
-        } else if segmentation
-            .seg_feature_active(cu.segment_id, crate::frame_header_full::SEG_LVL_SKIP)
-            || segmentation
-                .seg_feature_active(cu.segment_id, crate::frame_header_full::SEG_LVL_GLOBALMV)
-        {
-            [RefFrame::Last, RefFrame::Intra]
-        } else {
-            decoder.read_ref_frames(tile_ctx, x4, y4, reference_select, width.min(height))?
-        };
+        // ref_frame() (spec 5.11.25) -- see `ref_frames`.
+        cu.ref_frames = ref_frames::read_ref_frames(decoder, tile_ctx, rect, mi, frame, &cu)?;
         let is_compound = cu.ref_frames[1] != RefFrame::Intra;
-        tile_ctx.set_ref_frames(
-            x4,
-            y4,
-            width_4x4,
-            height_4x4,
-            false, // real inter CU -- this branch is only reached when `is_inter` (see above)
-            is_compound,
-            cu.ref_frames[0] as i8 - 1,
-            if is_compound {
-                cu.ref_frames[1] as i8 - 1
-            } else {
-                -1
-            },
-        );
         let rav1d_ref0 = cu.ref_frames[0] as i8 - 1;
         let rav1d_ref1 = if is_compound {
             cu.ref_frames[1] as i8 - 1
