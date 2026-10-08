@@ -113,7 +113,10 @@ pub fn update_cdf(cdf: &mut [u16], symbol: u8) {
     }
 
     let count = cdf[n_symbols];
-    let rate = 4 + (count >> 4) + u16::from(n_symbols > 2);
+    // Spec: 3 + (count > 15) + (count > 31) + min(FloorLog2(N), 2). That is 4 for N = 2 or 3 and
+    // 5 for N >= 4, so the extra step applies from 4 symbols. (dav1d writes `n_symbols > 2`, but
+    // its `n_symbols` is N - 1; here `n_symbols` is N.)
+    let rate = 4 + (count >> 4) + u16::from(n_symbols > 3);
     let val = symbol as usize;
 
     for entry in &mut cdf[..val] {
@@ -205,7 +208,9 @@ impl<'a> ArithmeticDecoder<'a> {
             let cdf_val = cdf[val as usize] as u32;
             v = r * (cdf_val >> EC_PROB_SHIFT);
             v >>= 7 - EC_PROB_SHIFT;
-            v += EC_MIN_PROB * (n_symbols - val);
+            // Spec: EC_MIN_PROB * (N - symbol - 1). (dav1d's `n_symbols` is N - 1, so its
+            // `n_symbols - val` is this; here `n_symbols` is N, hence the extra `- 1`.)
+            v += EC_MIN_PROB * (n_symbols - 1 - val);
             if c >= v {
                 break;
             }
@@ -499,11 +504,13 @@ mod tests {
 
     #[test]
     fn test_read_symbol_errors_instead_of_panicking_on_alphabet_overrun() {
-        // Every byte XORs to 0x00 during refill (0xFF ^ 0xFF), so the decoder's top 16 bits (c)
-        // come out as 0 -- smaller than even the EC_MIN_PROB floor at every step, an adversarial
-        // decoder state that forces the decode loop past the last real CDF entry. Verifies
-        // read_symbol returns a real error instead of panicking/indexing out of bounds.
-        let cdf = vec![24576u16, 16384, 8192, 0, 0]; // well-formed (last real entry is 0)
+        // A malformed CDF -- its last real entry is non-zero, so the decode loop has no
+        // guaranteed terminating symbol. Every byte XORs to 0x00 during refill (0xFF ^ 0xFF), so
+        // the decoder's top 16 bits (c) are 0, smaller than the non-zero floor at every step and
+        // forcing the loop past the end. Verifies read_symbol returns a real error instead of
+        // panicking/indexing out of bounds. (A *well-formed* CDF with c == 0 is not an error: it
+        // selects the last symbol; see `decoder_reads_back_what_a_libaom_style_encoder_wrote`.)
+        let cdf = vec![24576u16, 16384, 8192, 5000, 0];
         let data = vec![0xFF; 8];
         let mut decoder = ArithmeticDecoder::new(&data).unwrap();
 
@@ -624,5 +631,209 @@ mod tests {
         // The count slot must have incremented, and the last real entry stays 0.
         assert_eq!(cdf[1], 0, "last real entry must stay 0");
         assert_eq!(cdf[2], 1, "adaptation count should increment from 0 to 1");
+    }
+}
+
+/// Independent oracles for the symbol decoder, written from the AV1 spec (8.2.6 symbol decoding,
+/// 8.3.? CDF adaptation) and libaom's `od_ec_enc` range encoder -- not from the decoder code under
+/// test, so a convention slip in `read_symbol`/`update_cdf` (the two `N` vs `N - 1` offsets) shows
+/// up here instead of passing a self-consistent round trip.
+#[cfg(test)]
+mod spec_oracle_tests {
+    use super::*;
+
+    /// xorshift64*.
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 >> 12;
+            self.0 ^= self.0 << 25;
+            self.0 ^= self.0 >> 27;
+            self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
+        }
+        fn below(&mut self, n: u64) -> u64 {
+            (self.next() >> 16) % n
+        }
+    }
+
+    /// A well-formed CDF in this crate's layout: `n` descending entries ending in 0, then the
+    /// adaptation count.
+    fn random_cdf(rng: &mut Rng, n: usize) -> Vec<u16> {
+        let mut v: Vec<u16> = (0..n - 1).map(|_| 1 + rng.below(32766) as u16).collect();
+        v.sort_unstable_by(|a, b| b.cmp(a));
+        v.push(0);
+        v.push(0);
+        v
+    }
+
+    /// Spec 8.3 CDF adaptation, applied to the spec's own *cumulative* representation
+    /// (`cdf[i] = 32768 * P(symbol <= i)`, ascending); `icdf` is converted in and back out.
+    fn spec_update(icdf: &mut [u16], symbol: usize) {
+        let n = icdf.len() - 1;
+        let count = icdf[n];
+        let rate = 3
+            + u32::from(count > 15)
+            + u32::from(count > 31)
+            + (usize::BITS - 1 - n.leading_zeros()).min(2);
+        let mut cdf: Vec<u32> = icdf[..n - 1]
+            .iter()
+            .map(|&v| 32768 - u32::from(v))
+            .collect();
+        let mut tmp = 0u32;
+        for (i, c) in cdf.iter_mut().enumerate() {
+            if i == symbol {
+                tmp = 32768;
+            }
+            if tmp < *c {
+                *c -= (*c - tmp) >> rate;
+            } else {
+                *c += (tmp - *c) >> rate;
+            }
+        }
+        for (i, c) in cdf.iter().enumerate() {
+            icdf[i] = (32768 - c) as u16;
+        }
+        icdf[n] = count + u16::from(count < 32);
+    }
+
+    #[test]
+    fn update_cdf_matches_the_spec_adaptation_rate_for_every_alphabet_size() {
+        let mut rng = Rng(0x1234_5678_9abc_def1);
+        for n in 2..=16usize {
+            for count in 0..=33u16 {
+                for _ in 0..20 {
+                    let mut ours = random_cdf(&mut rng, n);
+                    ours[n] = count.min(32);
+                    let mut spec = ours.clone();
+                    let symbol = rng.below(n as u64) as usize;
+                    update_cdf(&mut ours, symbol as u8);
+                    spec_update(&mut spec, symbol);
+                    assert_eq!(ours, spec, "n={n} count={count} symbol={symbol}");
+                }
+            }
+        }
+    }
+
+    /// libaom's `od_ec_enc` (entenc.c), transcribed: the encoder side of the same range coder.
+    struct Encoder {
+        low: u64,
+        rng: u32,
+        cnt: i32,
+        precarry: Vec<u16>,
+    }
+
+    impl Encoder {
+        fn new() -> Self {
+            Self {
+                low: 0,
+                rng: 0x8000,
+                cnt: -9,
+                precarry: Vec::new(),
+            }
+        }
+
+        fn normalize(&mut self, mut low: u64, rng: u32) {
+            let d = 16 - (32 - rng.leading_zeros() as i32);
+            let mut c = self.cnt;
+            let mut s = c + d;
+            if s >= 0 {
+                c += 16;
+                let mut m = (1u64 << c) - 1;
+                if s >= 8 {
+                    self.precarry.push((low >> c) as u16);
+                    low &= m;
+                    c -= 8;
+                    m >>= 8;
+                }
+                self.precarry.push((low >> c) as u16);
+                s = c + d - 24;
+                low &= m;
+            }
+            self.low = low << d;
+            self.rng = rng << d;
+            self.cnt = s;
+        }
+
+        /// `icdf` is this crate's descending layout (`32768 - cdf`), i.e. libaom's `icdf`.
+        fn encode(&mut self, symbol: usize, icdf: &[u16]) {
+            let n = icdf.len() - 2; // libaom's `N = nsyms - 1`
+            let (mut low, mut rng) = (self.low, self.rng);
+            let fh = u32::from(icdf[symbol]);
+            let term = |f: u32, k: usize| ((rng >> 8) * (f >> 6) >> 1) + 4 * (n - k) as u32;
+            if symbol > 0 {
+                let fl = u32::from(icdf[symbol - 1]);
+                let u = term(fl, symbol - 1);
+                let v = term(fh, symbol);
+                low += u64::from(rng - u);
+                rng = u - v;
+            } else {
+                rng -= term(fh, 0);
+            }
+            self.normalize(low, rng);
+        }
+
+        fn finish(mut self) -> Vec<u8> {
+            let mut c = self.cnt;
+            let mut s = 10 + c;
+            let m = 0x3FFFu64;
+            let mut e = ((self.low + m) & !m) | (m + 1);
+            if s > 0 {
+                let mut n = (1u64 << (c + 16)) - 1;
+                loop {
+                    self.precarry.push((e >> (c + 16)) as u16);
+                    e &= n;
+                    s -= 8;
+                    c -= 8;
+                    n >>= 8;
+                    if s <= 0 {
+                        break;
+                    }
+                }
+            }
+            let mut out = vec![0u8; self.precarry.len()];
+            let mut carry = 0u32;
+            for i in (0..self.precarry.len()).rev() {
+                carry += u32::from(self.precarry[i]);
+                out[i] = carry as u8;
+                carry >>= 8;
+            }
+            out
+        }
+    }
+
+    /// Encodes random symbols (mixed alphabet sizes, per-context CDFs adapting by the spec
+    /// formula) and checks `ArithmeticDecoder` reads every one back.
+    #[test]
+    fn decoder_reads_back_what_a_libaom_style_encoder_wrote() {
+        for seed in 1..=40u64 {
+            let mut rng = Rng(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
+            let sizes = [2usize, 2, 3, 4, 5, 8, 13, 16];
+            let contexts: Vec<Vec<u16>> = sizes.iter().map(|&n| random_cdf(&mut rng, n)).collect();
+
+            let mut enc_cdfs = contexts.clone();
+            let mut enc = Encoder::new();
+            let mut script = Vec::new();
+            for _ in 0..1500 {
+                let ctx = rng.below(sizes.len() as u64) as usize;
+                // Skewed towards low symbols so adaptation actually moves the CDFs.
+                let sym = (rng.below(sizes[ctx] as u64) * rng.below(sizes[ctx] as u64)
+                    / sizes[ctx] as u64) as usize;
+                enc.encode(sym, &enc_cdfs[ctx]);
+                spec_update(&mut enc_cdfs[ctx], sym);
+                script.push((ctx, sym));
+            }
+            let bytes = enc.finish();
+
+            let mut dec = ArithmeticDecoder::new(&bytes).unwrap();
+            let mut dec_cdfs = contexts.clone();
+            for (i, &(ctx, sym)) in script.iter().enumerate() {
+                let got = dec.read_symbol_adaptive(&mut dec_cdfs[ctx]).unwrap();
+                assert_eq!(
+                    usize::from(got),
+                    sym,
+                    "seed {seed}, symbol #{i} (ctx {ctx})"
+                );
+            }
+        }
     }
 }

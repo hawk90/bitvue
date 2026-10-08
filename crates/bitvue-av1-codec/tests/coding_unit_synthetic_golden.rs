@@ -15,7 +15,7 @@ use bitvue_av1_codec::tile::{
 };
 use bitvue_av1_codec::{parse_superblock, SymbolDecoder};
 
-const SEEDS: u64 = 12;
+const SEEDS: u64 = 96;
 /// Extra seeds (disjoint from `0..SEEDS`) for the deep pass; see `deep_streams_match_...`.
 const DEEP_SEEDS: u64 = 400;
 const FRAME_PX: u32 = 128;
@@ -310,29 +310,29 @@ fn digest(params: &FrameCodingParams, sb_size: u32, seeds: std::ops::Range<u64>)
 }
 
 const GOLDEN: &[(&str, u64)] = &[
-    ("inter-plain", 0x99dfb1f7a4b5968c),
-    ("inter-sb128", 0x6acc50975ef13b9f),
-    ("key", 0x9197ce2e3dfe4e4d),
-    ("key-intrabc", 0xe7bbaa22224d3440),
-    ("key-palette-filter", 0xba26285cc33dabd4),
-    ("skip-mode", 0xd941f674a2f166b2),
-    ("compound", 0xe52d2b5acb770145),
-    ("delta-q-lf", 0x9c6d24a419f6f85c),
-    ("delta-q-lf-sb128", 0x6b1929ecd70f5263),
-    ("seg-no-update", 0x99dfb1f7a4b5968c),
-    ("seg-pre-skip", 0xe320c1fa2fa0ef8d),
-    ("seg-post-skip", 0x05a8eee70d4ad9cf),
-    ("seg-temporal", 0x5c17ff93ce651e90),
-    ("seg-temporal-pre", 0x3661c1029d4f2557),
-    ("seg-skip-feature", 0xfa5e92ff6d62f490),
-    ("seg-globalmv", 0x1d337e50ea27efb6),
-    ("seg-everything", 0xf3fde480a11b6353),
-    ("lossless", 0x49753a5747a6d8e9),
-    ("txfm-only4x4", 0xda1b0e68b474b3ea),
-    ("txfm-switchable", 0x017244709b92eabb),
-    ("gm-translation-compound", 0xae143ec9a024d357),
-    ("gm-rotzoom-compound", 0x38d1db5607c88428),
-    ("gm-mixed-compound", 0x9ccd712a50bb7634),
+    ("inter-plain", 0x342d7c0214eb2993),
+    ("inter-sb128", 0xe721311e9c261ac6),
+    ("key", 0xb740011a14a37f50),
+    ("key-intrabc", 0x9921bfd49d1c2ddd),
+    ("key-palette-filter", 0x8d40754cd3e3b8df),
+    ("skip-mode", 0x00d180e29078fc2a),
+    ("compound", 0x31e873ac4e6f111b),
+    ("delta-q-lf", 0x6fc14dbe95c958de),
+    ("delta-q-lf-sb128", 0xc07f63413a16e257),
+    ("seg-no-update", 0x342d7c0214eb2993),
+    ("seg-pre-skip", 0xfd20aa353b9ba8c7),
+    ("seg-post-skip", 0x3fbd56b18cd28fc4),
+    ("seg-temporal", 0x810f659268bf1075),
+    ("seg-temporal-pre", 0x84c99a9147d284ff),
+    ("seg-skip-feature", 0xe6065e8bae34c889),
+    ("seg-globalmv", 0x8a83936f65d0e5ef),
+    ("seg-everything", 0x23c55aeda2f037cf),
+    ("lossless", 0xd7caadcaf620a184),
+    ("txfm-only4x4", 0xd5188d82bda12a33),
+    ("txfm-switchable", 0xff230eaa468ab86d),
+    ("gm-translation-compound", 0x46d33d661df8d9a5),
+    ("gm-rotzoom-compound", 0xf3bf951a24802d42),
+    ("gm-mixed-compound", 0xde813e03b56f7620),
 ];
 
 #[test]
@@ -372,11 +372,22 @@ fn synthetic_matrix_reaches_the_untested_syntax() {
                 mv_ctx: MvPredictorContext::new(2, 2),
                 tile_ctx: TileContext::new(FRAME_PX / 4, FRAME_PX / 4),
             };
-            if let Ok((s, _)) = parse_superblock(&mut state, 0, 0, sb, &p, 128) {
-                parsed += s.coding_units.len();
-                for cu in &s.coding_units {
-                    max_segment = max_segment.max(cu.segment_id);
-                    skip_modes += usize::from(cu.skip_mode);
+            let mut qp = 128i16;
+            // The whole frame, as `digest` does -- a desynced stream stops parsing early, so the
+            // first superblock alone may not reach everything.
+            'frame: for sb_y in (0..FRAME_PX).step_by(sb as usize) {
+                state.tile_ctx.start_superblock_row();
+                for sb_x in (0..FRAME_PX).step_by(sb as usize) {
+                    let Ok((s, new_qp)) = parse_superblock(&mut state, sb_x, sb_y, sb, &p, qp)
+                    else {
+                        break 'frame;
+                    };
+                    qp = new_qp;
+                    parsed += s.coding_units.len();
+                    for cu in &s.coding_units {
+                        max_segment = max_segment.max(cu.segment_id);
+                        skip_modes += usize::from(cu.skip_mode);
+                    }
                 }
             }
         }
@@ -391,29 +402,29 @@ fn synthetic_matrix_reaches_the_untested_syntax() {
 /// recursion past depth 0, residual sums past the `cul_level` clamp -- only show up at this
 /// volume, and `deep_streams_reach_the_rare_syntax` asserts that they do.
 const DEEP_GOLDEN: &[(&str, u64)] = &[
-    ("inter-plain", 0x9a483faf49fe98de),
-    ("inter-sb128", 0xac33501b50f2c330),
-    ("key", 0x70da41cfe67c2b21),
-    ("key-intrabc", 0x23a6e5a4601a18b7),
-    ("key-palette-filter", 0xe45ef99dafaeeaf9),
-    ("skip-mode", 0xb06fae278605f919),
-    ("compound", 0xd4b55fed1933119c),
-    ("delta-q-lf", 0x0e5cf7bb5e8f7745),
-    ("delta-q-lf-sb128", 0xd2d4b8ec8f23848b),
-    ("seg-no-update", 0x9a483faf49fe98de),
-    ("seg-pre-skip", 0x5cb644307c158586),
-    ("seg-post-skip", 0x85881cffa3f53009),
-    ("seg-temporal", 0xdfb73683dcf4f864),
-    ("seg-temporal-pre", 0x426cc7c211293b3d),
-    ("seg-skip-feature", 0xd77c496d7fc19127),
-    ("seg-globalmv", 0xdb4e5f11096b495d),
-    ("seg-everything", 0x344e6939c5c8ccba),
-    ("lossless", 0xbf05fdecc09888e3),
-    ("txfm-only4x4", 0xc4e507dfea02d628),
-    ("txfm-switchable", 0xfc5c9412dcdd7346),
-    ("gm-translation-compound", 0xfca1fa3eaacb6a1a),
-    ("gm-rotzoom-compound", 0xc1007192511e1045),
-    ("gm-mixed-compound", 0x40d8549d342f556e),
+    ("inter-plain", 0x4046b0f5f700a34e),
+    ("inter-sb128", 0xa0ca53b875c62ffc),
+    ("key", 0x448c993b4e41a045),
+    ("key-intrabc", 0x3c272db5b1175db3),
+    ("key-palette-filter", 0x426c37f8805136df),
+    ("skip-mode", 0x39478bfdbd5a4098),
+    ("compound", 0x46ba9be605a72d77),
+    ("delta-q-lf", 0x99fb2570a07aa2cb),
+    ("delta-q-lf-sb128", 0x93f7f59122238a10),
+    ("seg-no-update", 0x4046b0f5f700a34e),
+    ("seg-pre-skip", 0xbfabd864968d38e2),
+    ("seg-post-skip", 0xfd1eef62d24730eb),
+    ("seg-temporal", 0x5b9ad17dd8d3a0a8),
+    ("seg-temporal-pre", 0x0f3127c8aa8ceb34),
+    ("seg-skip-feature", 0x9847c28b945de008),
+    ("seg-globalmv", 0x3e7d00bc6aa5ac96),
+    ("seg-everything", 0xccb78efe1c373b7c),
+    ("lossless", 0x13322e970bd768d3),
+    ("txfm-only4x4", 0xa6c74063f89228d9),
+    ("txfm-switchable", 0x481a2420472ba3c8),
+    ("gm-translation-compound", 0xef8e2613957c7a09),
+    ("gm-rotzoom-compound", 0xccbd5cfecf33d2a3),
+    ("gm-mixed-compound", 0x7b2d9e1a04506ecc),
 ];
 
 #[test]
