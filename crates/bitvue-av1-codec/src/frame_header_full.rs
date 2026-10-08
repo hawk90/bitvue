@@ -1053,16 +1053,25 @@ fn parse_film_grain_params(
 /// whole `ObuWithOffset`, used there for `ref_frame_idx`/`base_q_idx` only; this crate's callers
 /// need the raw payload slice to hand to [`parse_frame_header_full`]).
 pub fn find_frame_header_payload(chunk_data: &[u8]) -> Option<std::sync::Arc<[u8]>> {
+    find_frame_header_payloads(chunk_data).into_iter().next()
+}
+
+/// Every Frame/FrameHeader OBU payload of one IVF chunk, in decode order. A temporal unit can
+/// carry several frames (a hidden ARF followed by the shown frame, as the real fixture's IVF
+/// chunk 1 does); each one updates the reference slots, so state threading must visit all of
+/// them, not only the first.
+pub fn find_frame_header_payloads(chunk_data: &[u8]) -> Vec<std::sync::Arc<[u8]>> {
     let mut iter = crate::obu::ObuIterator::new(chunk_data);
+    let mut payloads = Vec::new();
     while let Some(Ok(found)) = iter.next_obu_with_offset() {
         if matches!(
             found.obu.header.obu_type,
             crate::obu::ObuType::Frame | crate::obu::ObuType::FrameHeader
         ) {
-            return Some(std::sync::Arc::clone(&found.obu.payload));
+            payloads.push(std::sync::Arc::clone(&found.obu.payload));
         }
     }
-    None
+    payloads
 }
 
 /// Threads `RefFrameState` sequentially across frames `[0, frame_index)` -- NOT including
@@ -1082,10 +1091,15 @@ pub fn thread_ref_state_before(
 ) -> std::result::Result<RefFrameState, BitvueError> {
     let mut ref_state = RefFrameState::new();
     for frame in frames.iter().take(frame_index) {
-        let payload = find_frame_header_payload(&frame.data).ok_or_else(|| {
-            BitvueError::InvalidData("frame has no Frame/FrameHeader OBU".to_string())
-        })?;
-        parse_frame_header_full(&payload, seq, &mut ref_state)?;
+        let payloads = find_frame_header_payloads(&frame.data);
+        if payloads.is_empty() {
+            return Err(BitvueError::InvalidData(
+                "frame has no Frame/FrameHeader OBU".to_string(),
+            ));
+        }
+        for payload in payloads {
+            parse_frame_header_full(&payload, seq, &mut ref_state)?;
+        }
     }
     Ok(ref_state)
 }

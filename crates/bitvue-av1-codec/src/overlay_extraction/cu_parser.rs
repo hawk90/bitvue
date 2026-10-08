@@ -565,6 +565,98 @@ mod tests {
         assert_eq!(digest, ORACLE_DIGEST, "decoder state diverges from dav1d");
     }
 
+    /// The fixture's chunk 1 holds a hidden frame (refreshes slot 6) and the shown frame
+    /// (refreshes slot 2), both with order hint 1: state threaded across it must contain both
+    /// refreshes, not only the first frame's.
+    #[test]
+    fn state_threading_applies_every_frame_of_a_temporal_unit() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let seq = crate::parse_sequence_header(
+            &crate::obu::ObuIterator::new(&seq_bytes)
+                .next_obu_with_offset()
+                .unwrap()
+                .unwrap()
+                .obu
+                .payload,
+        )
+        .unwrap();
+        let state = crate::frame_header_full::thread_ref_state_before(&frames, &seq, 2).unwrap();
+        let hints = state.ref_order_hint();
+        assert_eq!(hints[6], 1, "hidden frame's refresh of slot 6");
+        assert_eq!(hints[2], 1, "shown frame's refresh of slot 2");
+        assert_eq!(hints[0], 0, "slot 0 still holds the key frame");
+    }
+
+    /// A temporal unit can hold two frames (the fixture's IVF chunk 1 is a hidden frame followed
+    /// by the shown one). Reference-slot state must be threaded through both, or every later
+    /// frame's `skip_mode_params()` reads the wrong slot order hints and the tile data starts at
+    /// the wrong byte. Expected tile sizes and the first symbols come from the dav1d oracle
+    /// (`TILEGRP` size and the per-symbol `(rng, cnt, dif)` trace); the prefixes are as long as
+    /// the decoder currently agrees with dav1d (see the PR description for what follows).
+    #[test]
+    fn frames_after_a_two_frame_temporal_unit_start_where_dav1d_starts() {
+        // (IVF chunk, tile bytes, agreeing symbol prefix, FNV-1a digest of that prefix)
+        const ORACLE: &[(usize, usize, usize, u64)] = &[
+            (1, 461, 109, 0x5cb8_ece2_e1e6_e26e),
+            (2, 182, 66, 0xdc61_cf0f_473d_09b2),
+        ];
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let seq = crate::parse_sequence_header(
+            &crate::obu::ObuIterator::new(&seq_bytes)
+                .next_obu_with_offset()
+                .unwrap()
+                .unwrap()
+                .obu
+                .payload,
+        )
+        .unwrap();
+        for &(idx, tile_bytes, prefix, digest) in ORACLE {
+            let mut ref_state =
+                crate::frame_header_full::thread_ref_state_before(&frames, &seq, idx).unwrap();
+            let obu_data = [seq_bytes.as_slice(), frames[idx].data.as_slice()].concat();
+            let parsed =
+                super::super::parser::ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state)
+                    .unwrap();
+            assert_eq!(parsed.tile_data.len(), tile_bytes, "chunk {idx} tile bytes");
+
+            let params = parsed.coding_params();
+            let base_qp = parsed.frame_type.base_qp.unwrap() as i16;
+            let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+            let dims = &parsed.dimensions;
+            let mut state = crate::tile::TileState {
+                decoder: crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat).unwrap(),
+                mv_ctx: crate::tile::MvPredictorContext::new(dims.sb_cols, dims.sb_rows),
+                tile_ctx: crate::tile::TileContext::new(
+                    (dims.sb_cols * dims.sb_size).div_ceil(4),
+                    (dims.sb_rows * dims.sb_size).div_ceil(4),
+                ),
+            };
+            state.decoder.decoder.range_trace = Some(Vec::new());
+            state.tile_ctx.start_superblock_row();
+            // Parsing stops at the first divergence (an error), which is expected past the prefix.
+            let _ = crate::parse_superblock(&mut state, 0, 0, dims.sb_size, &params, base_qp);
+            let trace = state.decoder.decoder.range_trace.take().unwrap();
+            assert!(
+                trace.len() >= prefix,
+                "chunk {idx}: only {} symbols",
+                trace.len()
+            );
+            let mut hash = 0xcbf2_9ce4_8422_2325u64;
+            for (rng, cnt, dif) in &trace[..prefix] {
+                for byte in format!("{rng} {cnt} {dif}\n").bytes() {
+                    hash ^= u64::from(byte);
+                    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+                }
+            }
+            assert_eq!(
+                hash, digest,
+                "chunk {idx}: first {prefix} symbols differ from dav1d"
+            );
+        }
+    }
+
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential
     /// full-fixture regression, threading one `MotionFieldState` across all 250 frames in decode
     /// order (mirroring `bitvue-sidecar/src/av1_features.rs`'s own sequential
