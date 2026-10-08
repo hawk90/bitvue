@@ -16,6 +16,8 @@ use bitvue_av1_codec::tile::{
 use bitvue_av1_codec::{parse_superblock, SymbolDecoder};
 
 const SEEDS: u64 = 12;
+/// Extra seeds (disjoint from `0..SEEDS`) for the deep pass; see `deep_streams_match_...`.
+const DEEP_SEEDS: u64 = 400;
 const FRAME_PX: u32 = 128;
 
 fn fnv1a(bytes: &[u8], mut h: u64) -> u64 {
@@ -276,9 +278,9 @@ fn configs() -> Vec<(&'static str, FrameCodingParams, u32)> {
 }
 
 /// Parses every superblock of a 128x128 frame from seeded tile data; folds results into a digest.
-fn digest(params: &FrameCodingParams, sb_size: u32) -> u64 {
+fn digest(params: &FrameCodingParams, sb_size: u32, seeds: std::ops::Range<u64>) -> u64 {
     let mut h = 0xcbf2_9ce4_8422_2325u64;
-    for seed in 0..SEEDS {
+    for seed in seeds {
         let data = tile_bytes(seed);
         let mut state = TileState {
             decoder: SymbolDecoder::new(&data).unwrap(),
@@ -337,7 +339,7 @@ const GOLDEN: &[(&str, u64)] = &[
 fn synthetic_streams_match_the_recorded_digests() {
     let got: Vec<(&str, u64)> = configs()
         .iter()
-        .map(|(name, p, sb)| (*name, digest(p, *sb)))
+        .map(|(name, p, sb)| (*name, digest(p, *sb, 0..SEEDS)))
         .collect();
     if std::env::var_os("GOLDEN_PRINT").is_some() {
         for (n, d) in &got {
@@ -382,4 +384,98 @@ fn synthetic_matrix_reaches_the_untested_syntax() {
     assert!(parsed > 500, "only {parsed} CUs parsed");
     assert!(max_segment > 0, "no non-zero segment_id reached");
     assert!(skip_modes > 0, "skip_mode never fired");
+}
+
+/// Same matrix over many more seeds. The rare paths -- UV-only palette, a `skip_mode` block next
+/// to a compound-type read, warped-motion eligibility without a matching neighbour, var-tx
+/// recursion past depth 0, residual sums past the `cul_level` clamp -- only show up at this
+/// volume, and `deep_streams_reach_the_rare_syntax` asserts that they do.
+const DEEP_GOLDEN: &[(&str, u64)] = &[
+    ("inter-plain", 0x3cbc2c709ae1f01d),
+    ("inter-sb128", 0x1a5d409004743e72),
+    ("key", 0x70da41cfe67c2b21),
+    ("key-intrabc", 0x23a6e5a4601a18b7),
+    ("key-palette-filter", 0xe45ef99dafaeeaf9),
+    ("skip-mode", 0x2af2694d1bc30c5f),
+    ("compound", 0x01c4fdc1fe3c4f51),
+    ("delta-q-lf", 0x10d5c6afb8aa8ab5),
+    ("delta-q-lf-sb128", 0x94e9b771ce4e42f7),
+    ("seg-no-update", 0x3cbc2c709ae1f01d),
+    ("seg-pre-skip", 0xd4dc09d741679abf),
+    ("seg-post-skip", 0x39e664241b003f9a),
+    ("seg-temporal", 0xa70ee3608ec90e17),
+    ("seg-temporal-pre", 0x3ea8a102ee17c7d5),
+    ("seg-skip-feature", 0x37b0766c9eff91bb),
+    ("seg-globalmv", 0xc057e7bcff605349),
+    ("seg-everything", 0xb43215257b9deb7c),
+    ("lossless", 0xc07d6745cc50dc37),
+    ("txfm-only4x4", 0xde86442c92365e90),
+    ("txfm-switchable", 0xb119c348f591b384),
+    ("gm-translation-compound", 0x0791c6b281bee11e),
+    ("gm-rotzoom-compound", 0x1cd56f964e7a8922),
+    ("gm-mixed-compound", 0x22a8cd53e8f9ae0d),
+];
+
+#[test]
+fn deep_streams_match_the_recorded_digests() {
+    let got: Vec<(&str, u64)> = configs()
+        .iter()
+        .map(|(name, p, sb)| (*name, digest(p, *sb, SEEDS..SEEDS + DEEP_SEEDS)))
+        .collect();
+    if std::env::var_os("GOLDEN_PRINT").is_some() {
+        for (n, d) in &got {
+            println!("DEEP (\"{n}\", 0x{d:016x}),");
+        }
+        return;
+    }
+    assert_eq!(got.len(), DEEP_GOLDEN.len(), "configuration count changed");
+    let bad: Vec<String> = got
+        .iter()
+        .zip(DEEP_GOLDEN)
+        .filter(|(g, w)| g != w)
+        .map(|(g, w)| format!("{}: got 0x{:016x}, want 0x{:016x}", g.0, g.1, w.1))
+        .collect();
+    assert!(bad.is_empty(), "{}", bad.join("\n"));
+}
+
+/// The deep pass is only worth having if it reaches what it targets. Counts, over the same seeds
+/// and configurations as `deep_streams_match_the_recorded_digests`, the rare syntax the shallow
+/// pass misses.
+#[test]
+fn deep_streams_reach_the_rare_syntax() {
+    let (mut uv_only_palette, mut skip_modes, mut big_residual, mut mixed_tx) = (0, 0, 0, 0);
+    for (_, p, sb) in configs() {
+        for seed in SEEDS..SEEDS + DEEP_SEEDS {
+            let data = tile_bytes(seed);
+            let mut state = TileState {
+                decoder: SymbolDecoder::new(&data).unwrap(),
+                mv_ctx: MvPredictorContext::new(2, 2),
+                tile_ctx: TileContext::new(FRAME_PX / 4, FRAME_PX / 4),
+            };
+            if let Ok((s, _)) = parse_superblock(&mut state, 0, 0, sb, &p, 128) {
+                for cu in &s.coding_units {
+                    uv_only_palette +=
+                        usize::from(cu.palette.y_size == 0 && cu.palette.uv_size > 0);
+                    skip_modes += usize::from(cu.skip_mode);
+                    big_residual +=
+                        usize::from(cu.residual.as_ref().is_some_and(|r| r.sum_abs_level >= 63));
+                    if let Some(blocks) = &cu.tx_blocks {
+                        let first = blocks.first().map(|b| (b.width_px, b.height_px));
+                        mixed_tx += usize::from(
+                            blocks
+                                .iter()
+                                .any(|b| Some((b.width_px, b.height_px)) != first),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    assert!(uv_only_palette > 0, "no UV-only palette block reached");
+    assert!(skip_modes > 0, "no skip_mode block reached");
+    assert!(big_residual > 0, "no block with residual sum >= 63 reached");
+    assert!(
+        mixed_tx > 0,
+        "no block split into mixed-size transform blocks"
+    );
 }
