@@ -33,6 +33,9 @@ use super::tables::VAR_TX_UNSET;
 /// left-context only ever remembers state from within the current superblock row of a
 /// raster-scanned tile) without needing relative-offset bookkeeping at every call site.
 pub struct TileContext {
+    /// Loop-restoration coefficient references per plane (see `tile::restoration`); reset to the
+    /// spec defaults with every new tile, i.e. every `TileContext`.
+    pub(crate) restoration_refs: [crate::tile::RestorationRef; 3],
     above_skip: Vec<bool>,
     left_skip: Vec<bool>,
     /// `skip_mode` (spec 5.11.5) above/left context -- real dav1d `t->a->skip_mode[bx4]`/
@@ -182,6 +185,7 @@ impl TileContext {
     /// `tile_width_4x4`/`tile_height_4x4`: tile dimensions in 4x4 units.
     pub fn new(tile_width_4x4: u32, tile_height_4x4: u32) -> Self {
         Self {
+            restoration_refs: [crate::tile::RestorationRef::default(); 3],
             above_skip: vec![false; tile_width_4x4.max(1) as usize],
             left_skip: vec![false; tile_height_4x4.max(1) as usize],
             above_skip_mode: vec![false; tile_width_4x4.max(1) as usize],

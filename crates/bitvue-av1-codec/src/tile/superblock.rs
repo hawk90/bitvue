@@ -106,6 +106,16 @@ pub fn parse_superblock(
     // created fresh for every superblock, mirroring dav1d's `cur_sb_cdef_idx_ptr`.
     let mut sb_ctx = SuperblockCtx::new(x, y, sb_size);
 
+    // Loop-restoration coefficients of the units starting in this superblock come first, before
+    // the first partition symbol (spec 5.11.2 `decode_tile`: `read_lr` precedes `decode_partition`).
+    crate::tile::restoration::read_superblock_restoration(
+        &mut state.decoder,
+        &frame.restoration,
+        &mut state.tile_ctx.restoration_refs,
+        x,
+        y,
+    )?;
+
     // Walk the partition tree, decoding each block the moment its partition is known. Spec 5.11.4
     // interleaves the two: `decode_partition` reads a `partition` symbol and, at every leaf,
     // immediately calls `decode_block` (skip, modes, residual, ...) before the next partition

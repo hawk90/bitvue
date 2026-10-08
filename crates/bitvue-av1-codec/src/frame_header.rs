@@ -27,13 +27,14 @@ use bitvue_engine::BitvueError;
 // Re-export FrameType for other modules in this crate
 pub use bitvue_engine::FrameType;
 
-/// Loop restoration type (per plane)
+/// Loop restoration type of a plane (spec `FrameRestorationType`, 5.9.20). `Switchable` means
+/// each restoration unit picks NONE/WIENER/SGRPROJ itself, with a symbol in the tile data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopRestorationType {
     None = 0,
     Wiener = 1,
     SgrProj = 2,
-    Dual = 3,
+    Switchable = 3,
 }
 
 impl LoopRestorationType {
@@ -42,7 +43,7 @@ impl LoopRestorationType {
             0 => Self::None,
             1 => Self::Wiener,
             2 => Self::SgrProj,
-            3 => Self::Dual,
+            3 => Self::Switchable,
             _ => Self::None,
         }
     }
@@ -86,8 +87,10 @@ pub struct CdefInfo {
 #[derive(Debug, Clone)]
 pub struct LoopRestorationInfo {
     pub enabled: bool,
-    /// Restoration unit size in pixels (64, 128, or 256)
+    /// Luma restoration unit size in pixels (64, 128, or 256)
     pub unit_size: u32,
+    /// Chroma restoration unit size in pixels (`lr_uv_shift` halves it for 4:2:0)
+    pub uv_unit_size: u32,
     pub y_type: LoopRestorationType,
     pub u_type: LoopRestorationType,
     pub v_type: LoopRestorationType,
@@ -98,6 +101,7 @@ impl Default for LoopRestorationInfo {
         Self {
             enabled: false,
             unit_size: 64,
+            uv_unit_size: 64,
             y_type: LoopRestorationType::None,
             u_type: LoopRestorationType::None,
             v_type: LoopRestorationType::None,

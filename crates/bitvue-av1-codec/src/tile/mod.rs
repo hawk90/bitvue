@@ -28,6 +28,7 @@ pub mod motion_field;
 pub mod mv_prediction;
 pub mod partition;
 pub mod position;
+pub mod restoration;
 pub mod superblock;
 pub mod tile_group;
 pub mod tile_state;
@@ -47,6 +48,7 @@ pub use partition::{
     parse_partition_tree, partition_tree_to_grid, BlockSize, PartitionNode, PartitionType,
 };
 pub use position::{BlockRect, MiRect, SuperblockCtx};
+pub use restoration::{RestorationParams, RestorationRef};
 pub use superblock::{parse_superblock, Superblock};
 pub use tile_group::{parse_tile_group, TileGroup, TileInfo};
 pub use tile_state::TileState;
@@ -200,6 +202,7 @@ mod tests {
             mi_rows: 32,
             mi_cols: 32,
             cdef_bits: 2,
+            restoration: RestorationParams::none(),
             skip_mode_present: false,
             skip_mode_refs: [0, 0],
         };

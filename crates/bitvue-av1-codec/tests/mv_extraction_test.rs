@@ -158,6 +158,7 @@ fn test_mv_extraction_with_spec_cdfs() {
             mi_rows,
             mi_cols,
             cdef_bits: 0,
+            restoration: bitvue_av1_codec::tile::RestorationParams::none(),
             skip_mode_present: false,
             skip_mode_refs: [0u8, 0u8],
         };

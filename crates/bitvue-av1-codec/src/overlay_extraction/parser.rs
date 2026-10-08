@@ -118,6 +118,11 @@ pub struct ParsedFrame {
     /// (i.e. "`cdef_idx()` never reads any bits") if the full header wasn't parsed -- the same
     /// conservative default real spec itself uses when CDEF is disabled.
     pub cdef_bits: u8,
+    /// `lr_params()` (spec 5.9.20): which planes are restored and how big the units are. Same
+    /// sourcing/fallback story as `cdef_bits` (no plane restored if the full header wasn't parsed).
+    pub loop_restoration: crate::frame_header::LoopRestorationInfo,
+    /// `use_superres` (spec 5.9.8).
+    pub superres: bool,
     /// `skip_mode_present` (spec 5.9.22) -- see `crate::frame_header::FrameHeader::
     /// skip_mode_present`'s doc for what this gates in tile data. Same sourcing/fallback story
     /// as `reference_select`; `false` (i.e. "`skip_mode` never reads any bits") if the full
@@ -238,6 +243,23 @@ impl ParsedFrame {
             mi_rows: crate::tile::partition::mi_units(self.dimensions.height),
             mi_cols: crate::tile::partition::mi_units(self.dimensions.width),
             cdef_bits: self.cdef_bits,
+            restoration: crate::tile::RestorationParams {
+                types: [
+                    self.loop_restoration.y_type,
+                    self.loop_restoration.u_type,
+                    self.loop_restoration.v_type,
+                ],
+                unit_size: [
+                    self.loop_restoration.unit_size,
+                    self.loop_restoration.uv_unit_size,
+                    self.loop_restoration.uv_unit_size,
+                ],
+                frame_width: self.dimensions.width,
+                frame_height: self.dimensions.height,
+                subsampling_x: self.subsampling_x,
+                subsampling_y: self.subsampling_y,
+                superres: self.superres,
+            },
             skip_mode_present: self.skip_mode_present,
             skip_mode_refs: self.skip_mode_refs,
         }
@@ -326,6 +348,8 @@ impl ParsedFrame {
                 subsampling_y: false,
                 enable_filter_intra: false,
                 cdef_bits: 0,
+                loop_restoration: Default::default(),
+                superres: false,
                 skip_mode_present: false,
                 skip_mode_refs: [0, 0],
                 subpel_filter_switchable: false,
@@ -387,6 +411,8 @@ impl ParsedFrame {
         let mut subsampling_y = false;
         let mut enable_filter_intra = false;
         let mut cdef_bits = 0u8;
+        let mut loop_restoration = crate::frame_header::LoopRestorationInfo::default();
+        let mut superres = false;
         let mut skip_mode_present = false;
         let mut skip_mode_refs = [0u8, 0u8];
         let mut subpel_filter_switchable = false;
@@ -519,6 +545,8 @@ impl ParsedFrame {
                             refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
+                            loop_restoration = full_hdr.loop_restoration.clone();
+                            superres = full_hdr.super_resolution.enabled;
                             skip_mode_present = full_hdr.skip_mode_present;
                             skip_mode_refs = full_hdr.skip_mode_refs;
                             subpel_filter_switchable = full_hdr.subpel_filter_switchable;
@@ -569,6 +597,8 @@ impl ParsedFrame {
                             refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
+                            loop_restoration = full_hdr.loop_restoration.clone();
+                            superres = full_hdr.super_resolution.enabled;
                             skip_mode_present = full_hdr.skip_mode_present;
                             skip_mode_refs = full_hdr.skip_mode_refs;
                             subpel_filter_switchable = full_hdr.subpel_filter_switchable;
@@ -622,6 +652,8 @@ impl ParsedFrame {
             subsampling_y,
             enable_filter_intra,
             cdef_bits,
+            loop_restoration,
+            superres,
             skip_mode_present,
             skip_mode_refs,
             subpel_filter_switchable,

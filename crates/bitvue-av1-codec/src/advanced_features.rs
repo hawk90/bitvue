@@ -70,7 +70,7 @@ pub enum LoopRestorationType {
     None = 0,
     Wiener = 1,
     SgrProj = 2,
-    Dual = 3,
+    Switchable = 3,
 }
 
 impl From<FrameLoopRestorationType> for LoopRestorationType {
@@ -79,7 +79,7 @@ impl From<FrameLoopRestorationType> for LoopRestorationType {
             FrameLoopRestorationType::None => Self::None,
             FrameLoopRestorationType::Wiener => Self::Wiener,
             FrameLoopRestorationType::SgrProj => Self::SgrProj,
-            FrameLoopRestorationType::Dual => Self::Dual,
+            FrameLoopRestorationType::Switchable => Self::Switchable,
         }
     }
 }

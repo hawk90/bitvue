@@ -743,16 +743,12 @@ fn parse_lr_params(
             ..Default::default()
         });
     }
-    // Remap_Lr_Type (AV1 spec Table, 5.9.20): the 2-bit code doesn't map to
-    // None/Wiener/SgrProj/Dual in that order.
+    // Remap_Lr_Type (AV1 spec 5.9.20): the 2-bit code is not the enum order.
     const REMAP_LR_TYPE: [LoopRestorationType; 4] = [
         LoopRestorationType::None,
+        LoopRestorationType::Switchable,
         LoopRestorationType::Wiener,
         LoopRestorationType::SgrProj,
-        LoopRestorationType::None, // reserved/unused in practice; spec's 4th entry is SWITCHABLE,
-                                   // which this crate's LoopRestorationType has no variant for --
-                                   // treated as None rather than panicking (see LoopRestorationType::from_bits'
-                                   // own None-fallback precedent for unrecognized codes).
     ];
     let num_planes = seq.color_config.num_planes;
     let mut types = [LoopRestorationType::None; 3];
@@ -770,6 +766,7 @@ fn parse_lr_params(
         }
     }
     let mut unit_size = RESTORATION_TILESIZE_MAX;
+    let mut uv_unit_size = unit_size;
     if uses_lr {
         let mut lr_unit_shift: u32 = if seq.use_128x128_superblock {
             1 + u32::from(reader.read_bit()?)
@@ -783,13 +780,16 @@ fn parse_lr_params(
         };
         lr_unit_shift = lr_unit_shift.min(2);
         unit_size = RESTORATION_TILESIZE_MAX >> (2 - lr_unit_shift);
+        uv_unit_size = unit_size;
         if seq.color_config.subsampling_x && seq.color_config.subsampling_y && uses_chroma_lr {
-            reader.read_bit()?; // lr_uv_shift -- only affects chroma unit size, not needed here
+            // lr_uv_shift
+            uv_unit_size >>= u32::from(reader.read_bit()?);
         }
     }
     Ok(LoopRestorationInfo {
         enabled: uses_lr,
         unit_size,
+        uv_unit_size,
         y_type: types[0],
         u_type: if num_planes > 1 {
             types[1]
@@ -1612,6 +1612,28 @@ mod tests {
         assert_eq!(seq.order_hint_bits_minus_1, Some(6));
         assert!(!seq.color_config.mono_chrome);
         assert!(seq.color_config.subsampling_x && seq.color_config.subsampling_y);
+    }
+
+    /// `lr_type` codes are not in enum order (spec `Remap_Lr_Type`): 1 means SWITCHABLE, 2 WIENER,
+    /// 3 SGRPROJ. A 4:2:0 stream with chroma restoration also reads `lr_uv_shift`, which halves the
+    /// chroma unit size.
+    #[test]
+    fn lr_params_remap_the_type_codes_and_apply_the_uv_shift() {
+        let seq = parse_sequence_header(&minimal_seq_header_bytes()).unwrap();
+        // y=SGRPROJ(3), u=SWITCHABLE(1), v=WIENER(2); lr_unit_shift=1 (64x64 sb: bits 1, 0),
+        // lr_uv_shift=1.
+        let bits = [1u8, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0];
+        let mut packed = vec![0u8; 2];
+        for (i, b) in bits.iter().enumerate() {
+            packed[i / 8] |= b << (7 - i % 8);
+        }
+        let mut reader = BitReader::new(&packed);
+        let lr = parse_lr_params(&mut reader, &seq, false, false).unwrap();
+        assert_eq!(lr.y_type, LoopRestorationType::SgrProj);
+        assert_eq!(lr.u_type, LoopRestorationType::Switchable);
+        assert_eq!(lr.v_type, LoopRestorationType::Wiener);
+        assert_eq!(lr.unit_size, 128);
+        assert_eq!(lr.uv_unit_size, 64);
     }
 
     fn bits_writer() -> (Vec<u8>, impl FnMut(&mut Vec<u8>, u32, u8)) {

@@ -77,6 +77,7 @@ fn base_params() -> FrameCodingParams {
         mi_rows: mi,
         mi_cols: mi,
         cdef_bits: 2,
+        restoration: bitvue_av1_codec::tile::RestorationParams::none(),
         skip_mode_present: false,
         skip_mode_refs: [0, 0],
     }
