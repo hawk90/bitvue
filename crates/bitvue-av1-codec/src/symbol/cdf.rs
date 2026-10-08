@@ -506,15 +506,8 @@ pub fn tx_size_class(tx_size_px: u32) -> usize {
     }
 }
 
-/// Build a 2-symbol CDF from `p0`, the probability of the first (index-0) symbol. Returns the
-/// real spec/rav1d descending format directly (see `to_descending`'s doc) -- matches the
-/// hand-picked-bias style every other CDF in this file uses (see `skip_cdf`).
-fn binary_cdf(p0: f32) -> Vec<u16> {
-    to_descending(&[0, (CDF_SCALE as f32 * p0) as u16, CDF_SCALE])
-}
-
 /// Build a 2-symbol CDF from a raw rav1d default probability (`0..=CDF_SCALE`, already the real
-/// spec value -- not a hand-picked fraction like `binary_cdf` takes). Same descending-threshold +
+/// spec value). Same descending-threshold +
 /// adaptation-count-slot shape as `skip_cdf`'s per-context entries (see that field's doc).
 fn binary_ctx_cdf(raw_prob: u16) -> Vec<u16> {
     vec![CDF_SCALE - raw_prob, 0, 0]
@@ -4633,8 +4626,9 @@ impl CdfContext {
         let uni_comp_ref_p1_cdf = [3865, 14173, 25120].map(binary_ctx_cdf);
         let uni_comp_ref_p2_cdf = [3128, 15270, 26710].map(binary_ctx_cdf);
 
-        // use_intrabc: rare (screen-content-coding only), heavily biased toward false.
-        let use_intrabc_cdf = binary_cdf(0.97);
+        // use_intrabc (screen-content coding only): dav1d `m.intrabc` default. It was a
+        // hand-picked 0.97 placeholder before.
+        let use_intrabc_cdf = binary_ctx_cdf(30531);
 
         Self {
             partition_cdfs,
@@ -5226,8 +5220,8 @@ impl CdfContext {
         &mut self.comp_bwdref_p1_cdf[(ctx as usize).min(2)]
     }
     /// Get `use_intrabc` CDF (intra block copy flag).
-    pub fn get_use_intrabc_cdf(&self) -> &[u16] {
-        &self.use_intrabc_cdf
+    pub fn get_use_intrabc_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.use_intrabc_cdf
     }
 }
 

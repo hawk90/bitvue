@@ -737,8 +737,8 @@ impl<'a> SymbolDecoder<'a> {
     /// Read `use_intrabc` per AV1 spec Section 5.11.6 -- only call when the frame header's
     /// `allow_intrabc` is true and the current block is on an intra frame.
     pub fn read_use_intrabc(&mut self) -> Result<bool> {
-        let cdf = self.cdf_context.get_use_intrabc_cdf();
-        Ok(self.decoder.read_symbol(cdf)? == 1)
+        let cdf = self.cdf_context.get_use_intrabc_cdf_mut();
+        Ok(self.decoder.read_symbol_adaptive(cdf)? == 1)
     }
 
     /// Read `mv_joint` (AV1 spec Section 5.11.32 `read_mv()`) -- gates which axis, if any, has a
@@ -1744,5 +1744,21 @@ mod tests {
     fn test_coeff_base_eob_context_dc_only_is_context_zero() {
         assert_eq!(coeff_base_eob_context(0, 16, 16), 0);
         assert_eq!(coeff_base_eob_context(0, 32, 32), 0);
+    }
+
+    /// dav1d's default for `use_intrabc` is `CDF1(30531)` (it was a hand-picked 0.97 before), and
+    /// the flag adapts like every other symbol -- it used to be read without updating the CDF.
+    #[test]
+    fn use_intrabc_starts_at_dav1ds_default_and_adapts() {
+        let data = [0x55u8; 16];
+        let mut dec = SymbolDecoder::new(&data).unwrap();
+        assert_eq!(
+            dec.cdf_context.get_use_intrabc_cdf_mut(),
+            &[32768 - 30531, 0, 0]
+        );
+        dec.read_use_intrabc().unwrap();
+        let cdf = dec.cdf_context.get_use_intrabc_cdf_mut();
+        assert_eq!(cdf[2], 1, "adaptation count after one read");
+        assert_ne!(cdf[0], 32768 - 30531, "probability moved");
     }
 }
