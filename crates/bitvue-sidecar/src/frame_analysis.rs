@@ -557,8 +557,10 @@ mod tests {
         );
         let (_response, qp_bytes) = decode_frame_analysis_response(frames);
         let decoded_qp: Vec<i64> = qp_bytes
-            .chunks_exact(2)
-            .map(|c| i16::from_le_bytes([c[0], c[1]]) as i64)
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| i16::from_le_bytes(*c) as i64)
             .collect();
 
         assert_eq!(
