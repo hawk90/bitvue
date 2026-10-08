@@ -18,7 +18,7 @@
 
 use bitvue_av1_codec::frame_header_full::thread_ref_state_before;
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
-use bitvue_av1_codec::overlay_extraction::{parse_all_coding_units, ParsedFrame};
+use bitvue_av1_codec::overlay_extraction::{frame_provenance, parse_all_coding_units, ParsedFrame};
 use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
 
@@ -127,6 +127,7 @@ pub fn get_residual_analysis(data: &[u8], frame_index: usize) -> Result<Value, S
 
     Ok(json!({
         "frame_index": frame_index,
+        "provenance": frame_provenance(&parsed).as_str(),
         "width": parsed.dimensions.width,
         "height": parsed.dimensions.height,
         "coefficient_stats": {
@@ -274,5 +275,18 @@ mod tests {
 
         let fresh = ParsedFrame::parse(&obu_data).unwrap();
         assert_ne!(fresh.tile_data.len(), 182);
+    }
+
+    #[test]
+    fn get_residual_analysis_reports_whether_the_frame_was_verified() {
+        // The key frame decodes exactly; an inter frame parsed on its own does not.
+        assert_eq!(
+            get_residual_analysis(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
+            "verified"
+        );
+        assert_eq!(
+            get_residual_analysis(AV1_IVF_FIXTURE, 2).unwrap()["provenance"],
+            "unverified"
+        );
     }
 }

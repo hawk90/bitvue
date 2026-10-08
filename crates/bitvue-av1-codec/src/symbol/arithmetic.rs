@@ -410,6 +410,33 @@ impl<'a> ArithmeticDecoder<'a> {
         Ok(())
     }
 
+    /// Whether the data ends exactly where the symbols read so far say it should (the spec's
+    /// `exit_symbol` padding rule, 8.2.4): the encoder's flush leaves a single `1` bit right after
+    /// the last bit the decoder shifted out of its window, and only `0` bits after that up to the
+    /// end of the tile.
+    ///
+    /// A decode that has gone off the rails -- a wrong context, a wrong CDF, a header that put
+    /// the tile start in the wrong place -- almost never stops at that spot, so this tells an
+    /// exact decode from a desynchronised one without a reference decoder. It does not prove that
+    /// every decoded *value* is right: a wrong value that does not change which bits are read
+    /// (a mis-ordered DRL candidate, say) still passes, and so can a fault confined to the last
+    /// few symbols of the tile. Call it after the last symbol of the tile.
+    pub fn padding_is_conformant(&self) -> bool {
+        // `8 * offset - (cnt + 16)` is the number of bits shifted out of the window; the
+        // trailing bit sits one position further on.
+        let trailing = 8 * self.offset as i64 - i64::from(self.cnt) - 15;
+        let total = 8 * self.data.len() as i64;
+        if trailing < 0 || trailing >= total {
+            return false;
+        }
+        let (byte, bit) = (trailing as usize / 8, trailing as usize % 8);
+        // Within the trailing byte: a 1 at `bit`, zeros below it.
+        let below = self.data[byte] & (0xFFu32 >> (bit + 1)) as u8;
+        self.data[byte] >> (7 - bit) & 1 == 1
+            && below == 0
+            && self.data[byte + 1..].iter().all(|&b| b == 0)
+    }
+
     /// Get current byte offset
     #[allow(dead_code)]
     pub fn byte_offset(&self) -> usize {
@@ -846,6 +873,91 @@ mod spec_oracle_tests {
                     sym,
                     "seed {seed}, symbol #{i} (ctx {ctx})"
                 );
+            }
+        }
+    }
+
+    /// The encoder's flush leaves exactly the padding the check looks for, so a decode that read
+    /// every symbol passes -- and one that stopped early or read too much does not.
+    #[test]
+    fn padding_is_conformant_only_after_exactly_the_symbols_that_were_written() {
+        for seed in 1..=40u64 {
+            let mut rng = Rng(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
+            let cdf0 = random_cdf(&mut rng, 5);
+            let mut enc_cdf = cdf0.clone();
+            let mut enc = Encoder::new();
+            let symbols: Vec<usize> = (0..400).map(|_| rng.below(5) as usize).collect();
+            for &s in &symbols {
+                enc.encode(s, &enc_cdf);
+                spec_update(&mut enc_cdf, s);
+            }
+            let bytes = enc.finish();
+
+            let mut cdf = cdf0.clone();
+            let mut dec = ArithmeticDecoder::new(&bytes).unwrap();
+            for (i, &s) in symbols.iter().enumerate() {
+                if i + 1 < symbols.len() {
+                    // Stopping early (a block's worth of symbols missing) must not pass.
+                    assert!(
+                        !dec.padding_is_conformant() || i + 8 >= symbols.len(),
+                        "seed {seed}: passed after {i} of {} symbols",
+                        symbols.len()
+                    );
+                }
+                assert_eq!(usize::from(dec.read_symbol_adaptive(&mut cdf).unwrap()), s);
+            }
+            assert!(dec.padding_is_conformant(), "seed {seed}: exact decode");
+        }
+    }
+
+    /// How often a corrupted stream still passes. After a flip the decoder reads different
+    /// symbols, and the total number of bits it consumes ends up within a few `sqrt(n)` of the
+    /// original by chance, so it lands exactly on the padding about once in that many tries: a
+    /// few percent for a stream of a few hundred symbols, well under a percent for a frame-sized
+    /// one. The check is strong evidence, not proof, and weaker for short tiles.
+    #[test]
+    fn padding_is_rarely_conformant_for_corrupted_or_truncated_data() {
+        for (n_symbols, max_pass_per_mille) in [(600usize, 40usize), (20_000, 5)] {
+            let mut rng = Rng(0xfeed_beef_1234_5678 ^ n_symbols as u64);
+            let mut cdf0 = random_cdf(&mut rng, 4);
+            cdf0[4] = 0;
+            let mut enc_cdf = cdf0.clone();
+            let mut enc = Encoder::new();
+            let symbols: Vec<usize> = (0..n_symbols).map(|_| rng.below(4) as usize).collect();
+            for &s in &symbols {
+                enc.encode(s, &enc_cdf);
+                spec_update(&mut enc_cdf, s);
+            }
+            let bytes = enc.finish();
+            let decode = |data: &[u8]| {
+                let mut cdf = cdf0.clone();
+                let mut dec = ArithmeticDecoder::new(data).unwrap();
+                for _ in 0..symbols.len() {
+                    if dec.read_symbol_adaptive(&mut cdf).is_err() {
+                        return false;
+                    }
+                }
+                dec.padding_is_conformant()
+            };
+            assert!(decode(&bytes), "untouched stream of {n_symbols} symbols");
+
+            // Bits in the stream body: a flip in the last few bytes can change only the final
+            // symbols and so can pass more easily.
+            let body = bytes.len() * 8 * 9 / 10;
+            let step = (body / 1500).max(1);
+            let (mut tried, mut passes) = (0, 0);
+            for bit in (0..body).step_by(step) {
+                let mut bad = bytes.clone();
+                bad[bit / 8] ^= 0x80 >> (bit % 8);
+                tried += 1;
+                passes += usize::from(decode(&bad));
+            }
+            assert!(
+                passes * 1000 <= tried * max_pass_per_mille,
+                "{n_symbols} symbols: {passes} of {tried} bit flips still pass"
+            );
+            for cut in 1..=8 {
+                assert!(!decode(&bytes[..bytes.len() - cut]), "truncated by {cut}");
             }
         }
     }

@@ -5385,7 +5385,7 @@ mod tests {
     }
 
     /// The real dav1d/spec qindex-bucket formula (mirrored at both real production call sites --
-    /// `overlay_extraction::cu_parser::parse_all_coding_units_with_temporal` and
+    /// `overlay_extraction::cu_parser::parse_coding_units_with_outcome` and
     /// `overlay_extraction::partition::parse_partition_trees_from_tile_data`) is
     /// `qcat = (base_q_idx>20) + (base_q_idx>60) + (base_q_idx>120)`. Confirms the boundary
     /// values land on the correct side (dav1d's `>`, not `>=`, so `base_q_idx == 20/60/120`

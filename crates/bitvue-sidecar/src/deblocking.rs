@@ -86,7 +86,10 @@ pub fn get_deblocking_analysis(data: &[u8], frame_index: usize) -> Result<Value,
     let deblocking = extract_deblocking_data_from_parsed(&parsed, &header.loop_filter)
         .map_err(|e| e.to_string())?;
 
-    Ok(deblocking_to_json(frame_index, &deblocking))
+    let mut value = deblocking_to_json(frame_index, &deblocking);
+    value["provenance"] =
+        json!(bitvue_av1_codec::overlay_extraction::frame_provenance(&parsed).as_str());
+    Ok(value)
 }
 
 fn edge_to_json(e: &DeblockingEdge) -> Value {
@@ -237,5 +240,18 @@ mod tests {
         let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
         let result = get_deblocking_analysis(AV1_IVF_FIXTURE, frames.len() - 1).unwrap();
         assert_eq!(result["frame_index"], frames.len() - 1);
+    }
+
+    #[test]
+    fn get_deblocking_analysis_reports_whether_the_frame_was_verified() {
+        // The key frame decodes exactly; an inter frame parsed on its own does not.
+        assert_eq!(
+            get_deblocking_analysis(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
+            "verified"
+        );
+        assert_eq!(
+            get_deblocking_analysis(AV1_IVF_FIXTURE, 2).unwrap()["provenance"],
+            "unverified"
+        );
     }
 }

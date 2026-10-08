@@ -31,7 +31,9 @@ use bitvue_av1_codec::frame_header_full::{
     RefFrameState,
 };
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
-use bitvue_av1_codec::overlay_extraction::{extract_qp_grid_from_parsed, ParsedFrame};
+use bitvue_av1_codec::overlay_extraction::{
+    extract_qp_grid_from_parsed, frame_provenance, ParsedFrame, Provenance,
+};
 use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
 
@@ -192,11 +194,20 @@ pub fn get_codec_extended_info(data: &[u8], frame_index: usize) -> Result<Value,
     let qp_grid =
         extract_qp_grid_from_parsed(&parsed, frame_index, base_qp).map_err(|e| e.to_string())?;
 
+    // The reference lists come from the frame header; the histogram from decoded QPs, which for
+    // a frame that was never decoded would be the invented scaffold grid -- send none.
+    let provenance = frame_provenance(&parsed);
+    let qp_values: &[i16] = if provenance == Provenance::Scaffold {
+        &[]
+    } else {
+        &qp_grid.qp
+    };
     Ok(json!({
         "frame_index": frame_index,
         "l0_refs": l0_refs,
         "l1_refs": l1_refs,
-        "qp_histogram": qp_histogram_json(&qp_grid.qp),
+        "qp_histogram": qp_histogram_json(qp_values),
+        "provenance": provenance.as_str(),
     }))
 }
 
@@ -310,5 +321,39 @@ mod tests {
     #[test]
     fn get_codec_extended_info_out_of_range_frame_index_is_a_real_error() {
         assert!(get_codec_extended_info(AV1_IVF_FIXTURE, 999_999).is_err());
+    }
+
+    #[test]
+    fn get_codec_extended_info_reports_whether_the_frame_was_verified() {
+        // The key frame decodes exactly; an inter frame parsed on its own does not.
+        assert_eq!(
+            get_codec_extended_info(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
+            "verified"
+        );
+        assert_eq!(
+            get_codec_extended_info(AV1_IVF_FIXTURE, 2).unwrap()["provenance"],
+            "unverified"
+        );
+    }
+
+    /// A frame that was never decoded has no decoded QPs: the histogram is empty rather than
+    /// built from the invented scaffold grid.
+    #[test]
+    fn get_codec_extended_info_has_no_qp_histogram_for_an_undecoded_frame() {
+        let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let mut ivf = AV1_IVF_FIXTURE[..32].to_vec();
+        ivf[24..28].copy_from_slice(&2u32.to_le_bytes());
+        // Chunk 1: temporal delimiter + a `show_existing_frame` header, no tile.
+        for (pts, data) in [
+            (0u64, frames[0].data.as_slice()),
+            (1, &[0x12, 0x00, 0x1A, 0x01, 0x80][..]),
+        ] {
+            ivf.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            ivf.extend_from_slice(&pts.to_le_bytes());
+            ivf.extend_from_slice(data);
+        }
+        let result = get_codec_extended_info(&ivf, 1).unwrap();
+        assert_eq!(result["provenance"], "scaffold");
+        assert_eq!(result["qp_histogram"].as_array().unwrap().len(), 0);
     }
 }

@@ -3,6 +3,7 @@
 //! Provides thread-safe LRU caching for parsed coding units to avoid
 //! re-parsing when extracting multiple overlays from the same frame.
 
+use super::provenance::DecodeOutcome;
 use crate::Qp;
 use bitvue_engine::BitvueError;
 use std::collections::HashMap;
@@ -20,6 +21,15 @@ macro_rules! lock_mutex {
     };
 }
 
+/// A frame's coding units together with how the decode that produced them ended.
+///
+/// Cloning is O(1): the units are behind an `Arc`.
+#[derive(Debug, Clone)]
+pub struct ParsedCodingUnits {
+    pub units: Arc<Vec<crate::tile::CodingUnit>>,
+    pub outcome: DecodeOutcome,
+}
+
 /// Per optimize-code skill: Thread-safe LRU cache for parsed coding units
 ///
 /// Caches parsed coding units per frame to avoid re-parsing
@@ -27,7 +37,7 @@ macro_rules! lock_mutex {
 ///
 /// Key: Hash of tile data + base_qp (ensures cache validity)
 /// Value: Arc-wrapped parsed coding units (Arc::clone is O(1), Vec::clone is O(n))
-type CodingUnitCache = HashMap<u64, Arc<Vec<crate::tile::CodingUnit>>>;
+type CodingUnitCache = HashMap<u64, ParsedCodingUnits>;
 
 /// Global thread-safe cache for coding units (module-level)
 ///
@@ -78,28 +88,31 @@ pub fn compute_frame_cache_key(tile_data: &[u8], base_qp: i16, context: &str) ->
 /// Uses "single lock acquisition" pattern to prevent TOCTOU race condition.
 /// Lock is held for entire operation (check, parse, insert) ensuring thread safety.
 ///
-/// Returns `Arc<Vec<CodingUnit>>` for O(1) cloning on cache hits.
-/// Use `&*result` or `result.as_ref()` to access the slice of coding units.
+/// Returns [`ParsedCodingUnits`], whose units are an `Arc` for O(1) cloning on cache hits.
 pub fn get_or_parse_coding_units<F>(
     cache_key: u64,
     parse_fn: F,
-) -> Result<std::sync::Arc<Vec<crate::tile::CodingUnit>>, BitvueError>
+) -> Result<ParsedCodingUnits, BitvueError>
 where
-    F: FnOnce() -> Result<Vec<crate::tile::CodingUnit>, BitvueError>,
+    F: FnOnce() -> Result<(Vec<crate::tile::CodingUnit>, DecodeOutcome), BitvueError>,
 {
     let mut cache = lock_mutex!(CODING_UNIT_CACHE);
 
     // Check if already cached (still holding lock)
     if let Some(cached) = cache.get(&cache_key) {
-        abseil::vlog!(2, "Cache HIT for coding units: {} units", cached.len());
+        abseil::vlog!(
+            2,
+            "Cache HIT for coding units: {} units",
+            cached.units.len()
+        );
         // Arc::clone is O(1) - this is the key optimization
-        return Ok(Arc::clone(cached));
+        return Ok(cached.clone());
     }
 
     // Cache miss - parse and insert (still holding lock)
     // This prevents other threads from simultaneously parsing the same key
     abseil::vlog!(2, "Cache MISS - parsing coding units from tile data");
-    let units = parse_fn()?;
+    let (units, outcome) = parse_fn()?;
 
     // Enforce cache size limit to prevent unbounded growth
     // If cache is full, evict 25% of entries (pseudo-random eviction)
@@ -125,10 +138,13 @@ where
     }
 
     // Store Arc in cache for O(1) clone on future cache hits
-    let units_arc = Arc::new(units);
-    cache.insert(cache_key, Arc::clone(&units_arc));
+    let parsed = ParsedCodingUnits {
+        units: Arc::new(units),
+        outcome,
+    };
+    cache.insert(cache_key, parsed.clone());
 
-    Ok(units_arc)
+    Ok(parsed)
 }
 
 /// Clear the coding unit cache (useful for testing)
@@ -189,15 +205,15 @@ impl LocalCodingUnitCache {
         &mut self,
         cache_key: u64,
         parse_fn: F,
-    ) -> Result<Arc<Vec<crate::tile::CodingUnit>>, BitvueError>
+    ) -> Result<ParsedCodingUnits, BitvueError>
     where
-        F: FnOnce() -> Result<Vec<crate::tile::CodingUnit>, BitvueError>,
+        F: FnOnce() -> Result<(Vec<crate::tile::CodingUnit>, DecodeOutcome), BitvueError>,
     {
         if let Some(cached) = self.inner.get(&cache_key) {
-            return Ok(Arc::clone(cached));
+            return Ok(cached.clone());
         }
 
-        let units = parse_fn()?;
+        let (units, outcome) = parse_fn()?;
 
         // Enforce cache size limit (same policy as global cache)
         if self.inner.len() >= MAX_CACHE_ENTRIES {
@@ -208,9 +224,12 @@ impl LocalCodingUnitCache {
             }
         }
 
-        let units_arc = Arc::new(units);
-        self.inner.insert(cache_key, Arc::clone(&units_arc));
-        Ok(units_arc)
+        let parsed = ParsedCodingUnits {
+            units: Arc::new(units),
+            outcome,
+        };
+        self.inner.insert(cache_key, parsed.clone());
+        Ok(parsed)
     }
 }
 
@@ -242,7 +261,7 @@ mod tests {
 
         let result = get_or_parse_coding_units(cache_key, || {
             parse_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(vec![])
+            Ok((vec![], DecodeOutcome::default()))
         });
 
         assert!(result.is_ok());
@@ -251,7 +270,7 @@ mod tests {
         // Second call should be a cache hit
         let result = get_or_parse_coding_units(cache_key, || {
             parse_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(vec![])
+            Ok((vec![], DecodeOutcome::default()))
         });
 
         assert!(result.is_ok());
@@ -271,7 +290,7 @@ mod tests {
         let tile_data = vec![1u8, 2, 3];
         let cache_key = compute_frame_cache_key(&tile_data, 32, "");
 
-        let _ = get_or_parse_coding_units(cache_key, || Ok(vec![]));
+        let _ = get_or_parse_coding_units(cache_key, || Ok((vec![], DecodeOutcome::default())));
         assert!(cu_cache_contains(cache_key));
 
         // Clear and verify this entry is gone. Other tests (cu_parser goes
@@ -304,7 +323,7 @@ mod tests {
             let cache_key = compute_frame_cache_key(&tile_data, 32, "");
             let result = cache.get_or_parse(cache_key, || {
                 added += 1;
-                Ok(vec![])
+                Ok((vec![], DecodeOutcome::default()))
             });
             assert!(result.is_ok());
             i += 1;
@@ -325,7 +344,7 @@ mod tests {
         if size_at_limit >= MAX_CACHE_ENTRIES {
             let extra_tile = vec![9u8, 9u8, 9u8, 9u8, 9u8, 9u8];
             let extra_key = compute_frame_cache_key(&extra_tile, 33, "");
-            let _ = cache.get_or_parse(extra_key, || Ok(vec![]));
+            let _ = cache.get_or_parse(extra_key, || Ok((vec![], DecodeOutcome::default())));
 
             let size_after_eviction = cache.len();
             assert!(

@@ -7,8 +7,9 @@ use std::sync::Arc;
 
 use bitvue_engine::BitvueError;
 
-use super::cache::{compute_frame_cache_key, get_or_parse_coding_units};
+use super::cache::{compute_frame_cache_key, get_or_parse_coding_units, ParsedCodingUnits};
 use super::parser::ParsedFrame;
+use super::provenance::DecodeOutcome;
 
 /// Parse all coding units from tile data
 ///
@@ -21,6 +22,11 @@ use super::parser::ParsedFrame;
 pub fn parse_all_coding_units(
     parsed: &ParsedFrame,
 ) -> Result<Arc<Vec<crate::tile::CodingUnit>>, BitvueError> {
+    Ok(parse_coding_units_checked(parsed)?.units)
+}
+
+/// [`parse_all_coding_units`] plus how the decode ended ([`DecodeOutcome`]), from the same cache.
+pub fn parse_coding_units_checked(parsed: &ParsedFrame) -> Result<ParsedCodingUnits, BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     // Everything besides the tile bytes that the parse reads (see `compute_frame_cache_key`).
     let context = format!(
@@ -31,22 +37,25 @@ pub fn parse_all_coding_units(
         parsed.dimensions.sb_rows
     );
     let cache_key = compute_frame_cache_key(&parsed.tile_data, base_qp, &context);
-    get_or_parse_coding_units(cache_key, || {
-        parse_all_coding_units_with_temporal(parsed, None)
-    })
+    get_or_parse_coding_units(cache_key, || parse_coding_units_with_outcome(parsed, None))
 }
 
-/// Real temporal MV candidates (spec 7.9/7.10, [`crate::tile::motion_field`]) variant -- **not**
-/// cached (unlike [`parse_all_coding_units`]): the cache key is `(tile_data, base_qp)` only, which
-/// doesn't account for `temporal`'s content, so caching here would risk returning another frame's
-/// (or a temporal-disabled) stale result for identical `tile_data`. Only
-/// [`crate::tile::motion_field`]'s sequential test harness calls this with `Some(..)` today --
-/// every production call site goes through the cached, temporal-disabled `parse_all_coding_units`
-/// (which calls this with `None`).
-pub fn parse_all_coding_units_with_temporal(
+/// Uncached parse returning only the coding units, for tests that feed real temporal candidates.
+#[cfg(test)]
+fn parse_all_coding_units_with_temporal(
     parsed: &ParsedFrame,
     temporal: Option<(&crate::tile::ProjectedMotionField, [i32; 7])>,
 ) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
+    parse_coding_units_with_outcome(parsed, temporal).map(|(units, _)| units)
+}
+
+/// The parse behind [`parse_coding_units_checked`]. `temporal` supplies real temporal MV
+/// candidates (spec 7.9/7.10, [`crate::tile::motion_field`]); the cache key has no room for its
+/// content, so a caller that passes `Some` must not go through the cache.
+fn parse_coding_units_with_outcome(
+    parsed: &ParsedFrame,
+    temporal: Option<(&crate::tile::ProjectedMotionField, [i32; 7])>,
+) -> Result<(Vec<crate::tile::CodingUnit>, DecodeOutcome), BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     let tile_data = Arc::clone(&parsed.tile_data);
     let sb_size = parsed.dimensions.sb_size;
@@ -87,14 +96,16 @@ pub fn parse_all_coding_units_with_temporal(
         tile_ctx,
     };
 
-    // Parse each superblock
-    for sb_y in 0..sb_rows {
+    // Parse each superblock. The first error ends the frame: the decoder has lost its place, so
+    // whatever it read after that would be noise presented as coding units.
+    let superblocks_total = sb_cols * sb_rows;
+    let mut superblocks_decoded = 0;
+    'frame: for sb_y in 0..sb_rows {
         state.tile_ctx.start_superblock_row();
         for sb_x in 0..sb_cols {
             let sb_pixel_x = sb_x * sb_size;
             let sb_pixel_y = sb_y * sb_size;
 
-            // Try to parse the superblock
             match crate::parse_superblock(
                 &mut state,
                 sb_pixel_x,
@@ -104,29 +115,35 @@ pub fn parse_all_coding_units_with_temporal(
                 current_qp,
             ) {
                 Ok((sb, new_qp)) => {
-                    // Collect all coding units from this superblock
                     all_cus.extend(sb.coding_units);
                     current_qp = new_qp;
+                    superblocks_decoded += 1;
                 }
                 Err(e) => {
                     tracing::debug!(
-                        "Failed to parse superblock ({}, {}): {}, skipping",
+                        "Failed to parse superblock ({}, {}): {}, stopping",
                         sb_pixel_x,
                         sb_pixel_y,
                         e
                     );
-                    // Continue parsing other superblocks
+                    break 'frame;
                 }
             }
         }
     }
 
+    let outcome = DecodeOutcome {
+        superblocks_total,
+        superblocks_decoded,
+        padding_conformant: state.decoder.padding_is_conformant(),
+    };
     tracing::debug!(
-        "Parsed {} coding units from tile data (final QP: {})",
+        "Parsed {} coding units from tile data (final QP: {}, {:?})",
         all_cus.len(),
-        current_qp
+        current_qp,
+        outcome
     );
-    Ok(all_cus)
+    Ok((all_cus, outcome))
 }
 
 /// Spatial index for O(1) coding unit lookup by grid position

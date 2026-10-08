@@ -24,8 +24,8 @@ use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_energy_grid_from_parsed, extract_mv_grid_from_parsed,
     extract_partition_grid_from_parsed, extract_prediction_mode_grid_from_parsed,
-    extract_qp_grid_from_parsed, extract_transform_grid_from_parsed, EnergyGrid, ParsedFrame,
-    PredictionModeGrid, TransformGrid,
+    extract_qp_grid_from_parsed, extract_transform_grid_from_parsed, frame_provenance, EnergyGrid,
+    ParsedFrame, PredictionModeGrid, Provenance, TransformGrid,
 };
 use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use bitvue_av1_codec::tile::PredictionMode;
@@ -104,6 +104,19 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
     };
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
 
+    // Nothing was decoded for this frame: the extractors would hand back invented "scaffold"
+    // grids, which are not an approximation of the frame. Send none -- the caller gets the
+    // frame's size and the reason, and its overlays stay empty.
+    let provenance = frame_provenance(&parsed);
+    if provenance == Provenance::Scaffold {
+        return Ok(json!({
+            "frame_index": frame_index,
+            "width": parsed.dimensions.width,
+            "height": parsed.dimensions.height,
+            "provenance": provenance.as_str(),
+        }));
+    }
+
     let qp_grid =
         extract_qp_grid_from_parsed(&parsed, frame_index, base_qp).map_err(|e| e.to_string())?;
     let mv_grid = extract_mv_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
@@ -123,6 +136,7 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
         "prediction_mode_grid": prediction_mode_grid_to_json(&prediction_mode_grid),
         "transform_grid": transform_grid_to_json(&transform_grid),
         "energy_grid": energy_grid_to_json(&energy_grid),
+        "provenance": provenance.as_str(),
     }))
 }
 
@@ -379,6 +393,62 @@ mod tests {
     use bitvue_protocol::{Request, Response, WireErrorCode};
 
     const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
+
+    /// An IVF made of the fixture's first chunk (sequence header + key frame) followed by `extra`
+    /// chunks, to reach frames the fixture itself does not contain.
+    fn fixture_ivf_with_extra_chunks(extra: &[&[u8]]) -> Vec<u8> {
+        let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let mut out = AV1_IVF_FIXTURE[..32].to_vec();
+        out[24..28].copy_from_slice(&(1 + extra.len() as u32).to_le_bytes());
+        for (pts, data) in std::iter::once(frames[0].data.as_slice())
+            .chain(extra.iter().copied())
+            .enumerate()
+        {
+            out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            out.extend_from_slice(&(pts as u64).to_le_bytes());
+            out.extend_from_slice(data);
+        }
+        out
+    }
+
+    #[test]
+    fn get_frame_analysis_marks_the_key_frame_verified() {
+        let result = get_frame_analysis(AV1_IVF_FIXTURE, 0).unwrap();
+        assert_eq!(result["provenance"], "verified");
+        assert!(result["mv_grid"].is_object());
+    }
+
+    /// Parsed on its own, an inter frame starts from default CDFs and has no motion field, so
+    /// it does not decode correctly. Its grids are still sent, but flagged.
+    #[test]
+    fn get_frame_analysis_marks_an_inter_frame_unverified_and_still_sends_its_grids() {
+        let result = get_frame_analysis(AV1_IVF_FIXTURE, 2).unwrap();
+        assert_eq!(result["provenance"], "unverified");
+        assert!(result["qp_grid"].is_object());
+        assert!(result["partition_grid"].is_object());
+    }
+
+    /// A frame with no tile (here a `show_existing_frame` header) was never decoded: no grids
+    /// at all, rather than the invented scaffold ones the extractors would build.
+    #[test]
+    fn get_frame_analysis_sends_no_grids_for_a_frame_that_was_not_decoded() {
+        // temporal delimiter, then a frame header OBU with show_existing_frame = 1, slot 0.
+        let show_existing: &[u8] = &[0x12, 0x00, 0x1A, 0x01, 0x80];
+        let ivf = fixture_ivf_with_extra_chunks(&[show_existing]);
+        let result = get_frame_analysis(&ivf, 1).unwrap();
+        assert_eq!(result["provenance"], "scaffold");
+        assert_eq!(result["width"], 320);
+        for grid in [
+            "qp_grid",
+            "mv_grid",
+            "partition_grid",
+            "prediction_mode_grid",
+            "transform_grid",
+            "energy_grid",
+        ] {
+            assert!(result.get(grid).is_none(), "{grid} must not be sent");
+        }
+    }
 
     #[test]
     fn get_frame_analysis_returns_real_dimensions_not_the_1920x1080_scaffold() {

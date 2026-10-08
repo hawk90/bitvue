@@ -41,6 +41,7 @@ mod energy_extractor;
 mod mv_extractor;
 mod parser;
 mod partition;
+mod provenance;
 mod qp_extractor;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -75,7 +76,7 @@ pub fn strict_mode_enabled() -> bool {
 }
 
 // Re-export public API
-pub use cu_parser::parse_all_coding_units;
+pub use cu_parser::{parse_all_coding_units, parse_coding_units_checked};
 pub use deblocking::{extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge};
 pub use energy_extractor::{extract_energy_grid_from_parsed, EnergyGrid};
 pub use mv_extractor::{extract_mv_grid, extract_mv_grid_from_parsed};
@@ -87,6 +88,7 @@ pub use partition::{
     extract_prediction_mode_grid_from_parsed, extract_transform_grid,
     extract_transform_grid_from_parsed, PredictionModeGrid, TransformGrid,
 };
+pub use provenance::{frame_provenance, DecodeOutcome, Provenance};
 pub use qp_extractor::{extract_qp_grid, extract_qp_grid_from_parsed};
 
 // Test utilities (only available in tests)
