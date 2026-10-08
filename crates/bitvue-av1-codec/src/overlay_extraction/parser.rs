@@ -455,6 +455,10 @@ impl ParsedFrame {
                     // `delta_q_enabled` when `seq_header` isn't available yet (a Frame OBU can't
                     // spec-legally precede a Sequence Header, so this fallback path is defensive,
                     // not a real-stream case).
+                    // A temporal unit can hold several frames (a hidden ARF followed by the shown
+                    // frame): every field below describes the frame parsed last, so the tile
+                    // bytes of an earlier one must not stay in front of them.
+                    tile_data.clear();
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
                         // `FrameTypeInfo::is_intra_only`'s doc says "key/intra-only" -- i.e. spec
                         // 5.9.2's `FrameIsIntra` (`frame_type == KEY_FRAME || frame_type ==
