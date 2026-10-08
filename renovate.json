@@ -68,6 +68,15 @@
       "dependencyDashboardApproval": true
     },
     {
+      "description": "Pins, digest pins and lock-file maintenance carry no release timestamp, and Renovate >= 42 treats a missing timestamp as 'not old enough', so with minimumReleaseAge the renovate/stability-days status stays pending forever on those PRs (seen 2026-10-05..08). Exempt only these update types; real version updates still wait 3 days",
+      "matchUpdateTypes": [
+        "pin",
+        "pinDigest",
+        "lockFileMaintenance"
+      ],
+      "minimumReleaseAge": null
+    },
+    {
       "description": "typescript 7 is blocked until typescript-eslint supports TS >= 7.1 (typescript-eslint/typescript-eslint#10940); checked 2026-10-07 against typescript-eslint 8.71.1 (peer typescript <6.1.0). Also needs tsconfig work: baseUrl removed, side-effect CSS imports are errors (TS2882)",
       "matchManagers": [
         "npm"
