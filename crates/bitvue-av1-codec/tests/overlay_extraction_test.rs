@@ -16,62 +16,66 @@
 use bitvue_av1_codec::overlay_extraction;
 use bitvue_engine::BlockMode;
 
+/// The first frame of the checked-in fixture (sequence header + frame), which does carry tile data.
+fn fixture_frame_0() -> Vec<u8> {
+    use bitvue_av1_codec::{
+        ivf::parse_ivf_frames,
+        obu::{ObuIterator, ObuType},
+    };
+    let data = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../test_data/av1_test.ivf"
+    ))
+    .unwrap();
+    let (_header, frames) = parse_ivf_frames(&data).unwrap();
+    let first = &frames[0].data;
+    let mut iter = ObuIterator::new(first);
+    while let Some(Ok(found)) = iter.next_obu_with_offset() {
+        if found.obu.header.obu_type == ObuType::SequenceHeader {
+            return first.clone();
+        }
+    }
+    panic!("fixture frame 0 has no sequence header");
+}
+
 #[test]
 fn test_extract_qp_grid_basic() {
-    // Test QP extraction with minimal frame data
+    // No tile data to decode: an error, not an invented grid.
     let frame_data = [];
-    let base_qp = 26i16;
 
-    let result = overlay_extraction::extract_qp_grid(&frame_data, 0, base_qp);
-    assert!(result.is_ok());
-
-    let grid = result.unwrap();
-    // Should return a valid grid even for empty data
-    assert!(grid.grid_w > 0);
+    assert!(overlay_extraction::extract_qp_grid(&frame_data, 0, 26).is_err());
 }
 
 #[test]
 fn test_extract_mv_grid_basic() {
+    // No tile data to decode: an error, not an invented grid.
     let frame_data = [];
 
-    let result = overlay_extraction::extract_mv_grid(&frame_data, 0);
-    assert!(result.is_ok());
-
-    let grid = result.unwrap();
-    assert!(grid.grid_w > 0);
+    assert!(overlay_extraction::extract_mv_grid(&frame_data, 0).is_err());
 }
 
 #[test]
 fn test_extract_partition_grid_basic() {
+    // No tile data to decode: an error, not an invented grid.
     let frame_data = [];
 
-    let result = overlay_extraction::extract_partition_grid(&frame_data, 0);
-    assert!(result.is_ok());
-
-    let grid = result.unwrap();
-    assert!(grid.coded_width > 0);
+    assert!(overlay_extraction::extract_partition_grid(&frame_data, 0).is_err());
 }
 
 #[test]
 fn test_extract_prediction_mode_grid_basic() {
+    // No tile data to decode: an error, not an invented grid.
     let frame_data = [];
 
-    let result = overlay_extraction::extract_prediction_mode_grid(&frame_data, 0);
-    assert!(result.is_ok());
-
-    let grid = result.unwrap();
-    assert!(grid.grid_w > 0);
+    assert!(overlay_extraction::extract_prediction_mode_grid(&frame_data, 0).is_err());
 }
 
 #[test]
 fn test_extract_transform_grid_basic() {
+    // No tile data to decode: an error, not an invented grid.
     let frame_data = [];
 
-    let result = overlay_extraction::extract_transform_grid(&frame_data, 0);
-    assert!(result.is_ok());
-
-    let grid = result.unwrap();
-    assert!(grid.grid_w > 0);
+    assert!(overlay_extraction::extract_transform_grid(&frame_data, 0).is_err());
 }
 
 #[test]
@@ -286,7 +290,7 @@ fn test_overlay_extraction_api_exists() {
 fn test_empty_obu_stream() {
     let frame_data = [];
     let result = overlay_extraction::extract_qp_grid(&frame_data, 0, 26);
-    assert!(result.is_ok());
+    assert!(result.is_err());
 }
 
 #[test]
@@ -300,9 +304,9 @@ fn test_overlay_extraction_with_obus() {
     // Frame Header OBU (minimal)
     data.extend_from_slice(&[0x22, 0x80, 0x02, 0x00, 0x01]);
 
-    // Should not crash when extracting; uses resilient OBU parsing fallback
+    // Header-only OBUs carry no tile data: an error, not an invented grid.
     let qp_result = overlay_extraction::extract_qp_grid(&data, 0, 26);
-    assert!(qp_result.is_ok());
+    assert!(qp_result.is_err());
 }
 
 #[test]
@@ -432,9 +436,9 @@ fn test_multi_tile_extraction() {
     // Frame Header
     data.extend_from_slice(&[0x22, 0x80, 0x02, 0x00, 0x01]);
 
-    // Extract grids - should not crash; uses resilient OBU parsing fallback
+    // Header-only OBUs carry no tile data: an error, not an invented grid.
     let qp_result = overlay_extraction::extract_qp_grid(&data, 0, 26);
-    assert!(qp_result.is_ok());
+    assert!(qp_result.is_err());
 }
 
 #[test]
@@ -552,67 +556,34 @@ fn test_mv_grid_large() {
 
 #[test]
 fn test_various_resolutions() {
-    let resolutions = vec![
-        (640, 480),   // SD
-        (1280, 720),  // HD
-        (1920, 1080), // Full HD
-        (3840, 2160), // 4K
-    ];
+    // Placeholder bytes carry no tile data, whatever resolution they stand for.
+    let frame_data = [];
 
-    for (width, height) in resolutions {
-        let frame_data = [];
-        let base_qp = 26i16;
-
-        let qp_result = overlay_extraction::extract_qp_grid(&frame_data, 0, base_qp);
-        assert!(qp_result.is_ok());
-
-        let mv_result = overlay_extraction::extract_mv_grid(&frame_data, 0);
-        assert!(mv_result.is_ok());
-
-        let part_result = overlay_extraction::extract_partition_grid(&frame_data, 0);
-        assert!(part_result.is_ok());
-
-        let pred_result = overlay_extraction::extract_prediction_mode_grid(&frame_data, 0);
-        assert!(pred_result.is_ok());
-
-        let tx_result = overlay_extraction::extract_transform_grid(&frame_data, 0);
-        assert!(tx_result.is_ok());
-    }
+    assert!(overlay_extraction::extract_qp_grid(&frame_data, 0, 26).is_err());
+    assert!(overlay_extraction::extract_mv_grid(&frame_data, 0).is_err());
+    assert!(overlay_extraction::extract_partition_grid(&frame_data, 0).is_err());
+    assert!(overlay_extraction::extract_prediction_mode_grid(&frame_data, 0).is_err());
+    assert!(overlay_extraction::extract_transform_grid(&frame_data, 0).is_err());
 }
 
 #[test]
 fn test_prediction_mode_grid_structure() {
-    let frame_data = [];
-
-    let result = overlay_extraction::extract_prediction_mode_grid(&frame_data, 0);
-    assert!(result.is_ok());
-
-    let grid = result.unwrap();
+    let grid = overlay_extraction::extract_prediction_mode_grid(&fixture_frame_0(), 0).unwrap();
     assert_eq!(grid.block_w, 16);
     assert_eq!(grid.block_h, 16);
 }
 
 #[test]
 fn test_transform_grid_structure() {
-    let frame_data = [];
-
-    let result = overlay_extraction::extract_transform_grid(&frame_data, 0);
-    assert!(result.is_ok());
-
-    let grid = result.unwrap();
+    let grid = overlay_extraction::extract_transform_grid(&fixture_frame_0(), 0).unwrap();
     assert_eq!(grid.block_w, 16);
     assert_eq!(grid.block_h, 16);
 }
 
 #[test]
 fn test_partition_grid_structure() {
-    let frame_data = [];
-
-    let result = overlay_extraction::extract_partition_grid(&frame_data, 0);
-    assert!(result.is_ok());
-
-    let grid = result.unwrap();
-    assert_eq!(grid.sb_size, 64);
+    let grid = overlay_extraction::extract_partition_grid(&fixture_frame_0(), 0).unwrap();
+    assert_eq!(grid.sb_size, 128);
 }
 
 #[test]
@@ -698,4 +669,21 @@ fn test_partition_type_from_u8() {
 
     // Invalid value should default to None
     assert_eq!(PartitionType::from(255u8), PartitionType::None);
+}
+
+/// Every cell of a fully decoded frame has a QP. The extractor used to pass the base QP as the
+/// grid's "missing" marker, which hid every cell that happened to equal it.
+#[test]
+fn qp_grid_of_a_decoded_frame_has_no_missing_cells() {
+    // Use a QP the frame really contains as the base QP: that is the case that used to vanish.
+    let probe = overlay_extraction::extract_qp_grid(&fixture_frame_0(), 0, 100).unwrap();
+    let base_qp = probe.get(0, 0).expect("first cell is decoded");
+    let grid = overlay_extraction::extract_qp_grid(&fixture_frame_0(), 0, base_qp).unwrap();
+
+    assert_eq!(grid.missing, -1);
+    for y in 0..grid.grid_h {
+        for x in 0..grid.grid_w {
+            assert!(grid.get(x, y).is_some(), "cell ({x}, {y}) is missing");
+        }
+    }
 }

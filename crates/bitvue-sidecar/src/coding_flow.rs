@@ -133,31 +133,30 @@ pub fn get_coding_flow_analysis(data: &[u8], frame_index: usize) -> Result<Value
         ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state).map_err(|e| e.to_string())?;
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
 
-    let prediction_mode_grid =
-        extract_prediction_mode_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
-    let transform_grid = extract_transform_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
-    let qp_grid =
-        extract_qp_grid_from_parsed(&parsed, frame_index, base_qp).map_err(|e| e.to_string())?;
-
-    let prediction_count = prediction_mode_grid
-        .modes
-        .iter()
-        .filter(|m| m.is_some())
-        .count();
-    let transform_count = transform_grid
-        .tx_sizes
-        .iter()
-        .filter(|t| t.is_some())
-        .count();
-    let qp_count = qp_grid.qp.len();
-
-    // A frame that was never decoded has only invented scaffold grids: none of the decode
-    // stages happened.
+    // A frame that was never decoded has no grids: none of the decode stages happened.
     let provenance = frame_provenance(&parsed);
     let (prediction_count, transform_count, qp_count) = if provenance == Provenance::Scaffold {
         (0, 0, 0)
     } else {
-        (prediction_count, transform_count, qp_count)
+        let prediction_mode_grid =
+            extract_prediction_mode_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
+        let transform_grid =
+            extract_transform_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
+        let qp_grid = extract_qp_grid_from_parsed(&parsed, frame_index, base_qp)
+            .map_err(|e| e.to_string())?;
+        (
+            prediction_mode_grid
+                .modes
+                .iter()
+                .filter(|m| m.is_some())
+                .count(),
+            transform_grid
+                .tx_sizes
+                .iter()
+                .filter(|t| t.is_some())
+                .count(),
+            qp_grid.qp.len(),
+        )
     };
 
     // (completed, data_size) per stage, same order as STAGE_ORDER.

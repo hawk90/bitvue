@@ -42,65 +42,10 @@ pub fn extract_partition_grid(
 pub fn extract_partition_grid_from_parsed(
     parsed: &ParsedFrame,
 ) -> Result<PartitionGrid, BitvueError> {
-    // If we have tile data, try to parse actual partitions first
-    if super::provenance::has_decodable_tile(parsed) {
-        // Try to parse actual partition trees using SymbolDecoder
-        match parse_partition_trees_from_tile_data(parsed) {
-            Ok(grid) => {
-                tracing::debug!(
-                    "Successfully parsed {} actual partition blocks",
-                    grid.blocks.len()
-                );
-                return Ok(grid);
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to parse partitions: {}, falling back to scaffold",
-                    e
-                );
-                // In strict mode, propagate the error instead of silent fallback
-                if super::strict_mode_enabled() {
-                    return Err(e);
-                }
-                // Fall through to scaffold below
-            }
-        }
+    if !super::provenance::has_decodable_tile(parsed) {
+        return Err(super::provenance::no_decodable_tile());
     }
-
-    // Fallback: Create scaffold partition grid based on superblock layout
-    // Only allocated if parsing fails or no tile data available
-    let mut grid = PartitionGrid::new(
-        parsed.dimensions.width,
-        parsed.dimensions.height,
-        parsed.dimensions.sb_size,
-    );
-
-    for sb_y in 0..parsed.dimensions.sb_rows {
-        for sb_x in 0..parsed.dimensions.sb_cols {
-            let sb_pixel_x = sb_x * parsed.dimensions.sb_size;
-            let sb_pixel_y = sb_y * parsed.dimensions.sb_size;
-
-            let remaining_w = parsed
-                .dimensions
-                .sb_size
-                .saturating_sub(parsed.dimensions.width.saturating_sub(sb_pixel_x));
-            let remaining_h = parsed
-                .dimensions
-                .sb_size
-                .saturating_sub(parsed.dimensions.height.saturating_sub(sb_pixel_y));
-
-            grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
-                sb_pixel_x,
-                sb_pixel_y,
-                remaining_w,
-                remaining_h,
-                PartitionType::None,
-                0,
-            ));
-        }
-    }
-
-    Ok(grid)
+    parse_partition_trees_from_tile_data(parsed)
 }
 
 /// The partition grid of a decoded frame: one block per coding unit of the canonical parse (the
@@ -260,74 +205,23 @@ pub fn extract_prediction_mode_grid_from_parsed(
         )));
     }
 
+    if !super::provenance::has_decodable_tile(parsed) {
+        return Err(super::provenance::no_decodable_tile());
+    }
+    let coding_units = parse_all_coding_units(parsed)?;
+    tracing::debug!(
+        "Extracting prediction modes from {} coding units",
+        coding_units.len()
+    );
     let mut modes = Vec::with_capacity(total_blocks);
-
-    // If we have tile data, try to parse actual prediction modes
-    if super::provenance::has_decodable_tile(parsed) {
-        match parse_all_coding_units(parsed) {
-            Ok(coding_units) => {
-                tracing::debug!(
-                    "Extracting prediction modes from {} coding units",
-                    coding_units.len()
-                );
-
-                // Build a grid of prediction modes from coding units
-                // using a spatial index for O(num_grid_blocks + num_cus) performance
-                //
-                // Before: O(grid_h × grid_w × num_coding_units) - millions of iterations
-                // After: O(num_grid_blocks + num_coding_units) - linear scan
-                build_grid_from_coding_units_spatial(
-                    &coding_units,
-                    parsed,
-                    block_w,
-                    block_h,
-                    &mut modes,
-                    |cu| cu.mode,
-                    |grid_x, grid_y| {
-                        if parsed.frame_type.is_intra_only {
-                            get_intra_mode_for_position(grid_x, grid_y)
-                        } else {
-                            get_inter_mode_for_position(grid_x, grid_y)
-                        }
-                    },
-                )?;
-
-                return Ok(PredictionModeGrid::new(
-                    parsed.dimensions.width,
-                    parsed.dimensions.height,
-                    block_w,
-                    block_h,
-                    modes,
-                ));
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to parse coding units for prediction modes: {}, using scaffold",
-                    e
-                );
-                // In strict mode, propagate the error instead of silent fallback
-                if super::strict_mode_enabled() {
-                    return Err(e);
-                }
-                // Fall through to scaffold
-            }
-        }
-    }
-
-    // Fallback: Create scaffold prediction mode grid
-    let is_intra = parsed.frame_type.is_intra_only;
-
-    for row in 0..grid_h {
-        for col in 0..grid_w {
-            let mode = if is_intra {
-                get_intra_mode_for_position(col, row)
-            } else {
-                get_inter_mode_for_position(col, row)
-            };
-            modes.push(Some(mode));
-        }
-    }
-
+    build_grid_from_coding_units_spatial(
+        &coding_units,
+        parsed,
+        block_w,
+        block_h,
+        &mut modes,
+        |cu| cu.mode,
+    )?;
     Ok(PredictionModeGrid::new(
         parsed.dimensions.width,
         parsed.dimensions.height,
@@ -335,38 +229,6 @@ pub fn extract_prediction_mode_grid_from_parsed(
         block_h,
         modes,
     ))
-}
-
-/// Get INTRA prediction mode for block position
-fn get_intra_mode_for_position(col: u32, row: u32) -> PredictionMode {
-    const INTRA_MODES: [PredictionMode; 10] = [
-        PredictionMode::DcPred,
-        PredictionMode::VPred,
-        PredictionMode::HPred,
-        PredictionMode::D45Pred,
-        PredictionMode::D135Pred,
-        PredictionMode::D113Pred,
-        PredictionMode::D157Pred,
-        PredictionMode::D203Pred,
-        PredictionMode::SmoothPred,
-        PredictionMode::PaethPred,
-    ];
-
-    let idx = ((col as usize) + (row as usize) * 3) % INTRA_MODES.len();
-    INTRA_MODES[idx]
-}
-
-/// Get INTER prediction mode for block position
-fn get_inter_mode_for_position(col: u32, row: u32) -> PredictionMode {
-    const INTER_MODES: [PredictionMode; 4] = [
-        PredictionMode::NewMv,
-        PredictionMode::NearestMv,
-        PredictionMode::NearMv,
-        PredictionMode::GlobalMv,
-    ];
-
-    let idx = ((col as usize) + (row as usize)) % INTER_MODES.len();
-    INTER_MODES[idx]
 }
 
 /// Transform Grid for visualization
@@ -487,61 +349,23 @@ pub fn extract_transform_grid_from_parsed(
         )));
     }
 
+    if !super::provenance::has_decodable_tile(parsed) {
+        return Err(super::provenance::no_decodable_tile());
+    }
+    let coding_units = parse_all_coding_units(parsed)?;
+    tracing::debug!(
+        "Extracting transform sizes from {} coding units",
+        coding_units.len()
+    );
     let mut tx_sizes = Vec::with_capacity(total_blocks);
-
-    // If we have tile data, try to parse actual transform sizes
-    if super::provenance::has_decodable_tile(parsed) {
-        match parse_all_coding_units(parsed) {
-            Ok(coding_units) => {
-                tracing::debug!(
-                    "Extracting transform sizes from {} coding units",
-                    coding_units.len()
-                );
-
-                // Build a grid of transform sizes from coding units
-                // using a spatial index for O(num_grid_blocks + num_cus) performance
-                //
-                // Before: O(grid_h × grid_w × num_coding_units) - millions of iterations
-                // After: O(num_grid_blocks + num_coding_units) - linear scan
-                build_grid_from_coding_units_spatial(
-                    &coding_units,
-                    parsed,
-                    block_w,
-                    block_h,
-                    &mut tx_sizes,
-                    |cu| cu.tx_size,
-                    get_transform_size_for_position,
-                )?;
-
-                return Ok(TransformGrid::new(
-                    parsed.dimensions.width,
-                    parsed.dimensions.height,
-                    block_w,
-                    block_h,
-                    tx_sizes,
-                ));
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to parse coding units for transform sizes: {}, using scaffold",
-                    e
-                );
-                // In strict mode, propagate the error instead of silent fallback
-                if super::strict_mode_enabled() {
-                    return Err(e);
-                }
-                // Fall through to scaffold
-            }
-        }
-    }
-
-    // Fallback: Create scaffold transform size grid
-    for row in 0..grid_h {
-        for col in 0..grid_w {
-            tx_sizes.push(Some(get_transform_size_for_position(col, row)));
-        }
-    }
-
+    build_grid_from_coding_units_spatial(
+        &coding_units,
+        parsed,
+        block_w,
+        block_h,
+        &mut tx_sizes,
+        |cu| cu.tx_size,
+    )?;
     Ok(TransformGrid::new(
         parsed.dimensions.width,
         parsed.dimensions.height,
@@ -549,18 +373,6 @@ pub fn extract_transform_grid_from_parsed(
         block_h,
         tx_sizes,
     ))
-}
-
-/// Get transform size for block position
-fn get_transform_size_for_position(col: u32, row: u32) -> TxSize {
-    // Bias towards 16x16 and 8x8 (most common in practice)
-    let sum = (col + row) as usize;
-    match sum % 4 {
-        0 => TxSize::Tx16x16,
-        1 => TxSize::Tx8x8,
-        2 => TxSize::Tx16x16,
-        _ => TxSize::Tx4x4,
-    }
 }
 
 /// Build a grid from coding units using spatial indexing for O(n) performance
@@ -580,19 +392,18 @@ fn get_transform_size_for_position(col: u32, row: u32) -> TxSize {
 /// - `block_w`, `block_h`: Grid block size in pixels
 /// - `output`: Vector to fill with grid values
 /// - `cu_value_fn`: Function to extract value from CU (mode, tx_size, etc.)
-/// - `default_fn`: Function to generate default value for grid position
-fn build_grid_from_coding_units_spatial<T, F, G>(
+///
+/// Grid blocks no coding unit covers (the decode stopped before them) stay `None`.
+fn build_grid_from_coding_units_spatial<T, F>(
     coding_units: &[crate::tile::CodingUnit],
     parsed: &ParsedFrame,
     block_w: u32,
     block_h: u32,
     output: &mut Vec<Option<T>>,
     cu_value_fn: F,
-    default_fn: G,
 ) -> Result<(), BitvueError>
 where
     F: Fn(&crate::tile::CodingUnit) -> T,
-    G: Fn(u32, u32) -> T,
 {
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
@@ -631,7 +442,6 @@ where
             let sb_y = block_y / parsed.dimensions.sb_size;
 
             // Get CUs from this superblock only (O(1) lookup)
-            let mut found_value = false;
             if let Some(cu_indices) = sb_index.get(&(sb_x, sb_y)) {
                 // Only check CUs from this superblock (typically 1-4 CUs)
                 for cu_idx in cu_indices {
@@ -646,17 +456,8 @@ where
                         if idx < output.len() {
                             output[idx] = Some(cu_value_fn(cu));
                         }
-                        found_value = true;
                         break;
                     }
-                }
-            }
-
-            if !found_value {
-                // No CU found - use default
-                let idx = (grid_y * grid_w + grid_x) as usize;
-                if idx < output.len() {
-                    output[idx] = Some(default_fn(grid_x, grid_y));
                 }
             }
         }
@@ -680,47 +481,16 @@ mod tests {
     }
 
     #[test]
-    fn test_get_intra_mode_deterministic() {
-        // Act
-        let mode1 = get_intra_mode_for_position(5, 10);
-        let mode2 = get_intra_mode_for_position(5, 10);
-
-        // Assert: Same position should give same mode
-        assert_eq!(mode1, mode2, "Should return same mode for same position");
-    }
-
-    #[test]
-    fn test_get_inter_mode_deterministic() {
-        // Act
-        let mode1 = get_inter_mode_for_position(3, 7);
-        let mode2 = get_inter_mode_for_position(3, 7);
-
-        // Assert: Same position should give same mode
-        assert_eq!(mode1, mode2, "Should return same mode for same position");
-    }
-
-    #[test]
-    fn test_get_transform_size_deterministic() {
-        let tx1 = get_transform_size_for_position(2, 4);
-        let tx2 = get_transform_size_for_position(2, 4);
-        assert_eq!(tx1, tx2, "Should return same size for same position");
-    }
-
-    #[test]
-    fn test_partition_grid_fallback() {
-        // Arrange: Empty OBU data (should use scaffold)
+    fn a_frame_without_decodable_tile_data_is_an_error_for_every_grid() {
+        // No tile in these bytes: there is nothing to decode, and no substitute grid.
         let obu_data = vec![0x00, 0x01, 0x02, 0x03];
+        let parsed = ParsedFrame::parse(&obu_data).unwrap();
 
-        // Act
-        let result = extract_partition_grid(&obu_data, 0);
-
-        // Assert: Should create scaffold grid
-        assert!(
-            result.is_ok(),
-            "Partition grid extraction should succeed with fallback"
-        );
-        let grid = result.unwrap();
-        assert!(!grid.blocks.is_empty(), "Grid should have scaffold blocks");
+        assert!(extract_partition_grid_from_parsed(&parsed).is_err());
+        assert!(extract_prediction_mode_grid_from_parsed(&parsed).is_err());
+        assert!(extract_transform_grid_from_parsed(&parsed).is_err());
+        assert!(super::super::extract_mv_grid_from_parsed(&parsed).is_err());
+        assert!(super::super::extract_qp_grid_from_parsed(&parsed, 0, 32).is_err());
     }
 
     #[test]

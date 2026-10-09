@@ -23,16 +23,10 @@
 //!
 //! ## Error Handling Strategy
 //!
-//! Extraction functions use a best-effort approach by default:
-//! - Try to parse actual data from tile data
-//! - Fall back to scaffold/estimated data if parsing fails
-//! - Log warnings for debugging
-//!
-//! For testing/debugging, strict mode can be enabled via:
-//! ```ignore
-//! use bitvue_av1::overlay_extraction::set_strict_mode;
-//! set_strict_mode(true);  // Errors propagate instead of silent fallback
-//! ```
+//! Extraction functions never invent data. A frame whose tile data cannot be decoded (no tile,
+//! or a tile too small to hold a symbol) is an `Err`; a frame whose decode stops early yields a
+//! grid whose remaining cells are marked missing. [`frame_provenance`] says whether the decoded
+//! part can be trusted.
 
 mod cache;
 pub(crate) mod cu_parser;
@@ -43,37 +37,6 @@ mod parser;
 mod partition;
 mod provenance;
 mod qp_extractor;
-
-use std::sync::atomic::{AtomicBool, Ordering};
-
-/// Global strict mode flag for overlay extraction
-///
-/// When enabled, parse errors will propagate instead of silently
-/// falling back to scaffold data. Useful for testing and debugging.
-static STRICT_MODE: AtomicBool = AtomicBool::new(false);
-
-/// Enable or disable strict mode for overlay extraction
-///
-/// When strict mode is enabled:
-/// - Parse errors will be returned instead of logged
-/// - No fallback to scaffold/estimated data
-/// - Useful for testing and debugging
-///
-/// # Example
-/// ```ignore
-/// use bitvue_av1::overlay_extraction::set_strict_mode;
-/// set_strict_mode(true);
-/// let result = extract_prediction_mode_grid_from_parsed(&parsed);
-/// // If parsing fails, result will be Err instead of Ok with scaffold
-/// ```
-pub fn set_strict_mode(enabled: bool) {
-    STRICT_MODE.store(enabled, Ordering::SeqCst);
-}
-
-/// Check if strict mode is enabled
-pub fn strict_mode_enabled() -> bool {
-    STRICT_MODE.load(Ordering::Relaxed)
-}
 
 // Re-export public API
 pub use cu_parser::{parse_all_coding_units, parse_coding_units_checked};

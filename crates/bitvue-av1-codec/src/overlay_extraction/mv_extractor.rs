@@ -36,7 +36,8 @@ pub fn extract_mv_grid(obu_data: &[u8], _frame_index: usize) -> Result<MVGrid, B
 ///
 /// **Current Implementation**:
 /// - Parses tile data to extract actual motion vectors from coding units
-/// - Falls back to scaffold if tile data unavailable or parsing fails
+/// - Fails if the frame has no decodable tile data (there is no substitute grid); cells past the
+///   point where decoding stopped are `BlockMode::None`
 /// - Uses quarter-pel precision motion vectors from AV1 bitstream
 pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, BitvueError> {
     let block_w = OVERLAY_BLOCK_SIZE;
@@ -53,100 +54,54 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
     let mut mv_l1 = Vec::with_capacity(total_blocks);
     let mut mode = Vec::with_capacity(total_blocks);
 
-    // If we have tile data, try to parse actual motion vectors
-    if super::provenance::has_decodable_tile(parsed) {
-        match parse_all_coding_units(parsed) {
-            Ok(coding_units) => {
-                tracing::debug!("Extracting MV from {} coding units", coding_units.len());
-
-                // Build spatial index for O(1) CU lookups (eliminates O(n²) bottleneck)
-                let spatial_index =
-                    CuSpatialIndex::new(&coding_units, grid_w, grid_h, block_w, block_h);
-
-                // Build a grid of MVs from coding units using spatial index
-                for sb_y in 0..grid_h {
-                    for sb_x in 0..grid_w {
-                        // O(1) lookup instead of O(n) linear search
-                        if let Some(cu_idx) = spatial_index.get_cu_index(sb_x, sb_y) {
-                            let cu = &coding_units[cu_idx];
-
-                            // This CU overlaps our block - use its MV
-                            if cu.use_intrabc {
-                                // Always a subset of intra (ref_frame[0] == Intra) -- see
-                                // BlockMode::IntraBc's doc.
-                                mv_l0.push(CoreMV::MISSING);
-                                mv_l1.push(CoreMV::MISSING);
-                                mode.push(BlockMode::IntraBc);
-                            } else if cu.is_inter() {
-                                mv_l0.push(overlay_mv(cu.mv[0]));
-                                let is_compound = cu.ref_frames[1] != crate::tile::RefFrame::Intra;
-                                // L1 (backward reference MV) is only meaningful for compound
-                                // blocks -- `cu.mv[1]` is always zero for single-ref blocks (see
-                                // `parse_coding_unit`), so reporting it as MISSING there (rather
-                                // than a misleading real-looking zero) matches how intra/no-CU
-                                // blocks already report MISSING for both planes.
-                                mv_l1.push(if is_compound {
-                                    overlay_mv(cu.mv[1])
-                                } else {
-                                    CoreMV::MISSING
-                                });
-                                mode.push(if cu.skip {
-                                    BlockMode::Skip
-                                } else if is_compound {
-                                    BlockMode::Compound
-                                } else {
-                                    BlockMode::Inter
-                                });
-                            } else {
-                                mv_l0.push(CoreMV::MISSING);
-                                mv_l1.push(CoreMV::MISSING);
-                                mode.push(BlockMode::Intra);
-                            }
-                        } else {
-                            // No CU found - use default based on frame type
-                            if parsed.frame_type.is_intra_only {
-                                mv_l0.push(CoreMV::MISSING);
-                                mv_l1.push(CoreMV::MISSING);
-                                mode.push(BlockMode::Intra);
-                            } else {
-                                mv_l0.push(CoreMV::ZERO);
-                                mv_l1.push(CoreMV::MISSING);
-                                mode.push(BlockMode::Inter);
-                            }
-                        }
-                    }
-                }
-
-                return Ok(MVGrid::new(
-                    parsed.dimensions.width,
-                    parsed.dimensions.height,
-                    block_w,
-                    block_h,
-                    mv_l0,
-                    mv_l1,
-                    Some(mode),
-                ));
-            }
-            Err(e) => {
-                tracing::warn!("Failed to parse coding units for MV: {}, using scaffold", e);
-                // Fall through to scaffold
-            }
-        }
+    if !super::provenance::has_decodable_tile(parsed) {
+        return Err(super::provenance::no_decodable_tile());
     }
+    let coding_units = parse_all_coding_units(parsed)?;
+    tracing::debug!("Extracting MV from {} coding units", coding_units.len());
 
-    // Fallback: Create scaffold MV grid
-    let is_intra = parsed.frame_type.is_intra_only;
+    // Build spatial index for O(1) CU lookups (eliminates O(n²) bottleneck)
+    let spatial_index = CuSpatialIndex::new(&coding_units, grid_w, grid_h, block_w, block_h);
 
-    for _ in 0..total_blocks {
-        if is_intra {
-            mv_l0.push(CoreMV::MISSING);
-            mv_l1.push(CoreMV::MISSING);
-            mode.push(BlockMode::Intra);
-        } else {
-            // Inter frames (with or without tiles) use default MV
-            mv_l0.push(CoreMV::ZERO);
-            mv_l1.push(CoreMV::ZERO);
-            mode.push(BlockMode::Inter);
+    for sb_y in 0..grid_h {
+        for sb_x in 0..grid_w {
+            let Some(cu_idx) = spatial_index.get_cu_index(sb_x, sb_y) else {
+                // No decoded block covers this cell (the decode stopped before it).
+                mv_l0.push(CoreMV::MISSING);
+                mv_l1.push(CoreMV::MISSING);
+                mode.push(BlockMode::None);
+                continue;
+            };
+            let cu = &coding_units[cu_idx];
+            if cu.use_intrabc {
+                // Always a subset of intra (ref_frame[0] == Intra) -- see BlockMode::IntraBc's doc.
+                mv_l0.push(CoreMV::MISSING);
+                mv_l1.push(CoreMV::MISSING);
+                mode.push(BlockMode::IntraBc);
+            } else if cu.is_inter() {
+                mv_l0.push(overlay_mv(cu.mv[0]));
+                let is_compound = cu.ref_frames[1] != crate::tile::RefFrame::Intra;
+                // L1 (backward reference MV) is only meaningful for compound blocks --
+                // `cu.mv[1]` is always zero for single-ref blocks (see `parse_coding_unit`), so
+                // reporting it as MISSING there (rather than a misleading real-looking zero)
+                // matches how intra/no-CU blocks already report MISSING for both planes.
+                mv_l1.push(if is_compound {
+                    overlay_mv(cu.mv[1])
+                } else {
+                    CoreMV::MISSING
+                });
+                mode.push(if cu.skip {
+                    BlockMode::Skip
+                } else if is_compound {
+                    BlockMode::Compound
+                } else {
+                    BlockMode::Inter
+                });
+            } else {
+                mv_l0.push(CoreMV::MISSING);
+                mv_l1.push(CoreMV::MISSING);
+                mode.push(BlockMode::Intra);
+            }
         }
     }
 
@@ -184,20 +139,10 @@ mod tests {
     }
 
     #[test]
-    fn test_mv_grid_with_valid_data() {
-        // Arrange
+    fn placeholder_obus_without_tile_data_give_an_error_not_an_invented_grid() {
         let obu_data = create_test_obu_data();
 
-        // Act
-        let result = extract_mv_grid(&obu_data, 0);
-
-        // Assert: Should create a grid with default dimensions
-        assert!(result.is_ok(), "MV grid extraction should succeed");
-        let grid = result.unwrap();
-        assert_eq!(grid.block_w, OVERLAY_BLOCK_SIZE);
-        assert_eq!(grid.block_h, OVERLAY_BLOCK_SIZE);
-        assert!(!grid.mv_l0.is_empty(), "MV grid should have L0 vectors");
-        assert!(!grid.mv_l1.is_empty(), "MV grid should have L1 vectors");
+        assert!(extract_mv_grid(&obu_data, 0).is_err());
     }
 
     #[test]
