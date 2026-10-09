@@ -18,7 +18,7 @@
 //! `bitvue-sidecar`'s per-request commands, which remain stateless/random-access (see this
 //! session's `docs/DEVELOPMENT_PHASES.md` entry for the scope discussion).
 
-use crate::overlay_extraction::cu_parser::CuSpatialIndex;
+use crate::overlay_extraction::cu_spatial_index::CuSpatialIndex;
 use crate::tile::coding_unit::{CodingUnit, MotionVector, RefFrame};
 
 /// One saved candidate per 8x8 luma unit -- mirrors dav1d's `refmvs_temporal_block` (`refmvs.h:43-47`).

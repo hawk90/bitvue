@@ -30,6 +30,7 @@
 
 mod cache;
 pub(crate) mod cu_parser;
+pub(crate) mod cu_spatial_index;
 mod deblocking;
 mod energy_extractor;
 mod mv_extractor;
