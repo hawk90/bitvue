@@ -52,6 +52,19 @@ fn parse_all_coding_units_with_temporal(
 /// The parse behind [`parse_coding_units_checked`]. `temporal` supplies real temporal MV
 /// candidates (spec 7.9/7.10, [`crate::tile::motion_field`]); the cache key has no room for its
 /// content, so a caller that passes `Some` must not go through the cache.
+/// The entropy-context tracker for `parsed`'s tile: sized to the tile's full extent in 4x4 units
+/// and told the frame's real size and its references' sign biases.
+fn tile_context_for(parsed: &ParsedFrame) -> crate::tile::TileContext {
+    let dims = &parsed.dimensions;
+    let mut tile_ctx = crate::tile::TileContext::new(
+        (dims.sb_cols * dims.sb_size).div_ceil(4),
+        (dims.sb_rows * dims.sb_size).div_ceil(4),
+    );
+    tile_ctx.set_frame_extent(dims.width, dims.height);
+    tile_ctx.set_sign_bias(parsed.ref_frame_sign_bias);
+    tile_ctx
+}
+
 fn parse_coding_units_with_outcome(
     parsed: &ParsedFrame,
     temporal: Option<(&crate::tile::ProjectedMotionField, [i32; 7])>,
@@ -80,11 +93,7 @@ fn parse_coding_units_with_outcome(
 
     // Entropy-context tracker (currently only `skip` uses it -- see
     // `crate::tile::TileContext`'s doc), sized to the tile's full extent in 4x4 units.
-    let mut tile_ctx = crate::tile::TileContext::new(
-        (sb_cols * sb_size).div_ceil(4),
-        (sb_rows * sb_size).div_ceil(4),
-    );
-    tile_ctx.set_frame_extent(parsed.dimensions.width, parsed.dimensions.height);
+    let mut tile_ctx = tile_context_for(parsed);
     if let Some((projected, pocdiff)) = temporal {
         tile_ctx.set_temporal_context(projected.clone(), pocdiff);
         tile_ctx.set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
@@ -654,11 +663,7 @@ mod tests {
                 let base_qp = parsed.frame_type.base_qp.unwrap() as i16;
                 let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
                 let dims = &parsed.dimensions;
-                let mut tile_ctx = crate::tile::TileContext::new(
-                    (dims.sb_cols * dims.sb_size).div_ceil(4),
-                    (dims.sb_rows * dims.sb_size).div_ceil(4),
-                );
-                tile_ctx.set_frame_extent(dims.width, dims.height);
+                let mut tile_ctx = tile_context_for(&parsed);
                 if let (true, Some(ref_frame_idx)) =
                     (parsed.use_ref_frame_mvs, parsed.ref_frame_idx)
                 {
@@ -806,16 +811,12 @@ mod tests {
     /// A second, independent stream: 12 frames of a synthetic test pattern encoded with rav1e
     /// (`test_data/av1_rav1e_testsrc2.ivf`, see `docs/PARITY_CHECKLIST.md`). Unlike the fixture it
     /// is a typical encoder output: every frame updates its CDFs at the end of the frame
-    /// (`disable_frame_end_update_cdf = 0`) and frames load their CDFs from a reference, and its
-    /// key frame uses loop restoration. `ORACLE` is dav1d 1.5.1's per-frame symbol count and
-    /// FNV-1a digest of the `"{rng} {cnt} {dif}\n"` lines, for all 12 frames.
-    ///
-    /// The key frame and the first inter frame match (CDFs saved at the end of a frame, and the
-    /// segmentation features loaded from the primary reference frame). The next inter frame
-    /// builds a longer motion-vector candidate list than dav1d at its first divergence, so the
-    /// assertion is a ratchet -- when more leading frames match, raise `MATCHING_FRAMES`.
+    /// (`disable_frame_end_update_cdf = 0`), frames load their CDFs from a reference, segmentation
+    /// features carry over between frames, and its key frame uses loop restoration. `ORACLE` is
+    /// dav1d 1.5.1's per-frame symbol count and FNV-1a digest of the `"{rng} {cnt} {dif}\n"`
+    /// lines, for all 12 frames; every one of them must match.
     #[test]
-    fn rav1e_clip_decodes_symbol_for_symbol_like_dav1d_as_far_as_state_is_supported() {
+    fn rav1e_clip_decodes_symbol_for_symbol_like_dav1d() {
         const ORACLE: [(usize, u64); 12] = [
             (35_205, 0xf4d9_4bf6_a511_c1c9),
             (22_555, 0x42d5_5223_c818_2a18),
@@ -830,7 +831,6 @@ mod tests {
             (8_843, 0xab45_9ff6_76ca_d372),
             (7_863, 0x777e_d8ef_8959_bc8f),
         ];
-        const MATCHING_FRAMES: usize = 2;
         const CLIP: &[u8] = include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf");
 
         let traces = decode_traces(CLIP, ORACLE.len());
@@ -845,15 +845,14 @@ mod tests {
             }
             trace.len() == symbols && hash == digest
         };
-        let matching = traces
-            .iter()
-            .zip(&ORACLE)
-            .take_while(|(trace, expected)| matches(trace, expected))
-            .count();
-        assert!(
-            matching >= MATCHING_FRAMES,
-            "only {matching} leading frames match dav1d, expected at least {MATCHING_FRAMES}"
-        );
+        for (frame, (trace, expected)) in traces.iter().zip(&ORACLE).enumerate() {
+            assert!(
+                matches(trace, expected),
+                "frame {frame} diverges from dav1d ({} symbols, expected {})",
+                trace.len(),
+                expected.0
+            );
+        }
     }
 
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential

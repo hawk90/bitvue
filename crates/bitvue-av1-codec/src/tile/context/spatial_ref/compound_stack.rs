@@ -163,26 +163,20 @@ impl SpatialRefContext {
         (stack, cnt)
     }
 
-    /// Partial port of rav1d's `add_compound_extended_candidate` (`refmvs.c:769-`) -- the cnt<2
-    /// fallback `compound_mv_stack`'s doc describes. Scans the same top-row/left-col neighbor
-    /// footprint as the main scan above, but (unlike `compound_candidate_mv`, which requires an
-    /// EXACT ref-pair match) accepts any neighbor whose ref matches just ONE of our two refs
-    /// individually -- e.g. a single-ref neighbor referencing only `ref0` still contributes its
-    /// one MV to component 0's fill list even with `ref1` empty. Each of the two missing stack
-    /// components is filled independently (up to 2 matches each), matching real spec/rav1d.
+    /// The `cnt < 2` fallback of dav1d's `refmvs_find` for a compound query: neighbours on the top
+    /// row and left column whose references only partly match are used per component, so the
+    /// stack is padded to two entries. Port of `add_compound_extended_candidate` and the merge
+    /// that follows it (`src/refmvs.c`):
     ///
-    /// **Narrower than rav1d**: rav1d also recycles a genuinely non-matching-ref neighbor's MV as
-    /// a sign-flipped last-resort "diff" source (`ref_frame_sign_bias`, spec 5.9.14) before
-    /// falling back to global motion. `ref_frame_sign_bias` is *derived* from cross-frame
-    /// `RefOrderHint` state (`sign(relative_dist(RefOrderHint[ref], OrderHint))`) that this
-    /// stateless single-frame parser doesn't carry -- same cross-frame-state gap as
-    /// `crate::tile::motion_field`'s doc, not something a per-block fallback can source on its
-    /// own. This omits that "diff" tier entirely and goes straight from same-ref matches to the
-    /// global-motion fallback, which -- like `crate::tile::mv_prediction::MvPredictorContext::
-    /// predict_global_mv`'s doc -- is approximated as zero (`gm_params` values are parsed for
-    /// bit-position only, never stored by this crate). Pure value computation either way: doesn't
-    /// affect bitstream position, only how close an already-under-populated (cnt<2, itself a rare
-    /// edge case) stack slot's displayed/DRL-context-feeding MV is to the real decoder's.
+    /// - a neighbour reference equal to `ref0` is a "same" candidate for component 0, and (turned
+    ///   around when the two references' sign biases differ) a "diff" candidate for component 1;
+    ///   a reference equal to `ref1` is the mirror image; any other reference is a "diff"
+    ///   candidate for both components, turned around where the sign bias differs;
+    /// - each component takes its "same" candidates first, then its "diff" ones, then the
+    ///   global motion vector (zero here: no global-motion parameters are kept).
+    ///
+    /// Pure value computation: it does not move the bitstream position, but the values feed the
+    /// candidates of later blocks and the stack's DRL contexts.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn fill_compound_extended_candidates(
         &self,
@@ -198,8 +192,11 @@ impl SpatialRefContext {
         cnt: &mut usize,
     ) {
         let sz4 = w4.min(h4);
-        let mut same = [[crate::tile::coding_unit::MotionVector::zero(); 2]; 2];
-        let mut same_cnt = [0usize; 2];
+        let sign = [
+            self.sign_bias[ref0 as usize % 7],
+            self.sign_bias[ref1 as usize % 7],
+        ];
+        let mut lists = ExtendedLists::default();
 
         if have_top {
             let mut x = 0u32;
@@ -207,7 +204,7 @@ impl SpatialRefContext {
                 let Some(cell) = self.cell(x4 + x, y4 - 1) else {
                     break;
                 };
-                Self::accumulate_extended_match(cell, ref0, ref1, &mut same, &mut same_cnt);
+                self.add_compound_extended_candidate(&mut lists, cell, sign, ref0, ref1);
                 x += (cell.width_4x4 as u32).max(1);
             }
         }
@@ -217,15 +214,28 @@ impl SpatialRefContext {
                 let Some(cell) = self.cell(x4 - 1, y4 + y) else {
                     break;
                 };
-                Self::accumulate_extended_match(cell, ref0, ref1, &mut same, &mut same_cnt);
+                self.add_compound_extended_candidate(&mut lists, cell, sign, ref0, ref1);
                 y += (cell.height_4x4 as u32).max(1);
             }
         }
 
-        // Global-motion fallback (approximated as zero -- this function's own doc) for any
-        // component that still has fewer than 2 same-ref matches.
-        let ext0 = [same[0][0], same[1][0]];
-        let ext1 = [same[0][1], same[1][1]];
+        // Merge: per component, the "same" candidates, then the "diff" ones, then the global
+        // motion vector.
+        let zero = crate::tile::coding_unit::MotionVector::zero();
+        let merge = |comp: usize| -> [crate::tile::coding_unit::MotionVector; 2] {
+            let candidates = lists.same[..lists.same_count[comp]]
+                .iter()
+                .map(|c| c[comp])
+                .chain(lists.diff[..lists.diff_count[comp]].iter().map(|c| c[comp]));
+            let mut merged = [zero; 2];
+            for (slot, mv) in merged.iter_mut().zip(candidates) {
+                *slot = mv;
+            }
+            merged
+        };
+        let (comp0, comp1) = (merge(0), merge(1));
+        let ext0 = [comp0[0], comp1[0]];
+        let ext1 = [comp0[1], comp1[1]];
 
         match *cnt {
             0 => {
@@ -241,8 +251,7 @@ impl SpatialRefContext {
             }
             1 => {
                 // If the first extended candidate duplicates the already-real stack[0], use the
-                // second extended candidate instead (rav1d: "if the first extended was the same
-                // as the non-extended one, then replace it with the second extended one").
+                // second one instead.
                 let second = if stack[0].mv == ext0 { ext1 } else { ext0 };
                 stack[1] = CompoundMvStackEntry {
                     mv: second,
@@ -254,35 +263,62 @@ impl SpatialRefContext {
         }
     }
 
-    /// One neighbor cell's contribution to `fill_compound_extended_candidates`'s per-component
-    /// same-ref fill lists -- see that function's doc.
-    pub(super) fn accumulate_extended_match(
+    /// One neighbour's contribution to the "same" and "diff" lists -- dav1d's
+    /// `add_compound_extended_candidate`.
+    fn add_compound_extended_candidate(
+        &self,
+        lists: &mut ExtendedLists,
         cell: &SpatialRefCell,
+        sign: [bool; 2],
         ref0: i8,
         ref1: i8,
-        same: &mut [[crate::tile::coding_unit::MotionVector; 2]; 2],
-        same_cnt: &mut [usize; 2],
     ) {
         if !cell.valid {
             return;
         }
-        if cell.ref0 == ref0 && same_cnt[0] < 2 {
-            same[0][same_cnt[0]] = cell.mv0;
-            same_cnt[0] += 1;
-        }
-        if cell.ref0 == ref1 && same_cnt[1] < 2 {
-            same[1][same_cnt[1]] = cell.mv0;
-            same_cnt[1] += 1;
-        }
-        if cell.ref1 >= 0 {
-            if cell.ref1 == ref0 && same_cnt[0] < 2 {
-                same[0][same_cnt[0]] = cell.mv1;
-                same_cnt[0] += 1;
+        for (cand_ref, cand_mv) in [(cell.ref0, cell.mv0), (cell.ref1, cell.mv1)] {
+            if cand_ref < 0 {
+                break;
             }
-            if cell.ref1 == ref1 && same_cnt[1] < 2 {
-                same[1][same_cnt[1]] = cell.mv1;
-                same_cnt[1] += 1;
+            let bias = self.sign_bias[cand_ref as usize % 7];
+            let flipped = crate::tile::coding_unit::MotionVector::new(-cand_mv.x, -cand_mv.y);
+            let turned = |comp: usize| if sign[comp] ^ bias { flipped } else { cand_mv };
+            if cand_ref == ref0 {
+                lists.push_same(0, cand_mv);
+                lists.push_diff(1, turned(1));
+            } else if cand_ref == ref1 {
+                lists.push_same(1, cand_mv);
+                lists.push_diff(0, turned(0));
+            } else {
+                lists.push_diff(0, turned(0));
+                lists.push_diff(1, turned(1));
             }
+        }
+    }
+}
+
+/// The per-component candidate lists `fill_compound_extended_candidates` collects: up to two
+/// "same" and two "diff" motion vectors for each of the two components.
+#[derive(Default)]
+struct ExtendedLists {
+    same: [[crate::tile::coding_unit::MotionVector; 2]; 2], // [candidate][component]
+    same_count: [usize; 2],
+    diff: [[crate::tile::coding_unit::MotionVector; 2]; 2],
+    diff_count: [usize; 2],
+}
+
+impl ExtendedLists {
+    fn push_same(&mut self, comp: usize, mv: crate::tile::coding_unit::MotionVector) {
+        if self.same_count[comp] < 2 {
+            self.same[self.same_count[comp]][comp] = mv;
+            self.same_count[comp] += 1;
+        }
+    }
+
+    fn push_diff(&mut self, comp: usize, mv: crate::tile::coding_unit::MotionVector) {
+        if self.diff_count[comp] < 2 {
+            self.diff[self.diff_count[comp]][comp] = mv;
+            self.diff_count[comp] += 1;
         }
     }
 }

@@ -550,3 +550,19 @@ fn segmentation_with_new_data_or_disabled_ignores_the_previous_features() {
     assert!(fresh.feature_enabled.iter().flatten().all(|&on| !on));
     assert_eq!(fresh.last_active_seg_id, 0);
 }
+
+/// `RefFrameSignBias`: a reference displayed after the current frame is flagged; intra frames
+/// (no references) flag nothing.
+#[test]
+fn ref_frame_sign_bias_flags_references_displayed_after_the_frame() {
+    let seq = parse_sequence_header(&minimal_seq_header_bytes()).unwrap();
+    let mut hints = [0u32; NUM_REF_FRAMES];
+    hints[1] = 3; // before the frame
+    hints[5] = 9; // after it
+    let idx = [1u8, 1, 1, 5, 5, 5, 5];
+
+    let bias = ref_frame_sign_bias(&hints, Some(&idx), 6, &seq);
+    assert_eq!(bias, [false, false, false, true, true, true, true]);
+
+    assert_eq!(ref_frame_sign_bias(&hints, None, 6, &seq), [false; 7]);
+}

@@ -2,6 +2,13 @@
 
 use super::TileContext;
 
+/// dav1d compares the reference with `(unsigned) ref >= 4U` in the two branches where one
+/// neighbour is compound: an intra neighbour (-1) therefore counts as backward there, unlike in
+/// the other branches, which compare signed.
+fn is_backward_or_intra(ref0: i8) -> bool {
+    (ref0 as u8) >= 4
+}
+
 impl TileContext {
     /// `comp_mode` context (0..=4) -- whether this block is likely single- or compound-reference,
     /// derived from the above/left neighbors' reference counts. Source: rav1d `get_comp_ctx`
@@ -22,10 +29,10 @@ impl TileContext {
                     if l_comp() {
                         4
                     } else {
-                        2 + u8::from(l_ref0() >= 4)
+                        2 + u8::from(is_backward_or_intra(l_ref0()))
                     }
                 } else if l_comp() {
-                    2 + u8::from(a_ref0() >= 4)
+                    2 + u8::from(is_backward_or_intra(a_ref0()))
                 } else {
                     u8::from((l_ref0() >= 4) ^ (a_ref0() >= 4))
                 }
@@ -299,6 +306,28 @@ mod tests {
         let mut ctx = TileContext::new(16, 16);
         ctx.set_ref_frames(0, 0, 4, 4, false, true, 0, 4);
         assert_eq!(ctx.comp_mode_context(5, 0), 3); // left only, compound
+    }
+
+    /// dav1d compares `(unsigned) ref >= 4U` where one neighbour is compound, so an intra
+    /// neighbour (reference -1) counts as backward there: context 3, not 2. Where neither
+    /// neighbour is compound the comparison is signed and an intra neighbour is not backward.
+    #[test]
+    fn test_comp_mode_context_intra_neighbour_beside_a_compound_one_counts_as_backward() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_ref_frames(5, 0, 4, 4, false, true, 0, 4); // above: compound
+        ctx.set_ref_frames(0, 5, 4, 4, true, false, -1, -1); // left: intra
+        assert_eq!(ctx.comp_mode_context(5, 5), 3);
+
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_ref_frames(5, 0, 4, 4, true, false, -1, -1); // above: intra
+        ctx.set_ref_frames(0, 5, 4, 4, false, true, 0, 4); // left: compound
+        assert_eq!(ctx.comp_mode_context(5, 5), 3);
+
+        // Neither compound: intra (-1) is not >= 4, LAST is not either -> 0.
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_ref_frames(5, 0, 4, 4, true, false, -1, -1);
+        ctx.set_ref_frames(0, 5, 4, 4, false, false, 0, -1);
+        assert_eq!(ctx.comp_mode_context(5, 5), 0);
     }
 
     #[test]
