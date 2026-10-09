@@ -192,6 +192,7 @@ mod tests {
                 switchable_motion_mode: true,
                 allow_warped_motion: true,
                 enable_interintra_compound: true,
+                enable_dual_filter: true,
                 enable_masked_compound: true,
                 enable_jnt_comp: true,
                 subpel_filter_switchable: true,

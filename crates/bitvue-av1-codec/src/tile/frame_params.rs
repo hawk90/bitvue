@@ -90,6 +90,7 @@ impl FrameCodingParams {
                 switchable_motion_mode: true,
                 allow_warped_motion: true,
                 enable_interintra_compound: false,
+                enable_dual_filter: true,
                 enable_masked_compound: false,
                 enable_jnt_comp: false,
                 subpel_filter_switchable: true,

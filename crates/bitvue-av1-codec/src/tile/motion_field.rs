@@ -468,6 +468,21 @@ pub fn add_temporal_candidates(
     pocdiff_ref0: i32,
     block: TemporalBlock,
 ) -> Vec<(MotionVector, bool)> {
+    temporal_sample_positions(block)
+        .into_iter()
+        .filter_map(|(x8, y8, first)| {
+            projected
+                .get(x8, y8)
+                .map(|cell| (mv_projection(cell.mv, pocdiff_ref0, cell.ref2ref), first))
+        })
+        .collect()
+}
+
+/// The 8x8-grid cells dav1d samples for a block (`refmvs.c:416-452`), as `(x8, y8, is_the_block's_
+/// own_top_left_sample)`: the main grid over the block's footprint, then -- for blocks with
+/// `2 <= min(bw4,bh4)` and `max(bw4,bh4) < 16` -- up to three more just below and to the right
+/// (clamped to the tile and the current 64x64).
+fn temporal_sample_positions(block: TemporalBlock) -> Vec<(u32, u32, bool)> {
     let TemporalBlock {
         bx4,
         by4,
@@ -484,16 +499,11 @@ pub fn add_temporal_candidates(
     let w8 = ((w4 + 1) >> 1).min(8);
     let h8 = ((h4 + 1) >> 1).min(8);
     let mut out = Vec::new();
-    let mut sample = |x8: u32, y8: u32, first: bool| {
-        if let Some(cell) = projected.get(x8, y8) {
-            out.push((mv_projection(cell.mv, pocdiff_ref0, cell.ref2ref), first));
-        }
-    };
     let mut y = 0;
     while y < h8 {
         let mut x = 0;
         while x < w8 {
-            sample(bx8 + x, by8 + y, x == 0 && y == 0);
+            out.push((bx8 + x, by8 + y, x == 0 && y == 0));
             x += step_h;
         }
         y += step_v;
@@ -502,14 +512,14 @@ pub fn add_temporal_candidates(
         let (bh8, bw8) = (bh4 >> 1, bw4 >> 1);
         let has_bottom = by8 + bh8 < (row_end >> 1).min((by8 & !7) + 8);
         if has_bottom && bx8 > (bx8 & !7) {
-            sample(bx8 - 1, by8 + bh8, false);
+            out.push((bx8 - 1, by8 + bh8, false));
         }
         if bx8 + bw8 < (col_end >> 1).min((bx8 & !7) + 8) {
             if has_bottom {
-                sample(bx8 + bw8, by8 + bh8, false);
+                out.push((bx8 + bw8, by8 + bh8, false));
             }
             if by8 + bh8 - 1 < (row_end >> 1).min((by8 & !7) + 8) {
-                sample(bx8 + bw8, by8 + bh8 - 1, false);
+                out.push((bx8 + bw8, by8 + bh8 - 1, false));
             }
         }
     }
@@ -517,38 +527,25 @@ pub fn add_temporal_candidates(
 }
 
 /// Compound counterpart of [`add_temporal_candidates`] -- dav1d `add_temporal_candidate`'s
-/// `ref.ref[1] != -1` branch (`refmvs.c:216-232`): the *same* grid cell is projected against
-/// **both** refs' `pocdiff` (via the same [`mv_projection`] this crate already uses for the
-/// single-ref case) and pushed as one joint pair, not two independent single MVs. Same scope note
-/// as [`add_temporal_candidates`] (main grid scan only, no extra corner samples) and same
-/// weight-2/caller-dedups-by-value contract.
+/// `ref.ref[1] != -1` branch: the *same* grid cell is projected against **both** references'
+/// `pocdiff` and pushed as one joint pair. Same sample positions as the single-reference case.
 pub fn add_temporal_compound_candidates(
     projected: &ProjectedMotionField,
     pocdiff_ref0: i32,
     pocdiff_ref1: i32,
-    x8_start: u32,
-    y8_start: u32,
-    w8: u32,
-    h8: u32,
-    step_h: u32,
-    step_v: u32,
+    block: TemporalBlock,
 ) -> Vec<[MotionVector; 2]> {
-    let mut out = Vec::new();
-    let mut y = 0;
-    while y < h8 {
-        let mut x = 0;
-        while x < w8 {
-            if let Some(cell) = projected.get(x8_start + x, y8_start + y) {
-                out.push([
+    temporal_sample_positions(block)
+        .into_iter()
+        .filter_map(|(x8, y8, _)| {
+            projected.get(x8, y8).map(|cell| {
+                [
                     mv_projection(cell.mv, pocdiff_ref0, cell.ref2ref),
                     mv_projection(cell.mv, pocdiff_ref1, cell.ref2ref),
-                ]);
-            }
-            x += step_h;
-        }
-        y += step_v;
-    }
-    out
+                ]
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

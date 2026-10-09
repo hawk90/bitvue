@@ -109,6 +109,14 @@ pub(super) fn read_compound_mode_info(
             {
                 drl_idx += 1;
             }
+            // NEAR can still be refined to NEARISH by one more bit when the list is long enough.
+            if drl_idx == 2
+                && n_mvs > 3
+                && decoder
+                    .read_drl_bit(crate::tile::context::get_compound_drl_context(&stack, 2))?
+            {
+                drl_idx += 1;
+            }
         }
 
         // Per-direction value: `Nearest`/`Near` read straight from the real stack;
@@ -160,7 +168,7 @@ pub(super) fn read_compound_mode_info(
                 3 // SEG (no wedge eligible at this size)
             }
         } else if inter_mode_flags.enable_jnt_comp {
-            let jctx = tile_ctx.jnt_comp_context(x4, y4);
+            let jctx = tile_ctx.jnt_comp_context(x4, y4, rav1d_ref0, rav1d_ref1);
             1 + u8::from(decoder.read_jnt_comp(jctx)?)
         } else {
             2 // AVG

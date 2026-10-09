@@ -51,20 +51,65 @@ pub(super) fn read_interp_filter(
         );
     if inter_mode_flags.subpel_filter_switchable {
         let is_comp = is_compound;
+        // Without `enable_dual_filter` only the first axis is coded; the second takes its value
+        // (dav1d: `filter[1] = filter[0]`), and both are recorded for the neighbours.
+        let mut first = 0;
         for dir in 0..2u8 {
             // Real dav1d always records the resulting filter into neighbor context
             // regardless of whether it was actually read -- `0` (`EIGHTTAP_REGULAR`) is the
             // real default `read_filter` never returns via the CDF path (its symbols start
             // at the crate's own regular-tap index), matching dav1d's own
             // `filter[i] = DAV1D_FILTER_8TAP_REGULAR` fallback.
-            let filter = if has_subpel_filter {
+            let filter = if has_subpel_filter && dir == 1 && !inter_mode_flags.enable_dual_filter {
+                first
+            } else if has_subpel_filter {
                 let fctx = tile_ctx.filter_context(x4, y4, is_comp, dir as usize, rav1d_ref0);
                 decoder.read_filter(dir, fctx)?
             } else {
                 0
             };
+            if dir == 0 {
+                first = filter;
+            }
             tile_ctx.set_filter(x4, y4, width_4x4, height_4x4, dir as usize, filter);
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tile::coding_unit::PredictionMode;
+
+    /// How many symbols `read_interp_filter` reads for an 8x8 single-reference NEARESTMV block.
+    fn symbols_read(enable_dual_filter: bool) -> usize {
+        let mut frame = FrameCodingParams::for_tests();
+        frame.inter_mode_flags.subpel_filter_switchable = true;
+        frame.inter_mode_flags.enable_dual_filter = enable_dual_filter;
+        let mut cu = CodingUnit::new(0, 0, 8, 8);
+        cu.mode = PredictionMode::NearestMv;
+        cu.ref_frames = [RefFrame::Last, RefFrame::Intra];
+        let mi = MiRect {
+            x4: 0,
+            y4: 0,
+            width: 2,
+            height: 2,
+        };
+        let mut tile_ctx = TileContext::new(16, 16);
+        let mut decoder = SymbolDecoder::new_with_qcat(&[0x5a; 64], 0).unwrap();
+        decoder.decoder.range_trace = Some(Vec::new());
+
+        read_interp_filter(&mut decoder, &mut tile_ctx, mi, &frame, &cu, false).unwrap();
+
+        decoder.decoder.range_trace.take().unwrap().len()
+    }
+
+    /// Without `enable_dual_filter` one filter is coded and shared by both axes (dav1d logs a
+    /// single `Post-subpel_filter`); with it there is one symbol per axis.
+    #[test]
+    fn one_filter_symbol_without_dual_filter_two_with_it() {
+        assert_eq!(symbols_read(false), 1);
+        assert_eq!(symbols_read(true), 2);
+    }
 }
