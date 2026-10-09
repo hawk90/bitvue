@@ -162,8 +162,7 @@ fn read_chroma_residual(
     // origin (a coordinate-scale approximation, not a truly independent chroma-plane grid --
     // see `TileContext`'s chroma field doc) since only above/left *adjacency* matters for
     // context selection here, not absolute physical distance.
-    if !cu.use_intrabc
-        && tx_type_flags.subsampling_x
+    if tx_type_flags.subsampling_x
         && tx_type_flags.subsampling_y
         && super::contexts::has_chroma(mi, &tx_type_flags)
     {
