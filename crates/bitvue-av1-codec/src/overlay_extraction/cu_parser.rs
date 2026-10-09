@@ -611,19 +611,11 @@ mod tests {
     /// so a hidden frame is its own entry), threading reference state and the motion field, and
     /// returns each frame's `(rng, cnt, dif)` trace.
     fn decode_fixture_traces(count: usize) -> Vec<Vec<(u32, i32, usize)>> {
-        decode_traces(AV1_IVF_FIXTURE, count, true)
+        decode_traces(AV1_IVF_FIXTURE, count)
     }
 
-    /// [`decode_fixture_traces`] for any IVF. `exact_cdf_save`: require every frame to leave its
-    /// CDFs unchanged for later frames (`disable_frame_end_update_cdf`), the only case this
-    /// harness saves correctly; with `false` the CDFs of a frame that adapts them at its end are
-    /// saved as they were at its start, so only the traces up to the first frame that loads such
-    /// CDFs are meaningful.
-    fn decode_traces(
-        ivf: &[u8],
-        count: usize,
-        exact_cdf_save: bool,
-    ) -> Vec<Vec<(u32, i32, usize)>> {
+    /// [`decode_fixture_traces`] for any IVF.
+    fn decode_traces(ivf: &[u8], count: usize) -> Vec<Vec<(u32, i32, usize)>> {
         let (_hdr, frames) = crate::ivf::parse_ivf_frames(ivf).unwrap();
         let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
         let seq = crate::parse_sequence_header(
@@ -705,10 +697,6 @@ mod tests {
                         .unwrap_or_else(|| crate::symbol::CdfContext::new_with_qcat(qcat)),
                     _ => crate::symbol::CdfContext::new_with_qcat(qcat),
                 };
-                assert!(
-                    parsed.disable_frame_end_update_cdf || !exact_cdf_save,
-                    "saving end-of-frame CDFs is not implemented"
-                );
                 let mut state = crate::tile::TileState {
                     decoder: crate::SymbolDecoder::with_cdf_context(
                         &parsed.tile_data,
@@ -755,7 +743,17 @@ mod tests {
                 };
                 let grid =
                     crate::tile::store_motion_field(&cus, dims.width, dims.height, &mfmv_sign);
-                mf_state.store_cdf(parsed.refresh_frame_flags, &initial_cdf);
+                // A frame that updates its CDFs at the end leaves its tile's adapted CDFs; one
+                // that does not leaves the CDFs it started from (spec `save_cdfs`).
+                let saved_cdf = if parsed.disable_frame_end_update_cdf {
+                    initial_cdf.clone()
+                } else {
+                    initial_cdf.saved_at_frame_end(
+                        &state.decoder.cdf_context,
+                        parsed.frame_type.is_intra_only,
+                    )
+                };
+                mf_state.store_cdf(parsed.refresh_frame_flags, &saved_cdf);
                 mf_state.update(
                     &prev_ref_order_hint,
                     parsed.refresh_frame_flags,
@@ -812,9 +810,10 @@ mod tests {
     /// key frame uses loop restoration. `ORACLE` is dav1d 1.5.1's per-frame symbol count and
     /// FNV-1a digest of the `"{rng} {cnt} {dif}\n"` lines, for all 12 frames.
     ///
-    /// Only the key frame matches today: later frames start from CDFs saved at the end of the
-    /// previous frame, which is not implemented. The assertion is a ratchet -- when more frames
-    /// match, raise `MATCHING_FRAMES`.
+    /// The key frame and the first inter frame match (CDFs saved at the end of a frame, and the
+    /// segmentation features loaded from the primary reference frame). The next inter frame
+    /// builds a longer motion-vector candidate list than dav1d at its first divergence, so the
+    /// assertion is a ratchet -- when more leading frames match, raise `MATCHING_FRAMES`.
     #[test]
     fn rav1e_clip_decodes_symbol_for_symbol_like_dav1d_as_far_as_state_is_supported() {
         const ORACLE: [(usize, u64); 12] = [
@@ -831,10 +830,10 @@ mod tests {
             (8_843, 0xab45_9ff6_76ca_d372),
             (7_863, 0x777e_d8ef_8959_bc8f),
         ];
-        const MATCHING_FRAMES: usize = 1;
+        const MATCHING_FRAMES: usize = 2;
         const CLIP: &[u8] = include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf");
 
-        let traces = decode_traces(CLIP, ORACLE.len(), false);
+        let traces = decode_traces(CLIP, ORACLE.len());
         assert_eq!(traces.len(), ORACLE.len());
         let matches = |trace: &[(u32, i32, usize)], &(symbols, digest): &(usize, u64)| {
             let mut hash = 0xcbf2_9ce4_8422_2325u64;

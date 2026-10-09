@@ -78,7 +78,7 @@ use self::{
     loop_filters::{
         parse_cdef_params, parse_delta_lf_params, parse_loop_filter_params, parse_lr_params,
     },
-    segmentation::parse_segmentation_params,
+    segmentation::{parse_segmentation_params, SegmentationFeatures},
     skip_mode::read_skip_mode_params,
     tile_info::read_tile_info,
 };
@@ -102,6 +102,9 @@ const SELECT_INTEGER_MV: u32 = 2;
 #[derive(Debug, Clone, Default)]
 pub struct RefFrameState {
     ref_order_hint: [u32; NUM_REF_FRAMES],
+    /// Segmentation feature data each slot was last refreshed with (spec
+    /// `save_segmentation_params`).
+    segmentation: [SegmentationFeatures; NUM_REF_FRAMES],
 }
 
 impl RefFrameState {
@@ -505,7 +508,15 @@ pub fn parse_frame_header_full(
     let base_q_idx = quant.base_q_idx;
     let (y_dc_delta_q, uv_dc_delta_q) = (Some(quant.y_dc), Some(quant.u_dc));
 
-    let segmentation = parse_segmentation_params(&mut reader, primary_ref_frame)?;
+    // `load_previous()`: a frame with a primary reference starts from that slot's segmentation
+    // features (and none otherwise, `setup_past_independence`).
+    let previous_segmentation = if primary_ref_frame == PRIMARY_REF_NONE {
+        SegmentationFeatures::default()
+    } else {
+        ref_state.segmentation[ref_frame_idx[primary_ref_frame as usize] as usize % NUM_REF_FRAMES]
+    };
+    let segmentation =
+        parse_segmentation_params(&mut reader, primary_ref_frame, &previous_segmentation)?;
 
     let delta_q_present = if base_q_idx > 0 {
         reader.read_bit()?
@@ -594,6 +605,7 @@ pub fn parse_frame_header_full(
     for i in 0..NUM_REF_FRAMES {
         if (refresh_frame_flags >> i) & 1 == 1 {
             ref_state.ref_order_hint[i] = order_hint;
+            ref_state.segmentation[i] = SegmentationFeatures::from(&segmentation);
         }
     }
 

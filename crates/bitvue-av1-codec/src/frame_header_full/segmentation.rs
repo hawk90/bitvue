@@ -103,9 +103,30 @@ impl SegmentationInfo {
     }
 }
 
+/// `FeatureEnabled`/`FeatureData` as a frame leaves them (spec `save_segmentation_params`), which
+/// a later frame with this frame as its `primary_ref_frame` starts from (`load_previous`) when it
+/// does not send new feature data (`segmentation_update_data = 0`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SegmentationFeatures {
+    pub feature_enabled: [[bool; SEG_LVL_MAX]; MAX_SEGMENTS],
+    pub feature_data: [[i16; SEG_LVL_MAX]; MAX_SEGMENTS],
+}
+
+impl From<&SegmentationInfo> for SegmentationFeatures {
+    fn from(info: &SegmentationInfo) -> Self {
+        Self {
+            feature_enabled: info.feature_enabled,
+            feature_data: info.feature_data,
+        }
+    }
+}
+
+/// `previous`: the features saved by the `primary_ref_frame` (all clear for
+/// `PRIMARY_REF_NONE`), used when this frame enables segmentation without sending new data.
 pub(super) fn parse_segmentation_params(
     reader: &mut BitReader,
     primary_ref_frame: u32,
+    previous: &SegmentationFeatures,
 ) -> Result<SegmentationInfo> {
     let enabled = reader.read_bit()?;
     if !enabled {
@@ -124,11 +145,13 @@ pub(super) fn parse_segmentation_params(
         (update_map, temporal_update, update_data)
     };
     let mut seg_id_pre_skip = false;
-    let mut last_active_seg_id = (MAX_SEGMENTS - 1) as u8;
-    let mut feature_enabled = [[false; SEG_LVL_MAX]; MAX_SEGMENTS];
-    let mut feature_data = [[0i16; SEG_LVL_MAX]; MAX_SEGMENTS];
+    let mut last_active_seg_id = 0;
+    // Without new data the features are the ones loaded from the primary reference frame.
+    let mut feature_enabled = previous.feature_enabled;
+    let mut feature_data = previous.feature_data;
     if update_data {
-        last_active_seg_id = 0;
+        feature_enabled = [[false; SEG_LVL_MAX]; MAX_SEGMENTS];
+        feature_data = [[0i16; SEG_LVL_MAX]; MAX_SEGMENTS];
         for seg in 0..MAX_SEGMENTS {
             for feature in 0..SEG_LVL_MAX {
                 let this_feature_enabled = reader.read_bit()?;
@@ -143,10 +166,16 @@ pub(super) fn parse_segmentation_params(
                         };
                         feature_data[seg][feature] = value as i16;
                     }
-                    last_active_seg_id = seg as u8;
-                    if feature >= SEG_LVL_REF_FRAME {
-                        seg_id_pre_skip = true;
-                    }
+                }
+            }
+        }
+    }
+    for (seg, features) in feature_enabled.iter().enumerate() {
+        for (feature, &on) in features.iter().enumerate() {
+            if on {
+                last_active_seg_id = seg as u8;
+                if feature >= SEG_LVL_REF_FRAME {
+                    seg_id_pre_skip = true;
                 }
             }
         }

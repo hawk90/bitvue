@@ -400,7 +400,12 @@ fn parse_segmentation_params_retains_real_feature_enabled_and_data() {
     }
     let payload = pack(&bits);
     let mut reader = BitReader::new(&payload);
-    let info = parse_segmentation_params(&mut reader, PRIMARY_REF_NONE).unwrap();
+    let info = parse_segmentation_params(
+        &mut reader,
+        PRIMARY_REF_NONE,
+        &SegmentationFeatures::default(),
+    )
+    .unwrap();
 
     assert!(info.enabled);
     assert!(info.update_map);
@@ -490,4 +495,58 @@ pub(crate) fn find_seq_header_in(frames: &[crate::ivf::IvfFrame]) -> Option<Vec<
         }
     }
     None
+}
+
+/// `segmentation_update_data = 0`: the frame keeps the features its primary reference frame was
+/// saved with (spec `load_previous`), and `SegIdPreSkip`/`LastActiveSegId` follow from them.
+#[test]
+fn segmentation_without_new_data_uses_the_primary_reference_frames_features() {
+    // enabled, update_map = 1, temporal_update = 0, update_data = 0
+    let data = [0b1100_0000u8];
+    let mut previous = SegmentationFeatures::default();
+    previous.feature_enabled[0][0] = true;
+    previous.feature_data[0][0] = -11;
+    previous.feature_enabled[3][0] = true;
+    previous.feature_data[3][0] = 19;
+
+    let mut reader = BitReader::new(&data);
+    let info = parse_segmentation_params(&mut reader, 2, &previous).unwrap();
+
+    assert!(info.enabled && info.update_map && !info.temporal_update);
+    assert_eq!(info.feature_data[0][0], -11);
+    assert_eq!(info.feature_data[3][0], 19);
+    assert_eq!(info.last_active_seg_id, 3);
+    assert!(!info.seg_id_pre_skip);
+
+    // A feature at or above SEG_LVL_REF_FRAME in the loaded data makes segment_id() precede skip.
+    previous.feature_enabled[4][SEG_LVL_REF_FRAME] = true;
+    let mut reader = BitReader::new(&data);
+    let info = parse_segmentation_params(&mut reader, 2, &previous).unwrap();
+    assert!(info.seg_id_pre_skip);
+    assert_eq!(info.last_active_seg_id, 4);
+}
+
+/// With new data the loaded features are discarded, and with segmentation off the saved features
+/// are clear.
+#[test]
+fn segmentation_with_new_data_or_disabled_ignores_the_previous_features() {
+    let mut previous = SegmentationFeatures::default();
+    previous.feature_enabled[2][0] = true;
+    previous.feature_data[2][0] = 5;
+
+    // enabled = 0
+    let mut reader = BitReader::new(&[0b0000_0000u8]);
+    let off = parse_segmentation_params(&mut reader, 2, &previous).unwrap();
+    assert!(!off.enabled);
+    assert!(off.feature_enabled.iter().flatten().all(|&on| !on));
+
+    // enabled, update_map = 1, temporal_update = 0, update_data = 1, then 64 feature-enabled
+    // bits all 0
+    let mut bits = vec![0b1101_0000u8];
+    bits.extend([0u8; 9]);
+    let mut reader = BitReader::new(&bits);
+    let fresh = parse_segmentation_params(&mut reader, 2, &previous).unwrap();
+    assert!(fresh.enabled);
+    assert!(fresh.feature_enabled.iter().flatten().all(|&on| !on));
+    assert_eq!(fresh.last_active_seg_id, 0);
 }
