@@ -174,10 +174,10 @@ pub struct MotionFieldState {
     /// slot -> that slot's own 7 refs' order hints, as they were when the frame that refreshed
     /// this slot was itself parsed.
     ref_ref_order_hint: [[u32; 7]; 8],
-    grids: [Option<MotionFieldGrid>; 8],
+    grids: [Option<std::sync::Arc<MotionFieldGrid>>; 8],
     /// slot -> the CDFs the frame that last refreshed this slot saved (spec `save_cdfs`), which a
     /// later frame with that slot as its `primary_ref_frame` starts from.
-    cdfs: [Option<crate::symbol::CdfContext>; 8],
+    cdfs: [Option<std::sync::Arc<crate::symbol::CdfContext>>; 8],
 }
 
 impl MotionFieldState {
@@ -187,14 +187,15 @@ impl MotionFieldState {
 
     /// The CDFs saved in `slot`, if any frame has refreshed it.
     pub fn saved_cdf(&self, slot: u8) -> Option<&crate::symbol::CdfContext> {
-        self.cdfs[slot as usize & 7].as_ref()
+        self.cdfs[slot as usize & 7].as_deref()
     }
 
     /// Saves `cdf` into every slot set in `refresh_frame_flags`.
     pub fn store_cdf(&mut self, refresh_frame_flags: u8, cdf: &crate::symbol::CdfContext) {
+        let shared = std::sync::Arc::new(cdf.clone());
         for slot in 0..8 {
             if refresh_frame_flags & (1 << slot) != 0 {
-                self.cdfs[slot] = Some(cdf.clone());
+                self.cdfs[slot] = Some(std::sync::Arc::clone(&shared));
             }
         }
     }
@@ -218,10 +219,11 @@ impl MotionFieldState {
             Some(idx) => std::array::from_fn(|m| prev_ref_order_hint[idx[m] as usize]),
             None => [0; 7], // intra frame: no references, matches dav1d leaving ref_ref_poc unused
         };
+        let grid = std::sync::Arc::new(grid);
         for i in 0..8 {
             if (refresh_frame_flags >> i) & 1 == 1 {
                 self.ref_ref_order_hint[i] = this_frame_ref_hints;
-                self.grids[i] = Some(grid.clone());
+                self.grids[i] = Some(std::sync::Arc::clone(&grid));
             }
         }
         // ref_state.ref_order_hint's own update already happened as a side effect of the caller's
@@ -628,7 +630,7 @@ mod tests {
             }),
         );
         let mut state = MotionFieldState::new();
-        state.grids[0] = Some(grid);
+        state.grids[0] = Some(std::sync::Arc::new(grid));
         state
     }
 

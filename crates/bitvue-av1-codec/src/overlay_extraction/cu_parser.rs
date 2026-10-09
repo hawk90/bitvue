@@ -27,6 +27,9 @@ pub fn parse_all_coding_units(
 
 /// [`parse_all_coding_units`] plus how the decode ended ([`DecodeOutcome`]), from the same cache.
 pub fn parse_coding_units_checked(parsed: &ParsedFrame) -> Result<ParsedCodingUnits, BitvueError> {
+    if let Some(decoded) = &parsed.decoded {
+        return Ok(decoded.clone());
+    }
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     // Everything besides the tile bytes that the parse reads (see `compute_frame_cache_key`).
     let context = format!(
@@ -49,9 +52,6 @@ fn parse_all_coding_units_with_temporal(
     parse_coding_units_with_outcome(parsed, temporal).map(|(units, _)| units)
 }
 
-/// The parse behind [`parse_coding_units_checked`]. `temporal` supplies real temporal MV
-/// candidates (spec 7.9/7.10, [`crate::tile::motion_field`]); the cache key has no room for its
-/// content, so a caller that passes `Some` must not go through the cache.
 /// The entropy-context tracker for `parsed`'s tile: sized to the tile's full extent in 4x4 units
 /// and told the frame's real size and its references' sign biases.
 fn tile_context_for(parsed: &ParsedFrame) -> crate::tile::TileContext {
@@ -66,10 +66,52 @@ fn tile_context_for(parsed: &ParsedFrame) -> crate::tile::TileContext {
     tile_ctx
 }
 
+/// What a frame's decode starts from beyond its own bytes: state carried over from earlier frames.
+#[derive(Default)]
+pub(crate) struct FrameDecodeInputs<'a> {
+    /// Real temporal MV candidates (spec 7.9/7.10, [`crate::tile::motion_field`]) and the frame's
+    /// `pocdiff`s.
+    pub temporal: Option<(&'a crate::tile::ProjectedMotionField, [i32; 7])>,
+    /// The CDFs the tile starts from (the primary reference frame's saved CDFs). `None`: the
+    /// defaults for the frame's quantizer.
+    pub initial_cdf: Option<crate::symbol::CdfContext>,
+}
+
+/// One decoded frame.
+pub(crate) struct FrameDecode {
+    pub units: Vec<crate::tile::CodingUnit>,
+    pub outcome: DecodeOutcome,
+    /// The tile's CDFs when decoding stopped (spec: what the frame saves when it updates its CDFs
+    /// at the end).
+    pub final_cdf: crate::symbol::CdfContext,
+    /// `(rng, cnt, dif)` after every symbol, for comparison with an instrumented dav1d.
+    #[cfg(test)]
+    pub trace: Vec<(u32, i32, usize)>,
+}
+
+/// The parse behind [`parse_coding_units_checked`]: no state from earlier frames. The cache key
+/// has no room for the inputs of [`decode_frame`], so only this stateless parse goes through it.
 fn parse_coding_units_with_outcome(
     parsed: &ParsedFrame,
     temporal: Option<(&crate::tile::ProjectedMotionField, [i32; 7])>,
 ) -> Result<(Vec<crate::tile::CodingUnit>, DecodeOutcome), BitvueError> {
+    let decode = decode_frame(
+        parsed,
+        FrameDecodeInputs {
+            temporal,
+            initial_cdf: None,
+        },
+    )?;
+    Ok((decode.units, decode.outcome))
+}
+
+/// Decodes `parsed`'s tile from `inputs`. The first superblock that fails ends the frame: the
+/// decoder has lost its place, so whatever it read after that would be noise presented as coding
+/// units.
+pub(crate) fn decode_frame(
+    parsed: &ParsedFrame,
+    inputs: FrameDecodeInputs<'_>,
+) -> Result<FrameDecode, BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     let tile_data = Arc::clone(&parsed.tile_data);
     let sb_size = parsed.dimensions.sb_size;
@@ -83,19 +125,20 @@ fn parse_coding_units_with_outcome(
     let estimated_cus = (sb_cols * sb_rows) as usize * 4;
     all_cus.reserve(estimated_cus);
 
-    // Create SymbolDecoder for tile data, seeded with the real per-frame qindex-bucket
-    // (`qcat`) residual-coefficient CDF defaults -- see `crate::symbol::cdf::CdfContext::
-    // new_with_qcat`'s doc for the real dav1d selection formula this mirrors.
+    // The tile starts from the saved CDFs of the primary reference frame, or from the defaults
+    // seeded with the real per-frame qindex-bucket (`qcat`) residual-coefficient CDFs -- see
+    // `crate::symbol::cdf::CdfContext::new_with_qcat`'s doc for the dav1d selection formula.
     let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-    let decoder = crate::SymbolDecoder::new_with_qcat(&tile_data, qcat)?;
+    let decoder = match inputs.initial_cdf {
+        Some(cdf) => crate::SymbolDecoder::with_cdf_context(&tile_data, cdf)?,
+        None => crate::SymbolDecoder::new_with_qcat(&tile_data, qcat)?,
+    };
 
     // Track running QP value across superblocks
     let mut current_qp = base_qp;
 
-    // Entropy-context tracker (currently only `skip` uses it -- see
-    // `crate::tile::TileContext`'s doc), sized to the tile's full extent in 4x4 units.
     let mut tile_ctx = tile_context_for(parsed);
-    if let Some((projected, pocdiff)) = temporal {
+    if let Some((projected, pocdiff)) = inputs.temporal {
         tile_ctx.set_temporal_context(projected.clone(), pocdiff);
         tile_ctx.set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
     }
@@ -105,9 +148,11 @@ fn parse_coding_units_with_outcome(
         mv_ctx: crate::tile::MvPredictorContext::new(sb_cols, sb_rows),
         tile_ctx,
     };
+    #[cfg(test)]
+    {
+        state.decoder.decoder.range_trace = Some(Vec::new());
+    }
 
-    // Parse each superblock. The first error ends the frame: the decoder has lost its place, so
-    // whatever it read after that would be noise presented as coding units.
     let superblocks_total = sb_cols * sb_rows;
     let mut superblocks_decoded = 0;
     'frame: for sb_y in 0..sb_rows {
@@ -153,7 +198,15 @@ fn parse_coding_units_with_outcome(
         current_qp,
         outcome
     );
-    Ok((all_cus, outcome))
+    #[cfg(test)]
+    let trace = state.decoder.decoder.range_trace.take().unwrap_or_default();
+    Ok(FrameDecode {
+        units: all_cus,
+        outcome,
+        final_cdf: state.decoder.cdf_context,
+        #[cfg(test)]
+        trace,
+    })
 }
 
 /// Spatial index for O(1) coding unit lookup by grid position
@@ -627,7 +680,7 @@ mod tests {
     /// [`decode_fixture_traces`] for any IVF.
     fn decode_traces(ivf: &[u8], count: usize) -> Vec<Vec<(u32, i32, usize)>> {
         let (_hdr, frames) = crate::ivf::parse_ivf_frames(ivf).unwrap();
-        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let seq_bytes = find_seq_header_bytes(&frames).expect("stream has a sequence header");
         let seq = crate::parse_sequence_header(
             &crate::obu::ObuIterator::new(&seq_bytes)
                 .next_obu_with_offset()
@@ -637,11 +690,7 @@ mod tests {
                 .payload,
         )
         .unwrap();
-        let order_hint_bits = seq
-            .order_hint_bits_minus_1
-            .map(|v| v as u32 + 1)
-            .unwrap_or(0);
-        let mut mf_state = crate::tile::MotionFieldState::new();
+        let mut state = crate::overlay_extraction::StreamDecodeState::new();
         let mut traces = Vec::new();
         for chunk in &frames {
             let mut iter = crate::obu::ObuIterator::new(&chunk.data);
@@ -654,118 +703,8 @@ mod tests {
                 }
                 let raw = &chunk.data[found.offset..found.offset + found.consumed];
                 let obu_data = [seq_bytes.as_slice(), raw].concat();
-                let prev_ref_order_hint = *mf_state.ref_state.ref_order_hint();
-                let parsed = super::super::parser::ParsedFrame::parse_with_ref_state(
-                    &obu_data,
-                    &mut mf_state.ref_state,
-                )
-                .unwrap();
-                let params = parsed.coding_params();
-                let base_qp = parsed.frame_type.base_qp.unwrap() as i16;
-                let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-                let dims = &parsed.dimensions;
-                let mut tile_ctx = tile_context_for(&parsed);
-                if let (true, Some(ref_frame_idx)) =
-                    (parsed.use_ref_frame_mvs, parsed.ref_frame_idx)
-                {
-                    let sources = crate::tile::select_motion_field_sources(
-                        &mf_state,
-                        &prev_ref_order_hint,
-                        &ref_frame_idx,
-                        parsed.order_hint,
-                        seq.enable_order_hint,
-                        order_hint_bits,
-                    );
-                    let projected = crate::tile::project_motion_field(
-                        &sources,
-                        &mf_state,
-                        dims.width.div_ceil(8).max(1),
-                        dims.height.div_ceil(8).max(1),
-                    );
-                    let pocdiff: [i32; 7] = std::array::from_fn(|i| {
-                        crate::frame_header_full::relative_dist(
-                            parsed.order_hint,
-                            prev_ref_order_hint[ref_frame_idx[i] as usize],
-                            seq.enable_order_hint,
-                            order_hint_bits,
-                        )
-                        .clamp(-31, 31) as i32
-                    });
-                    tile_ctx.set_temporal_context(projected, pocdiff);
-                    tile_ctx
-                        .set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
-                }
-                // A frame with a `primary_ref_frame` starts from that reference's saved CDFs.
-                let initial_cdf = match (parsed.primary_ref_frame, parsed.ref_frame_idx) {
-                    (slot @ 0..=6, Some(idx)) => mf_state
-                        .saved_cdf(idx[slot as usize])
-                        .cloned()
-                        .unwrap_or_else(|| crate::symbol::CdfContext::new_with_qcat(qcat)),
-                    _ => crate::symbol::CdfContext::new_with_qcat(qcat),
-                };
-                let mut state = crate::tile::TileState {
-                    decoder: crate::SymbolDecoder::with_cdf_context(
-                        &parsed.tile_data,
-                        initial_cdf.clone(),
-                    )
-                    .unwrap(),
-                    mv_ctx: crate::tile::MvPredictorContext::new(dims.sb_cols, dims.sb_rows),
-                    tile_ctx,
-                };
-                state.decoder.decoder.range_trace = Some(Vec::new());
-                let mut qp = base_qp;
-                let mut cus = Vec::new();
-                'frame: for sb_y in 0..dims.sb_rows {
-                    state.tile_ctx.start_superblock_row();
-                    for sb_x in 0..dims.sb_cols {
-                        match crate::parse_superblock(
-                            &mut state,
-                            sb_x * dims.sb_size,
-                            sb_y * dims.sb_size,
-                            dims.sb_size,
-                            &params,
-                            qp,
-                        ) {
-                            Ok((sb, new_qp)) => {
-                                cus.extend(sb.coding_units);
-                                qp = new_qp;
-                            }
-                            Err(_) => break 'frame,
-                        }
-                    }
-                }
-                traces.push(state.decoder.decoder.range_trace.take().unwrap());
-
-                let mfmv_sign: [bool; 7] = match parsed.ref_frame_idx {
-                    Some(ref_frame_idx) => std::array::from_fn(|i| {
-                        crate::frame_header_full::relative_dist(
-                            prev_ref_order_hint[ref_frame_idx[i] as usize],
-                            parsed.order_hint,
-                            seq.enable_order_hint,
-                            order_hint_bits,
-                        ) < 0
-                    }),
-                    None => [false; 7],
-                };
-                let grid =
-                    crate::tile::store_motion_field(&cus, dims.width, dims.height, &mfmv_sign);
-                // A frame that updates its CDFs at the end leaves its tile's adapted CDFs; one
-                // that does not leaves the CDFs it started from (spec `save_cdfs`).
-                let saved_cdf = if parsed.disable_frame_end_update_cdf {
-                    initial_cdf.clone()
-                } else {
-                    initial_cdf.saved_at_frame_end(
-                        &state.decoder.cdf_context,
-                        parsed.frame_type.is_intra_only,
-                    )
-                };
-                mf_state.store_cdf(parsed.refresh_frame_flags, &saved_cdf);
-                mf_state.update(
-                    &prev_ref_order_hint,
-                    parsed.refresh_frame_flags,
-                    parsed.ref_frame_idx.as_ref(),
-                    grid,
-                );
+                state.decode_next(&obu_data, &seq).unwrap();
+                traces.push(state.last_trace.clone());
             }
         }
         traces
