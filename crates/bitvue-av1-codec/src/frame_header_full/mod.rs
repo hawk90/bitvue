@@ -322,6 +322,7 @@ pub fn parse_frame_header_full(
             delta_q_residue: None,
             header_size_bytes: reader.byte_position(),
             header_size_bits: reader.position(),
+            tiles: None,
             refresh_frame_flags: None,
             ref_frame_idx: None,
             order_hint,
@@ -539,7 +540,7 @@ pub fn parse_frame_header_full(
         reader.read_bit()?
     };
 
-    read_tile_info(&mut reader, seq, width, height)?;
+    let tiles = read_tile_info(&mut reader, seq, width, height)?;
 
     let quant = crate::frame_header::parse_quantization_params(
         &mut reader,
@@ -670,6 +671,7 @@ pub fn parse_frame_header_full(
             .byte_position()
             .saturating_add(usize::from(!reader.position().is_multiple_of(8))),
         header_size_bits: reader.position(),
+        tiles: Some(tiles),
         refresh_frame_flags: Some(refresh_frame_flags as u8),
         ref_frame_idx: if frame_is_intra {
             None

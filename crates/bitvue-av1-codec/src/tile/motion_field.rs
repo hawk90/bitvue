@@ -457,6 +457,7 @@ pub struct TemporalBlock {
     pub bh4: u32,
     pub w4: u32,
     pub h4: u32,
+    pub col_start: u32,
     pub col_end: u32,
     pub row_end: u32,
 }
@@ -515,6 +516,7 @@ fn temporal_sample_positions(block: TemporalBlock) -> Vec<(u32, u32, bool)> {
         bh4,
         w4,
         h4,
+        col_start,
         col_end,
         row_end,
     } = block;
@@ -536,7 +538,7 @@ fn temporal_sample_positions(block: TemporalBlock) -> Vec<(u32, u32, bool)> {
     if bw4.min(bh4) >= 2 && bw4.max(bh4) < 16 {
         let (bh8, bw8) = (bh4 >> 1, bw4 >> 1);
         let has_bottom = by8 + bh8 < (row_end >> 1).min((by8 & !7) + 8);
-        if has_bottom && bx8 > (bx8 & !7) {
+        if has_bottom && bx8 > (col_start >> 1).max(bx8 & !7) {
             out.push((bx8 - 1, by8 + bh8, false));
         }
         if bx8 + bw8 < (col_end >> 1).min((bx8 & !7) + 8) {
@@ -617,6 +619,7 @@ mod tests {
             bh4: 2,
             w4: 2,
             h4: 2,
+            col_start: 0,
             col_end: 64,
             row_end: 64,
         };

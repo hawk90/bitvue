@@ -8,10 +8,10 @@ impl TileContext {
     /// `y4>0`/`x4>0` simplification, same as `segment_id_context`'s).
     pub fn has_palette_y_context(&self, x4: u32, y4: u32) -> u8 {
         let mut ctx = 0u8;
-        if y4 > 0 && self.above_pal_sz[0].get(x4 as usize).copied().unwrap_or(0) > 0 {
+        if self.has_top(y4) && self.above_pal_sz[0].get(x4 as usize).copied().unwrap_or(0) > 0 {
             ctx += 1;
         }
-        if x4 > 0 && self.left_pal_sz[0].get(y4 as usize).copied().unwrap_or(0) > 0 {
+        if self.has_left(x4) && self.left_pal_sz[0].get(y4 as usize).copied().unwrap_or(0) > 0 {
             ctx += 1;
         }
         ctx

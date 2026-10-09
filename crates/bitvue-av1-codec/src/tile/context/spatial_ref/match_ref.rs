@@ -29,8 +29,8 @@ impl SpatialRefContext {
         let matches = |cell: Option<&SpatialRefCell>| {
             cell.is_some_and(|c| c.valid && c.ref0 == ref0 && c.ref1 == -1)
         };
-        let have_top = y4 > 0;
-        let have_left = x4 > 0;
+        let have_top = y4 > self.row_start;
+        let have_left = x4 > self.col_start;
         let mut have_topleft = have_top && have_left;
         let mut have_topright = bw4.max(bh4) < 32 && have_top && x4 + bw4 < col_end;
         if have_top {

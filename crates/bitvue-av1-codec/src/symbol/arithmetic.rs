@@ -140,9 +140,11 @@ impl<'a> ArithmeticDecoder<'a> {
     /// Initializes the decoder following rav1d/dav1d initialization.
     /// Per AV1 spec Section 8.2.1 (Initialization process for symbol decoder).
     pub fn new(data: &'a [u8]) -> Result<Self> {
-        if data.len() < 2 {
+        // Spec 8.2.2 (`init_symbol(sz)`) takes any size from one byte: a tile of skip blocks
+        // fits in one. What the window cannot read is filled with ones, like dav1d's `ctx_refill`.
+        if data.is_empty() {
             return Err(BitvueError::InvalidData(
-                "Arithmetic decoder needs at least 2 bytes".to_string(),
+                "Arithmetic decoder needs at least 1 byte".to_string(),
             ));
         }
 
@@ -471,10 +473,20 @@ mod tests {
     }
 
     #[test]
-    fn test_decoder_too_short() {
-        let data = vec![0x80]; // Only 1 byte
-        let decoder = ArithmeticDecoder::new(&data);
-        assert!(decoder.is_err());
+    fn test_decoder_needs_at_least_one_byte() {
+        assert!(ArithmeticDecoder::new(&[]).is_err());
+    }
+
+    /// A one-byte tile (a tile of skip blocks) is legal (spec 8.2.2 reads `min(8 * sz, 15)`
+    /// bits): the decoder starts on it and reads symbols from the byte and the ones after it.
+    #[test]
+    fn test_one_byte_tile_decodes() {
+        let data = [0x80u8];
+        let mut decoder = ArithmeticDecoder::new(&data).unwrap();
+        let mut cdf = vec![16384u16, 0, 0];
+        for _ in 0..8 {
+            decoder.read_symbol_adaptive(&mut cdf).unwrap();
+        }
     }
 
     #[test]
