@@ -118,6 +118,10 @@ pub struct ParsedFrame {
     /// (i.e. "`cdef_idx()` never reads any bits") if the full header wasn't parsed -- the same
     /// conservative default real spec itself uses when CDEF is disabled.
     pub cdef_bits: u8,
+    /// `RefFrameSignBias` (spec 5.9.2): per reference (`LAST..=ALTREF`), whether the reference is
+    /// displayed after this frame. Needs the reference order hints from before this frame's own
+    /// header, so it is only right for a frame parsed with the threaded `RefFrameState`.
+    pub ref_frame_sign_bias: [bool; 7],
     /// `lr_params()` (spec 5.9.20): which planes are restored and how big the units are. Same
     /// sourcing/fallback story as `cdef_bits` (no plane restored if the full header wasn't parsed).
     pub loop_restoration: crate::frame_header::LoopRestorationInfo,
@@ -316,6 +320,8 @@ impl ParsedFrame {
         ref_state: &mut RefFrameState,
     ) -> Result<Self, BitvueError> {
         let obu_data: Arc<[u8]> = Arc::from(obu_data);
+        // Order hints of the reference slots as they were before this frame's own header.
+        let prev_ref_order_hint = *ref_state.ref_order_hint();
 
         // Handle empty data: return a default ParsedFrame immediately.
         // Callers that extract grids from empty data receive the default 1920x1080
@@ -348,6 +354,7 @@ impl ParsedFrame {
                 subsampling_y: false,
                 enable_filter_intra: false,
                 cdef_bits: 0,
+                ref_frame_sign_bias: [false; 7],
                 loop_restoration: Default::default(),
                 superres: false,
                 skip_mode_present: false,
@@ -411,6 +418,7 @@ impl ParsedFrame {
         let mut subsampling_y = false;
         let mut enable_filter_intra = false;
         let mut cdef_bits = 0u8;
+        let mut ref_frame_sign_bias = [false; 7];
         let mut loop_restoration = crate::frame_header::LoopRestorationInfo::default();
         let mut superres = false;
         let mut skip_mode_present = false;
@@ -545,6 +553,12 @@ impl ParsedFrame {
                             refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
+                            ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
+                                &prev_ref_order_hint,
+                                full_hdr.ref_frame_idx.as_ref(),
+                                full_hdr.order_hint,
+                                seq,
+                            );
                             loop_restoration = full_hdr.loop_restoration.clone();
                             superres = full_hdr.super_resolution.enabled;
                             skip_mode_present = full_hdr.skip_mode_present;
@@ -597,6 +611,12 @@ impl ParsedFrame {
                             refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
+                            ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
+                                &prev_ref_order_hint,
+                                full_hdr.ref_frame_idx.as_ref(),
+                                full_hdr.order_hint,
+                                seq,
+                            );
                             loop_restoration = full_hdr.loop_restoration.clone();
                             superres = full_hdr.super_resolution.enabled;
                             skip_mode_present = full_hdr.skip_mode_present;
@@ -652,6 +672,7 @@ impl ParsedFrame {
             subsampling_y,
             enable_filter_intra,
             cdef_bits,
+            ref_frame_sign_bias,
             loop_restoration,
             superres,
             skip_mode_present,

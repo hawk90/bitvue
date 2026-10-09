@@ -103,6 +103,11 @@ impl TileContext {
             .compound_mv_stack(x4, y4, bw4, bh4, ref0, ref1, use_ref_frame_mvs)
     }
 
+    /// `RefFrameSignBias` of the frame -- see `SpatialRefContext::set_sign_bias`.
+    pub fn set_sign_bias(&mut self, sign_bias: [bool; 7]) {
+        self.spatial_ref.set_sign_bias(sign_bias);
+    }
+
     /// Opt this frame's parse into real temporal MV candidates -- see
     /// `SpatialRefContext::set_temporal_context`.
     pub fn set_temporal_context(

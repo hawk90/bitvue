@@ -171,20 +171,20 @@ fn test_compound_mv_stack_requires_exact_pair_match() {
     let (stack, cnt) = ctx.compound_mv_stack(0, 1, 4, 4, 0, 4, false);
     assert_eq!(cnt, 2);
     assert_eq!(stack[0].mv, [mv_b, mv_a]);
-    assert_eq!(stack[1].mv, [MotionVector::zero(), MotionVector::zero()]);
+    assert_eq!(stack[1].mv, [mv_a, mv_b]);
 
     // The exact pair DOES contribute at the main-scan stage, with both MVs preserved as a
     // joint pair (not independently re-derived) -- `stack2[0]` is real. `cnt2` still ends up 2
     // (not 1): the same cnt<2 fallback runs afterward, finds this exact neighbor's
     // per-component matches equal `stack2[0]` exactly, and (per the "avoid duplicating the
-    // real entry" rule) falls through to its second extended candidate, which has no further
-    // same-ref matches left to draw on and so is the zero-MV global-motion approximation.
+    // real entry" rule) falls through to its second extended candidate: each component's
+    // "diff" candidate, i.e. the other component's vector, `[mv_b, mv_a]`.
     let mut ctx2 = SpatialRefContext::new(16, 16);
     ctx2.set_block(0, 0, 4, 4, 0, 4, false, mv_a, mv_b);
     let (stack2, cnt2) = ctx2.compound_mv_stack(0, 1, 4, 4, 0, 4, false);
     assert_eq!(cnt2, 2);
     assert_eq!(stack2[0].mv, [mv_a, mv_b]);
-    assert_eq!(stack2[1].mv, [MotionVector::zero(), MotionVector::zero()]);
+    assert_eq!(stack2[1].mv, [mv_b, mv_a]);
 }
 
 #[test]
@@ -346,4 +346,27 @@ fn test_set_block_intra_default_never_matches() {
     let ctx = SpatialRefContext::new(16, 16);
     assert_eq!(ctx.inter_mode_context(5, 5, 4, 4, 0, false), 0);
     assert_eq!(ctx.compound_mode_context(5, 5, 4, 4, 0, 4), 0);
+}
+
+/// Neighbours that only partly match the references of a compound query still fill the stack
+/// (dav1d's `add_compound_extended_candidate`): a vector of a reference on the other side of the
+/// current frame is turned around, one on the same side is kept.
+#[test]
+fn test_compound_extended_candidates_turn_vectors_around_by_sign_bias() {
+    let mut ctx = SpatialRefContext::new(16, 16);
+    // LAST (0) is a past reference, ALTREF (6) a future one.
+    let mut bias = [false; 7];
+    bias[6] = true;
+    ctx.set_sign_bias(bias);
+    // The only neighbour, above the query, uses ALTREF alone with this vector.
+    let mv = MotionVector::new(0, 32);
+    ctx.set_block(0, 0, 4, 4, 6, -1, false, mv, MotionVector::zero());
+
+    let (stack, cnt) = ctx.compound_mv_stack(0, 4, 4, 4, 0, 6, false);
+
+    assert_eq!(cnt, 2);
+    // Component 1 (ALTREF) takes the vector as it is; component 0 (LAST) gets it turned around
+    // because LAST and ALTREF have different sign biases.
+    assert_eq!(stack[0].mv, [MotionVector::new(0, -32), mv]);
+    assert_eq!(stack[1].mv, [MotionVector::zero(), MotionVector::zero()]);
 }
