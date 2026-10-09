@@ -10,59 +10,28 @@ use super::parser::ParsedFrame;
 use crate::ivf::OVERLAY_BLOCK_SIZE;
 use crate::Qp;
 
+/// `QPGrid::missing`'s default: a cell no decoded block covers.
+const MISSING_QP: i16 = -1;
+
 /// Extract QP Grid from AV1 bitstream data
 ///
-/// **Current Implementation**: Uses base_q_idx from frame header for all blocks.
-/// Full QP extraction requires parsing quantization_params() and delta Q values
-/// from each coding unit.
-///
-/// # Performance
-///
-/// - O(1) when using cached ParsedFrame
-/// - O(n) grid creation where n = number of blocks
+/// Parses `obu_data` and extracts the per-block QP of its decoded coding units; see
+/// [`extract_qp_grid_from_parsed`]. A frame without decodable tile data is an error.
 pub fn extract_qp_grid(
     obu_data: &[u8],
-    _frame_index: usize,
+    frame_index: usize,
     base_qp: i16,
 ) -> Result<QPGrid, BitvueError> {
-    // Validate QP range for type safety
-    let qp = Qp::new(base_qp)?;
-
-    extract_qp_grid_typed(obu_data, _frame_index, qp)
-}
-
-/// Extract QP Grid with type-safe Qp parameter
-///
-/// Internal function that uses the Qp newtype for type safety.
-/// This validates that base_qp is in the valid range [0, 255].
-fn extract_qp_grid_typed(
-    obu_data: &[u8],
-    _frame_index: usize,
-    base_qp: Qp,
-) -> Result<QPGrid, BitvueError> {
     let parsed = ParsedFrame::parse(obu_data)?;
-
-    let block_w = OVERLAY_BLOCK_SIZE;
-    let block_h = OVERLAY_BLOCK_SIZE;
-    let grid_w = parsed.dimensions.width.div_ceil(block_w);
-    let grid_h = parsed.dimensions.height.div_ceil(block_h);
-
-    // Check for overflow in grid size calculation
-    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
-        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
-    })? as usize;
-
-    let qp_value = base_qp.value();
-    let qp = vec![qp_value; total_blocks];
-
-    Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, qp_value))
+    extract_qp_grid_from_parsed(&parsed, frame_index, base_qp)
 }
 
 /// Extract QP Grid from cached frame data
 ///
 /// **Current Implementation**:
 /// - Parses tile data to extract actual QP values from coding units
-/// - Falls back to base_q_idx if tile data unavailable or parsing fails
+/// - Fails if the frame has no decodable tile data; cells past the point where decoding stopped
+///   hold the grid's missing-value marker
 /// - Uses actual QP values from AV1 bitstream
 ///
 /// This is more efficient when extracting multiple overlays
@@ -92,54 +61,30 @@ fn extract_qp_grid_from_parsed_typed(
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
     // Check for overflow in grid size calculation
-    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+    grid_w.checked_mul(grid_h).ok_or_else(|| {
         BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
-    })? as usize;
+    })?;
 
     let base_qp_value = base_qp.value();
 
-    // If we have tile data, try to parse actual QP values
-    if super::provenance::has_decodable_tile(parsed) {
-        match parse_all_coding_units(parsed) {
-            Ok(coding_units) => {
-                tracing::debug!(
-                    "Extracting QP values from {} coding units",
-                    coding_units.len()
-                );
-                let qp = build_qp_grid_from_cus(
-                    &coding_units,
-                    grid_w,
-                    grid_h,
-                    block_w,
-                    block_h,
-                    base_qp_value,
-                );
-                return Ok(QPGrid::new(
-                    grid_w,
-                    grid_h,
-                    block_w,
-                    block_h,
-                    qp,
-                    base_qp_value,
-                ));
-            }
-            Err(e) => {
-                tracing::warn!("Failed to parse coding units for QP: {}, using base_qp", e);
-                // Fall through to scaffold
-            }
-        }
+    if !super::provenance::has_decodable_tile(parsed) {
+        return Err(super::provenance::no_decodable_tile());
     }
-
-    // Fallback: Use base_q_idx for all blocks
-    let qp = vec![base_qp_value; total_blocks];
-
-    Ok(QPGrid::new(
+    let coding_units = parse_all_coding_units(parsed)?;
+    tracing::debug!(
+        "Extracting QP values from {} coding units",
+        coding_units.len()
+    );
+    let qp = build_qp_grid_from_cus(
+        &coding_units,
         grid_w,
         grid_h,
         block_w,
         block_h,
-        qp,
         base_qp_value,
+    );
+    Ok(QPGrid::new(
+        grid_w, grid_h, block_w, block_h, qp, MISSING_QP,
     ))
 }
 
@@ -175,7 +120,7 @@ fn build_qp_grid_from_cus(
             let cu_qp = spatial_index
                 .get_cu_index(grid_x, grid_y)
                 .map(|cu_idx| coding_units[cu_idx].effective_qp(base_qp))
-                .unwrap_or(base_qp);
+                .unwrap_or(MISSING_QP);
 
             qp.push(cu_qp);
         }
@@ -207,28 +152,14 @@ mod tests {
     }
 
     #[test]
-    fn test_qp_grid_with_valid_data() {
-        // Arrange
+    fn placeholder_obus_give_an_error_and_an_out_of_range_qp_is_rejected() {
         let obu_data = create_test_obu_data();
-        let base_qp: i16 = 32;
 
-        // Act
-        let result = extract_qp_grid(&obu_data, 0, base_qp);
-
-        // Assert: Should create a grid with default dimensions
-        assert!(result.is_ok(), "QP grid extraction should succeed");
-        let grid = result.unwrap();
-        assert_eq!(grid.block_w, 64);
-        assert_eq!(grid.block_h, 64);
-        assert!(!grid.qp.is_empty(), "QP grid should have values");
-        assert_eq!(grid.qp[0], base_qp, "First block should have base QP");
-
-        // Also test with invalid QP to ensure validation works
-        let invalid_result = extract_qp_grid(&obu_data, 0, 256); // Invalid: > 255
-        assert!(invalid_result.is_err(), "Should reject QP > 255");
-
-        let invalid_result2 = extract_qp_grid(&obu_data, 0, -1); // Invalid: < 0
-        assert!(invalid_result2.is_err(), "Should reject QP < 0");
+        // No tile data in the placeholder bytes: nothing to extract, nothing invented.
+        assert!(extract_qp_grid(&obu_data, 0, 32).is_err());
+        // Out-of-range base QPs are rejected before anything else.
+        assert!(extract_qp_grid(&obu_data, 0, 256).is_err());
+        assert!(extract_qp_grid(&obu_data, 0, -1).is_err());
     }
 
     #[test]

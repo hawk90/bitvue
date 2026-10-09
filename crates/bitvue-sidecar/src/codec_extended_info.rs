@@ -191,17 +191,19 @@ pub fn get_codec_extended_info(data: &[u8], frame_index: usize) -> Result<Value,
     let parsed = ParsedFrame::parse_with_ref_state(&obu_data, &mut tile_ref_state)
         .map_err(|e| e.to_string())?;
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
-    let qp_grid =
-        extract_qp_grid_from_parsed(&parsed, frame_index, base_qp).map_err(|e| e.to_string())?;
 
-    // The reference lists come from the frame header; the histogram from decoded QPs, which for
-    // a frame that was never decoded would be the invented scaffold grid -- send none.
+    // The reference lists come from the frame header; the histogram from decoded QPs. A frame
+    // that was never decoded has none to send.
     let provenance = frame_provenance(&parsed);
-    let qp_values: &[i16] = if provenance == Provenance::Scaffold {
-        &[]
+    let qp_grid = if provenance == Provenance::Scaffold {
+        None
     } else {
-        &qp_grid.qp
+        Some(
+            extract_qp_grid_from_parsed(&parsed, frame_index, base_qp)
+                .map_err(|e| e.to_string())?,
+        )
     };
+    let qp_values: &[i16] = qp_grid.as_ref().map_or(&[], |g| g.qp.as_slice());
     Ok(json!({
         "frame_index": frame_index,
         "l0_refs": l0_refs,

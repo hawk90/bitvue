@@ -57,6 +57,12 @@ impl Provenance {
     }
 }
 
+/// The error every extractor returns for a frame whose tile data cannot be decoded. There is no
+/// substitute grid: the caller is told the frame has no analysis data instead.
+pub(crate) fn no_decodable_tile() -> bitvue_engine::BitvueError {
+    bitvue_engine::BitvueError::Decode("frame has no decodable tile data".into())
+}
+
 /// Whether the extractors try to decode `parsed`'s tile at all. A frame without tile data (a
 /// `show_existing_frame`, a tile too small to hold a symbol) is never decoded.
 pub(crate) fn has_decodable_tile(parsed: &ParsedFrame) -> bool {
