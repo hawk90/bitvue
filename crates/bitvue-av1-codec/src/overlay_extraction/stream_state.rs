@@ -38,13 +38,20 @@ impl StreamDecodeState {
     /// keeping the reference slots' header state current. `obu_data`: the sequence header OBU
     /// followed by the unit's OBUs.
     ///
-    /// A `show_existing_frame` unit yields the frame its slot holds, with that frame's analysis.
+    /// A `show_existing_frame` unit yields the frame its slot holds, with that frame's analysis; if
+    /// that frame is a key frame, every reference slot then holds it.
     pub fn skip_unit(&mut self, obu_data: &[u8]) -> Result<Arc<ParsedFrame>, BitvueError> {
         let parsed = ParsedFrame::parse_with_ref_state(obu_data, &mut self.motion.ref_state)?;
-        if let Some(shown) = parsed
-            .show_existing_slot
-            .and_then(|slot| self.slots[usize::from(slot) & 7].clone())
-        {
+        if let Some((slot, shown)) = parsed.show_existing_slot.and_then(|slot| {
+            self.slots[usize::from(slot) & 7]
+                .clone()
+                .map(|shown| (slot, shown))
+        }) {
+            // Showing a key frame again refreshes every reference slot with it.
+            if shown.key_frame {
+                self.motion.refresh_all_from(slot);
+                self.slots = std::array::from_fn(|_| Some(Arc::clone(&shown)));
+            }
             return Ok(shown);
         }
         Ok(Arc::new(parsed))
@@ -167,5 +174,101 @@ impl StreamDecodeState {
             }
         }
         Ok(parsed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::obu::{ObuIterator, ObuType};
+
+    const FIXTURE: &[u8] = include_bytes!("../../../../test_data/av1_test.ivf");
+
+    /// The fixture's sequence header and its first two Frame OBUs (the key frame, which refreshes
+    /// every slot, then a hidden frame that refreshes slot 6 only).
+    fn key_then_hidden_frame() -> (SequenceHeader, Vec<Vec<u8>>) {
+        let (_hdr, packets) = crate::ivf::parse_ivf_frames(FIXTURE).unwrap();
+        let mut seq_bytes = Vec::new();
+        let mut frames = Vec::new();
+        for packet in packets.iter().take(2) {
+            let mut iter = ObuIterator::new(&packet.data);
+            while let Some(Ok(found)) = iter.next_obu_with_offset() {
+                let raw = packet.data[found.offset..found.offset + found.consumed].to_vec();
+                match found.obu.header.obu_type {
+                    ObuType::SequenceHeader if seq_bytes.is_empty() => seq_bytes = raw,
+                    ObuType::Frame => frames.push([seq_bytes.clone(), raw].concat()),
+                    _ => {}
+                }
+            }
+        }
+        let seq_obu = ObuIterator::new(&seq_bytes)
+            .next_obu_with_offset()
+            .unwrap()
+            .unwrap();
+        let seq = crate::parse_sequence_header(&seq_obu.obu.payload).unwrap();
+        (seq, frames)
+    }
+
+    /// A temporal delimiter and a `show_existing_frame` header showing `slot`.
+    fn show_existing(slot: u8, frames: &[Vec<u8>]) -> Vec<u8> {
+        let mut unit = Vec::new();
+        // The sequence header OBU that `frames[0]` starts with.
+        let mut iter = ObuIterator::new(&frames[0]);
+        let first = iter.next_obu_with_offset().unwrap().unwrap();
+        unit.extend_from_slice(&frames[0][first.offset..first.offset + first.consumed]);
+        unit.extend_from_slice(&[0x12, 0x00, 0x1A, 0x01, 0x80 | (slot << 4) | 0x08]);
+        unit
+    }
+
+    /// Showing a key frame again refreshes every reference slot with it (spec 7.21): its header
+    /// state and CDFs, and no motion field (dav1d drops `refmvs` for those slots).
+    #[test]
+    fn showing_an_existing_key_frame_refreshes_every_slot() {
+        let (seq, frames) = key_then_hidden_frame();
+        let mut state = StreamDecodeState::new();
+        let key = state.decode_next(&frames[0], &seq).unwrap();
+        assert!(key.key_frame);
+        let hidden = state.decode_next(&frames[1], &seq).unwrap();
+        assert!(!hidden.key_frame);
+        assert!(state.motion.has_motion_field(6));
+        assert_eq!(hidden.refresh_frame_flags, 1 << 6, "fixture's hidden frame");
+        assert!(Arc::ptr_eq(state.slots[6].as_ref().unwrap(), &hidden));
+        assert_ne!(
+            state.motion.ref_state.ref_order_hint()[6],
+            state.motion.ref_state.ref_order_hint()[0]
+        );
+
+        let shown = state.skip_unit(&show_existing(0, &frames)).unwrap();
+        assert!(Arc::ptr_eq(&shown, &key));
+        for slot in 0..8u8 {
+            assert!(
+                Arc::ptr_eq(state.slots[usize::from(slot)].as_ref().unwrap(), &key),
+                "slot {slot} holds the key frame"
+            );
+            assert_eq!(
+                state.motion.ref_state.ref_order_hint()[usize::from(slot)],
+                key.order_hint
+            );
+            assert!(std::ptr::eq(
+                state.motion.saved_cdf(slot).unwrap(),
+                state.motion.saved_cdf(0).unwrap()
+            ));
+            assert!(!state.motion.has_motion_field(slot));
+        }
+    }
+
+    /// Showing an inter frame again changes nothing.
+    #[test]
+    fn showing_an_existing_inter_frame_leaves_the_slots_alone() {
+        let (seq, frames) = key_then_hidden_frame();
+        let mut state = StreamDecodeState::new();
+        state.decode_next(&frames[0], &seq).unwrap();
+        let hidden = state.decode_next(&frames[1], &seq).unwrap();
+        let shown = state.skip_unit(&show_existing(6, &frames)).unwrap();
+        assert!(Arc::ptr_eq(&shown, &hidden));
+        assert!(!Arc::ptr_eq(
+            state.slots[0].as_ref().unwrap(),
+            state.slots[6].as_ref().unwrap()
+        ));
     }
 }

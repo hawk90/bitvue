@@ -185,6 +185,11 @@ impl MotionFieldState {
         Self::default()
     }
 
+    /// Whether `slot` holds motion vectors a later frame could project.
+    pub fn has_motion_field(&self, slot: u8) -> bool {
+        self.grids[slot as usize & 7].is_some()
+    }
+
     /// The CDFs saved in `slot`, if any frame has refreshed it.
     pub fn saved_cdf(&self, slot: u8) -> Option<&crate::symbol::CdfContext> {
         self.cdfs[slot as usize & 7].as_deref()
@@ -197,6 +202,20 @@ impl MotionFieldState {
             if refresh_frame_flags & (1 << slot) != 0 {
                 self.cdfs[slot] = Some(std::sync::Arc::clone(&shared));
             }
+        }
+    }
+
+    /// What a `show_existing_frame` of a key frame in `slot` does to the other slots (spec 7.21,
+    /// dav1d `obu.c`): they all take the shown frame's header state and CDFs, and none of them
+    /// keeps motion vectors (`refmvs` is dropped).
+    pub fn refresh_all_from(&mut self, slot: u8) {
+        let slot = slot as usize & 7;
+        self.ref_state.copy_slot_to_all(slot);
+        let (cdf, hints) = (self.cdfs[slot].clone(), self.ref_ref_order_hint[slot]);
+        for i in 0..8 {
+            self.cdfs[i] = cdf.clone();
+            self.ref_ref_order_hint[i] = hints;
+            self.grids[i] = None;
         }
     }
 
