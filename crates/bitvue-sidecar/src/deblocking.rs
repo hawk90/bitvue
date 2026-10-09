@@ -15,11 +15,11 @@
 //! frame's real `FrameHeader`.
 
 use bitvue_av1_codec::frame_header_full::{
-    find_frame_header_payload, parse_frame_header_full, thread_ref_state_before,
+    find_frame_header_payloads, parse_frame_header_full, thread_ref_state_before,
 };
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
-    extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge, ParsedFrame,
+    extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge,
 };
 use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
@@ -38,18 +38,6 @@ fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<Se
     None
 }
 
-fn find_sequence_header_bytes(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<Vec<u8>> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
-            }
-        }
-    }
-    None
-}
-
 pub fn get_deblocking_analysis(data: &[u8], frame_index: usize) -> Result<Value, String> {
     let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(data)
         .map_err(|e| format!("IVF parse error: {e}"))?;
@@ -62,26 +50,22 @@ pub fn get_deblocking_analysis(data: &[u8], frame_index: usize) -> Result<Value,
     let seq = find_sequence_header(&frames)
         .ok_or_else(|| "no sequence header found in the first few frames".to_string())?;
 
-    // `ref_state` reflects frames `[0, frame_index)` -- exactly what both this frame's own
-    // header parse (below) and `ParsedFrame::parse_with_ref_state`'s `tile_data` extraction need
-    // as their starting state (see that method's doc: a fresh state silently desyncs `tile_data`
-    // for any frame needing real `skip_mode_params` state). Cloned before the header parse
-    // mutates it with frame_index's own contribution, since `parse_with_ref_state` below needs
-    // the pre-frame_index state, not the post-frame_index one.
-    let mut ref_state =
+    // The frame the analysis describes is the last one of the packet; its loop filter parameters
+    // come from its own header, parsed with the state left by the frames before it (the earlier
+    // frames of the same packet included).
+    let mut header_ref_state =
         thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
-    let mut header_ref_state = ref_state.clone();
-    let payload = find_frame_header_payload(&frames[frame_index].data)
-        .ok_or_else(|| "frame has no Frame/FrameHeader OBU".to_string())?;
-    let header = parse_frame_header_full(&payload, &seq, &mut header_ref_state)
-        .map_err(|e| e.to_string())?;
+    let mut header = None;
+    for payload in find_frame_header_payloads(&frames[frame_index].data) {
+        header = Some(
+            parse_frame_header_full(&payload, &seq, &mut header_ref_state)
+                .map_err(|e| e.to_string())?,
+        );
+    }
+    let header = header.ok_or_else(|| "frame has no Frame/FrameHeader OBU".to_string())?;
 
-    let obu_data: Vec<u8> = match find_sequence_header_bytes(&frames) {
-        Some(seq_bytes) => [seq_bytes.as_slice(), frames[frame_index].data.as_slice()].concat(),
-        None => frames[frame_index].data.clone(),
-    };
     let parsed =
-        ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state).map_err(|e| e.to_string())?;
+        crate::analysis_session::analyzed_frame(data, frame_index).map_err(|e| e.to_string())?;
 
     let deblocking = extract_deblocking_data_from_parsed(&parsed, &header.loop_filter)
         .map_err(|e| e.to_string())?;
@@ -244,13 +228,18 @@ mod tests {
 
     #[test]
     fn get_deblocking_analysis_reports_whether_the_frame_was_verified() {
-        // The key frame decodes exactly; an inter frame parsed on its own does not.
+        // The key frame and the first inter frames decode exactly; the fixture's packet 65 is the first
+        // one that still hits unimplemented syntax (#102).
         assert_eq!(
             get_deblocking_analysis(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
             "verified"
         );
         assert_eq!(
             get_deblocking_analysis(AV1_IVF_FIXTURE, 2).unwrap()["provenance"],
+            "verified"
+        );
+        assert_eq!(
+            get_deblocking_analysis(AV1_IVF_FIXTURE, 65).unwrap()["provenance"],
             "unverified"
         );
     }

@@ -11,11 +11,10 @@
 //! reconstruction step in the analysis path (the debug-YUV / `get_decoded_frame_yuv` commands
 //! decode real pixels via `dav1d`, a separate code path this command doesn't touch).
 
-use bitvue_av1_codec::frame_header_full::thread_ref_state_before;
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_prediction_mode_grid_from_parsed, extract_qp_grid_from_parsed,
-    extract_transform_grid_from_parsed, frame_provenance, ParsedFrame, Provenance,
+    extract_transform_grid_from_parsed, frame_provenance, Provenance,
 };
 use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
@@ -32,18 +31,6 @@ const STAGE_ORDER: &[(&str, &str)] = &[
     ("entropy", "Entropy Coding"),
     ("reconstruction", "Reconstruction"),
 ];
-
-fn find_sequence_header_bytes(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<Vec<u8>> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
-            }
-        }
-    }
-    None
-}
 
 fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
     for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
@@ -121,16 +108,8 @@ pub fn get_coding_flow_analysis(data: &[u8], frame_index: usize) -> Result<Value
     let seq = find_sequence_header(&frames)
         .ok_or_else(|| "no sequence header found in the first few frames".to_string())?;
 
-    let obu_data: Vec<u8> = match find_sequence_header_bytes(&frames) {
-        Some(seq_bytes) => [seq_bytes.as_slice(), frames[frame_index].data.as_slice()].concat(),
-        None => frames[frame_index].data.clone(),
-    };
-    // See `residual_analysis`/`frame_analysis`'s identical comment: a fresh-state parse silently
-    // desyncs `tile_data` extraction for any frame needing real `skip_mode_params` state.
-    let mut ref_state =
-        thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
     let parsed =
-        ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state).map_err(|e| e.to_string())?;
+        crate::analysis_session::analyzed_frame(data, frame_index).map_err(|e| e.to_string())?;
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
 
     // A frame that was never decoded has no grids: none of the decode stages happened.
@@ -359,13 +338,18 @@ mod tests {
 
     #[test]
     fn get_coding_flow_analysis_reports_whether_the_frame_was_verified() {
-        // The key frame decodes exactly; an inter frame parsed on its own does not.
+        // The key frame and the first inter frames decode exactly; the fixture's packet 65 is the first
+        // one that still hits unimplemented syntax (#102).
         assert_eq!(
             get_coding_flow_analysis(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
             "verified"
         );
         assert_eq!(
             get_coding_flow_analysis(AV1_IVF_FIXTURE, 2).unwrap()["provenance"],
+            "verified"
+        );
+        assert_eq!(
+            get_coding_flow_analysis(AV1_IVF_FIXTURE, 65).unwrap()["provenance"],
             "unverified"
         );
     }
@@ -373,18 +357,7 @@ mod tests {
     /// A frame that was never decoded has no prediction, transform or quantization stage to show.
     #[test]
     fn get_coding_flow_analysis_completes_no_decode_stage_for_an_undecoded_frame() {
-        let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
-        let mut ivf = AV1_IVF_FIXTURE[..32].to_vec();
-        ivf[24..28].copy_from_slice(&2u32.to_le_bytes());
-        // Chunk 1: temporal delimiter + a `show_existing_frame` header, no tile.
-        for (pts, data) in [
-            (0u64, frames[0].data.as_slice()),
-            (1, &[0x12, 0x00, 0x1A, 0x01, 0x80][..]),
-        ] {
-            ivf.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            ivf.extend_from_slice(&pts.to_le_bytes());
-            ivf.extend_from_slice(data);
-        }
+        let ivf = crate::test_support::stream_with_an_undecodable_frame();
         let result = get_coding_flow_analysis(&ivf, 1).unwrap();
         assert_eq!(result["provenance"], "scaffold");
         for stage in result["stages"].as_array().unwrap() {

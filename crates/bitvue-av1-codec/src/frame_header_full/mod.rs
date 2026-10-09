@@ -136,23 +136,35 @@ impl RefFrameState {
     }
 }
 
+/// `relative_dist(RefOrderHint[ref], OrderHint)` for `LAST..=ALTREF` (spec 5.9.2's `OrderHints`
+/// against the current frame): positive for a reference displayed after the frame.
+/// `prev_ref_order_hint` is [`RefFrameState`]'s order hints from before this frame's own header;
+/// intra frames have no references, so all zero.
+pub fn ref_order_distance(
+    prev_ref_order_hint: &[u32; NUM_REF_FRAMES],
+    ref_frame_idx: Option<&[u8; REFS_PER_FRAME]>,
+    order_hint: u32,
+    seq: &SequenceHeader,
+) -> [i32; REFS_PER_FRAME] {
+    let Some(ref_frame_idx) = ref_frame_idx else {
+        return [0; REFS_PER_FRAME];
+    };
+    let bits = seq.order_hint_bits_minus_1.map_or(0, |v| u32::from(v) + 1);
+    std::array::from_fn(|i| {
+        let hint = prev_ref_order_hint[ref_frame_idx[i] as usize % NUM_REF_FRAMES];
+        relative_dist(hint, order_hint, seq.enable_order_hint, bits) as i32
+    })
+}
+
 /// `RefFrameSignBias[LAST..=ALTREF]` (spec 5.9.2): true when a reference is displayed after the
-/// current frame. `prev_ref_order_hint` is [`RefFrameState`]'s order hints from before this
-/// frame's own header; intra frames have no references, so all false.
+/// current frame -- see [`ref_order_distance`].
 pub fn ref_frame_sign_bias(
     prev_ref_order_hint: &[u32; NUM_REF_FRAMES],
     ref_frame_idx: Option<&[u8; REFS_PER_FRAME]>,
     order_hint: u32,
     seq: &SequenceHeader,
 ) -> [bool; REFS_PER_FRAME] {
-    let Some(ref_frame_idx) = ref_frame_idx else {
-        return [false; REFS_PER_FRAME];
-    };
-    let bits = seq.order_hint_bits_minus_1.map_or(0, |v| u32::from(v) + 1);
-    std::array::from_fn(|i| {
-        let hint = prev_ref_order_hint[ref_frame_idx[i] as usize % NUM_REF_FRAMES];
-        relative_dist(hint, order_hint, seq.enable_order_hint, bits) > 0
-    })
+    ref_order_distance(prev_ref_order_hint, ref_frame_idx, order_hint, seq).map(|d| d > 0)
 }
 
 fn err(msg: impl Into<String>) -> BitvueError {

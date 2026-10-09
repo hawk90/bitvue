@@ -27,12 +27,11 @@ use std::collections::HashMap;
 
 use bitvue_av1_codec::frame_header::FrameType;
 use bitvue_av1_codec::frame_header_full::{
-    find_frame_header_payload, parse_frame_header_full, relative_dist, thread_ref_state_before,
-    RefFrameState,
+    find_frame_header_payload, parse_frame_header_full, relative_dist, RefFrameState,
 };
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
-    extract_qp_grid_from_parsed, frame_provenance, ParsedFrame, Provenance,
+    extract_qp_grid_from_parsed, frame_provenance, Provenance,
 };
 use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
@@ -80,18 +79,6 @@ fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<Se
         while let Some(Ok(found)) = iter.next_obu_with_offset() {
             if found.obu.header.obu_type == ObuType::SequenceHeader {
                 return parse_sequence_header(&found.obu.payload).ok();
-            }
-        }
-    }
-    None
-}
-
-fn find_sequence_header_bytes(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<Vec<u8>> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
             }
         }
     }
@@ -176,20 +163,8 @@ pub fn get_codec_extended_info(data: &[u8], frame_index: usize) -> Result<Value,
         }
     }
 
-    let obu_data: Vec<u8> = match find_sequence_header_bytes(&frames) {
-        Some(seq_bytes) => [seq_bytes.as_slice(), frames[frame_index].data.as_slice()].concat(),
-        None => frames[frame_index].data.clone(),
-    };
-    // A second, header-only scan up to (not including) frame_index -- `ref_state` above already
-    // threaded through frame_index itself (needed for `slots`/L0/L1 resolution above), so it no
-    // longer reflects the pre-frame_index state `ParsedFrame::parse_with_ref_state` needs for
-    // correct `tile_data` extraction (see that method's doc). Redoing this cheap header-only
-    // pass is simpler and safer than trying to snapshot `ref_state` mid-loop above without
-    // risking the already-correct L0/L1 logic.
-    let mut tile_ref_state =
-        thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
-    let parsed = ParsedFrame::parse_with_ref_state(&obu_data, &mut tile_ref_state)
-        .map_err(|e| e.to_string())?;
+    let parsed =
+        crate::analysis_session::analyzed_frame(data, frame_index).map_err(|e| e.to_string())?;
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
 
     // The reference lists come from the frame header; the histogram from decoded QPs. A frame
@@ -327,13 +302,18 @@ mod tests {
 
     #[test]
     fn get_codec_extended_info_reports_whether_the_frame_was_verified() {
-        // The key frame decodes exactly; an inter frame parsed on its own does not.
+        // The key frame and the first inter frames decode exactly; the fixture's packet 65 is the first
+        // one that still hits unimplemented syntax (#102).
         assert_eq!(
             get_codec_extended_info(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
             "verified"
         );
         assert_eq!(
             get_codec_extended_info(AV1_IVF_FIXTURE, 2).unwrap()["provenance"],
+            "verified"
+        );
+        assert_eq!(
+            get_codec_extended_info(AV1_IVF_FIXTURE, 65).unwrap()["provenance"],
             "unverified"
         );
     }
@@ -342,18 +322,7 @@ mod tests {
     /// built from the invented scaffold grid.
     #[test]
     fn get_codec_extended_info_has_no_qp_histogram_for_an_undecoded_frame() {
-        let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
-        let mut ivf = AV1_IVF_FIXTURE[..32].to_vec();
-        ivf[24..28].copy_from_slice(&2u32.to_le_bytes());
-        // Chunk 1: temporal delimiter + a `show_existing_frame` header, no tile.
-        for (pts, data) in [
-            (0u64, frames[0].data.as_slice()),
-            (1, &[0x12, 0x00, 0x1A, 0x01, 0x80][..]),
-        ] {
-            ivf.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            ivf.extend_from_slice(&pts.to_le_bytes());
-            ivf.extend_from_slice(data);
-        }
+        let ivf = crate::test_support::stream_with_an_undecodable_frame();
         let result = get_codec_extended_info(&ivf, 1).unwrap();
         assert_eq!(result["provenance"], "scaffold");
         assert_eq!(result["qp_histogram"].as_array().unwrap().len(), 0);

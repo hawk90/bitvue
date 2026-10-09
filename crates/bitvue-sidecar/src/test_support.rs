@@ -103,3 +103,54 @@ pub(crate) fn open_and_index_real_fixture_as_both_streams(core: &Core) {
         );
     }
 }
+
+/// An IVF made of `chunks` (one packet each), with the fixture's file header.
+pub(crate) fn ivf_of_chunks(chunks: &[&[u8]]) -> Vec<u8> {
+    let mut out = AV1_IVF_FIXTURE[..32].to_vec();
+    out[24..28].copy_from_slice(&(chunks.len() as u32).to_le_bytes());
+    for (pts, data) in chunks.iter().enumerate() {
+        out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(pts as u64).to_le_bytes());
+        out.extend_from_slice(data);
+    }
+    out
+}
+
+/// A temporal delimiter and a `show_existing_frame` header showing reference slot 0.
+pub(crate) const SHOW_EXISTING_SLOT_0: &[u8] = &[0x12, 0x00, 0x1A, 0x01, 0x80];
+
+/// A stream whose second packet is the fixture's key frame with its tile cut down to one byte:
+/// a frame the arithmetic decoder cannot even start on, so nothing of it can be decoded.
+pub(crate) fn stream_with_an_undecodable_frame() -> Vec<u8> {
+    use bitvue_av1_codec::obu::{ObuIterator, ObuType};
+    let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+    let key = &frames[0].data;
+    let tile_len = bitvue_av1_codec::overlay_extraction::ParsedFrame::parse(key)
+        .unwrap()
+        .tile_data
+        .len();
+
+    let mut iter = ObuIterator::new(key);
+    while let Some(Ok(found)) = iter.next_obu_with_offset() {
+        if found.obu.header.obu_type != ObuType::Frame {
+            continue;
+        }
+        // The OBU header byte (has_size_field set), the payload length as leb128, the payload.
+        let payload = &found.obu.payload;
+        let cut = &payload[..payload.len() - (tile_len - 1)];
+        let mut chunk = vec![0x12, 0x00, key[found.offset]];
+        let mut size = cut.len();
+        loop {
+            let byte = (size & 0x7f) as u8;
+            size >>= 7;
+            if size == 0 {
+                chunk.push(byte);
+                break;
+            }
+            chunk.push(byte | 0x80);
+        }
+        chunk.extend_from_slice(cut);
+        return ivf_of_chunks(&[key, &chunk]);
+    }
+    panic!("the fixture's first packet has a Frame OBU");
+}

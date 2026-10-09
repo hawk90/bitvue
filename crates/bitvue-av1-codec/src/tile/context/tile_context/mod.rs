@@ -78,6 +78,9 @@ pub struct TileContext {
     /// dav1d's own tile-start reset.
     above_comp_type: Vec<u8>,
     left_comp_type: Vec<u8>,
+    /// `relative_dist(RefOrderHint[ref], OrderHint)` per reference (`LAST..=ALTREF`), feeding the
+    /// POC term of `jnt_comp_context`.
+    ref_order_distance: [i32; 7],
     /// `filter[dir]` (spec 5.11.30) above/left context -- last chosen subpel filter per direction
     /// (`[0]`=horizontal, `[1]`=vertical), sentinel `3` (`DAV1D_N_SWITCHABLE_FILTERS`) = "no
     /// filter recorded here" (matches real dav1d's own sentinel, `get_filter_ctx`'s doc).
@@ -207,6 +210,7 @@ impl TileContext {
             left_ref0: vec![0; tile_height_4x4.max(1) as usize],
             above_ref1: vec![0; tile_width_4x4.max(1) as usize],
             left_ref1: vec![0; tile_height_4x4.max(1) as usize],
+            ref_order_distance: [0; 7],
             above_comp_type: vec![0; tile_width_4x4.max(1) as usize],
             left_comp_type: vec![0; tile_height_4x4.max(1) as usize],
             above_filter: [

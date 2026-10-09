@@ -3,12 +3,12 @@
 use super::*;
 
 impl SpatialRefContext {
-    /// Real weighted compound DRL candidate stack (spec 7.10.2's `RefMvStack`, compound pairs --
-    /// `single_ref_mv_stack`'s doc for the shared spatial/temporal weight structure this mirrors).
-    /// Candidates are joint `[MotionVector; 2]` pairs from neighbors whose stored ref PAIR exactly
-    /// matches `(ref0, ref1)` (`compound_candidate_mv`'s doc); if fewer than 2 such exact-pair
-    /// matches are found, `fill_compound_extended_candidates` pads the rest -- see that function's
-    /// doc for the (partial, sign-bias-less) extended-candidate fallback this runs.
+    /// Real weighted compound candidate stack: a port of the compound branch of dav1d's
+    /// `refmvs_find` with the same structure as [`Self::single_ref_mv_stack`] -- nearest group
+    /// (top row, left column, top-right, bumped by +640), temporal pairs, top-left and the
+    /// secondary rows/columns, each group sorted by weight, then the `cnt < 2` fallback
+    /// ([`Self::fill_compound_extended_candidates`]) and the clamp to the frame. Candidates are
+    /// joint pairs from neighbours whose stored reference PAIR equals `(ref0, ref1)` exactly.
     pub fn compound_mv_stack(
         &self,
         x4: u32,
@@ -21,143 +21,155 @@ impl SpatialRefContext {
     ) -> ([CompoundMvStackEntry; 8], usize) {
         let mut stack = [CompoundMvStackEntry::default(); 8];
         let mut cnt = 0usize;
-        let w4 = bw4.clamp(1, 16);
-        let h4 = bh4.clamp(1, 16);
+        let w4 = bw4.min(16).min(self.col_end.saturating_sub(x4)).max(1);
+        let h4 = bh4.min(16).min(self.row_end.saturating_sub(y4)).max(1);
 
-        let have_top = y4 > 0;
-        let have_left = x4 > 0;
-        let max_rows = if have_top {
-            y4.div_ceil(2).min(2 + u32::from(bh4 > 1)) as i32
+        // `n_rows`/`n_cols` stay `u32::MAX` while the row/column is outside the tile.
+        let mut n_rows = u32::MAX;
+        let mut n_cols = u32::MAX;
+        let max_rows = if y4 > 0 {
+            y4.div_ceil(2).min(2 + u32::from(bh4 > 1))
         } else {
             0
-        };
-        let max_cols = if have_left {
-            x4.div_ceil(2).min(2 + u32::from(bw4 > 1)) as i32
+        } as i32;
+        let max_cols = if x4 > 0 {
+            x4.div_ceil(2).min(2 + u32::from(bw4 > 1))
         } else {
             0
+        } as i32;
+        let add = |stack: &mut [CompoundMvStackEntry; 8],
+                   cnt: &mut usize,
+                   cell: &SpatialRefCell,
+                   weight: i32| {
+            if let Some(mv) = Self::compound_candidate_mv(cell, ref0, ref1) {
+                Self::push_compound_mv_candidate(stack, cnt, weight, mv);
+            }
         };
 
-        if have_top {
-            self.scan_row_weighted_compound(
-                &mut stack,
-                &mut cnt,
-                ref0,
-                ref1,
+        if y4 > 0 {
+            n_rows = self.walk_row(
                 y4 - 1,
                 x4,
                 bw4,
                 w4,
                 max_rows,
                 if bw4 >= 16 { 4 } else { 1 },
+                &mut |cell, weight| add(&mut stack, &mut cnt, cell, weight),
             );
         }
-        if have_left {
-            self.scan_col_weighted_compound(
-                &mut stack,
-                &mut cnt,
-                ref0,
-                ref1,
+        if x4 > 0 {
+            n_cols = self.walk_col(
                 x4 - 1,
                 y4,
                 bh4,
                 h4,
                 max_cols,
                 if bh4 >= 16 { 4 } else { 1 },
+                &mut |cell, weight| add(&mut stack, &mut cnt, cell, weight),
             );
         }
-        // Top-right corner.
-        if have_top {
-            if let Some(cell) = self.cell(x4 + bw4.max(1), y4 - 1) {
-                if let Some(mv) = Self::compound_candidate_mv(cell, ref0, ref1) {
-                    Self::push_compound_mv_candidate(&mut stack, &mut cnt, 4, mv);
-                }
+        // Top-right: only a decoded cell can be there (dav1d's `EDGE_I444_TOP_HAS_RIGHT`).
+        if n_rows != u32::MAX && bw4.max(bh4) <= 16 && x4 + bw4 < self.col_end {
+            if let Some(cell) = self.cell(x4 + bw4, y4 - 1) {
+                add(&mut stack, &mut cnt, cell, 4);
             }
         }
 
-        // Real spec bumps every candidate found so far (the "nearest" group) by a flat +640 --
-        // `get_compound_drl_context`'s doc, same threshold/rationale as the single-ref version.
-        for cand in &mut stack[..cnt] {
+        let nearest_cnt = cnt;
+        for cand in &mut stack[..nearest_cnt] {
             cand.weight += 640;
         }
 
-        // Temporal candidates (spec 7.10, rav1d `add_temporal_candidate`'s compound branch,
-        // `refmvs.c:216-232` -- main grid scan only, same scope note as
-        // `crate::tile::motion_field::add_temporal_compound_candidates`'s doc). Weight 2, same low
-        // tier as the secondary spatial group below.
+        // Temporal pairs: one cell projected against both references.
         if use_ref_frame_mvs && ref0 >= 0 && ref1 >= 0 {
             if let Some(temporal) = &self.temporal {
-                let by8 = y4 >> 1;
-                let bx8 = x4 >> 1;
-                let w8 = ((w4 + 1) >> 1).min(8);
-                let h8 = ((h4 + 1) >> 1).min(8);
-                let step_h = if bw4 >= 16 { 2 } else { 1 };
-                let step_v = if bh4 >= 16 { 2 } else { 1 };
-                for mv in crate::tile::motion_field::add_temporal_compound_candidates(
+                for [mv0, mv1] in crate::tile::motion_field::add_temporal_compound_candidates(
                     &temporal.projected,
                     temporal.pocdiff[ref0 as usize],
                     temporal.pocdiff[ref1 as usize],
-                    bx8,
-                    by8,
-                    w8,
-                    h8,
-                    step_h,
-                    step_v,
+                    crate::tile::motion_field::TemporalBlock {
+                        bx4: x4,
+                        by4: y4,
+                        bw4,
+                        bh4,
+                        w4,
+                        h4,
+                        col_end: self.col_end,
+                        row_end: self.row_end,
+                    },
                 ) {
-                    Self::push_compound_mv_candidate(&mut stack, &mut cnt, 2, mv);
+                    let fix = |mv| {
+                        crate::tile::motion_field::fix_mv_precision(
+                            mv,
+                            temporal.allow_high_precision_mv,
+                            temporal.force_integer_mv,
+                        )
+                    };
+                    Self::push_compound_mv_candidate(&mut stack, &mut cnt, 2, [fix(mv0), fix(mv1)]);
                 }
             }
         }
 
-        // Top-left corner (secondary group).
-        if have_top && have_left {
+        // Top-left, then the secondary rows/columns -- only where both edges exist.
+        if n_rows != u32::MAX && n_cols != u32::MAX {
             if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
-                if let Some(mv) = Self::compound_candidate_mv(cell, ref0, ref1) {
-                    Self::push_compound_mv_candidate(&mut stack, &mut cnt, 4, mv);
-                }
+                add(&mut stack, &mut cnt, cell, 4);
             }
         }
-        // "Secondary" row/col scans 2-3 units further back -- same approximation/rationale as
-        // `single_ref_mv_stack`'s doc.
         for n in 2..=3u32 {
-            let back = 2 * n - 1;
-            if have_top && y4 >= back {
-                self.scan_row_weighted_compound(
-                    &mut stack,
-                    &mut cnt,
-                    ref0,
-                    ref1,
-                    y4 - back,
-                    x4,
+            if n > n_rows && n as i32 <= max_rows {
+                n_rows += self.walk_row(
+                    (y4 + 1 - 2 * n) | 1,
+                    x4 | 1,
                     bw4,
                     w4,
-                    (1 + max_rows - n as i32).max(1),
+                    1 + max_rows - n as i32,
                     if bw4 >= 16 { 4 } else { 2 },
+                    &mut |cell, weight| add(&mut stack, &mut cnt, cell, weight),
                 );
             }
-            if have_left && x4 >= back {
-                self.scan_col_weighted_compound(
-                    &mut stack,
-                    &mut cnt,
-                    ref0,
-                    ref1,
-                    x4 - back,
-                    y4,
+            if n > n_cols && n as i32 <= max_cols {
+                n_cols += self.walk_col(
+                    (x4 + 1 - 2 * n) | 1,
+                    y4 | 1,
                     bh4,
                     h4,
-                    (1 + max_cols - n as i32).max(1),
+                    1 + max_cols - n as i32,
                     if bh4 >= 16 { 4 } else { 2 },
+                    &mut |cell, weight| add(&mut stack, &mut cnt, cell, weight),
                 );
             }
         }
 
-        // Sort each group (nearest, then secondary) by weight descending -- same rationale as
-        // `single_ref_mv_stack`'s doc.
-        stack[..cnt].sort_by_key(|c| -c.weight);
+        // Sort the nearest group, then the rest (stable, descending).
+        stack[..nearest_cnt].sort_by_key(|c| -c.weight);
+        stack[nearest_cnt..cnt].sort_by_key(|c| -c.weight);
 
         if cnt < 2 {
             self.fill_compound_extended_candidates(
-                x4, y4, w4, h4, have_top, have_left, ref0, ref1, &mut stack, &mut cnt,
+                x4,
+                y4,
+                w4,
+                h4,
+                n_rows != u32::MAX,
+                n_cols != u32::MAX,
+                ref0,
+                ref1,
+                &mut stack,
+                &mut cnt,
             );
+        }
+
+        // Clamp to the frame (1/8-sample units).
+        let left = -((x4 + bw4 + 4) as i32) * 32;
+        let right = (self.iw4 as i32 - x4 as i32 + 4) * 32;
+        let top = -((y4 + bh4 + 4) as i32) * 32;
+        let bottom = (self.ih4 as i32 - y4 as i32 + 4) * 32;
+        for cand in &mut stack[..cnt] {
+            for mv in &mut cand.mv {
+                mv.x = mv.x.clamp(left, right);
+                mv.y = mv.y.clamp(top, bottom);
+            }
         }
 
         (stack, cnt)

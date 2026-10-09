@@ -118,10 +118,20 @@ pub struct ParsedFrame {
     /// (i.e. "`cdef_idx()` never reads any bits") if the full header wasn't parsed -- the same
     /// conservative default real spec itself uses when CDEF is disabled.
     pub cdef_bits: u8,
+    /// `frame_to_show_map_idx` of a `show_existing_frame` header: the reference slot whose frame
+    /// this unit displays. Such a unit has no tile of its own.
+    pub show_existing_slot: Option<u8>,
+    /// The coding units of this frame when they were decoded with the state of the frames before
+    /// it (see [`crate::overlay_extraction::StreamDecodeState`]); every extractor then uses them
+    /// instead of decoding the tile on its own, which would start from the default CDFs.
+    pub decoded: Option<super::ParsedCodingUnits>,
     /// `RefFrameSignBias` (spec 5.9.2): per reference (`LAST..=ALTREF`), whether the reference is
     /// displayed after this frame. Needs the reference order hints from before this frame's own
     /// header, so it is only right for a frame parsed with the threaded `RefFrameState`.
     pub ref_frame_sign_bias: [bool; 7],
+    /// `relative_dist(RefOrderHint[ref], OrderHint)` per reference -- the POC distances
+    /// `jnt_comp`'s context compares. Same sourcing as `ref_frame_sign_bias`.
+    pub ref_order_distance: [i32; 7],
     /// `lr_params()` (spec 5.9.20): which planes are restored and how big the units are. Same
     /// sourcing/fallback story as `cdef_bits` (no plane restored if the full header wasn't parsed).
     pub loop_restoration: crate::frame_header::LoopRestorationInfo,
@@ -154,6 +164,8 @@ pub struct ParsedFrame {
     /// sequence header, no `parse_frame_header_full` needed); default `false` (conservatively
     /// "never read the corresponding bits") if the sequence header wasn't found.
     pub enable_interintra_compound: bool,
+    /// `enable_dual_filter` (sequence header).
+    pub enable_dual_filter: bool,
     pub enable_masked_compound: bool,
     pub enable_jnt_comp: bool,
     pub enable_warped_motion: bool,
@@ -237,6 +249,7 @@ impl ParsedFrame {
                 switchable_motion_mode: self.switchable_motion_mode,
                 allow_warped_motion: self.allow_warped_motion,
                 enable_interintra_compound: self.enable_interintra_compound,
+                enable_dual_filter: self.enable_dual_filter,
                 enable_masked_compound: self.enable_masked_compound,
                 enable_jnt_comp: self.enable_jnt_comp,
                 subpel_filter_switchable: self.subpel_filter_switchable,
@@ -354,7 +367,10 @@ impl ParsedFrame {
                 subsampling_y: false,
                 enable_filter_intra: false,
                 cdef_bits: 0,
+                show_existing_slot: None,
+                decoded: None,
                 ref_frame_sign_bias: [false; 7],
+                ref_order_distance: [0; 7],
                 loop_restoration: Default::default(),
                 superres: false,
                 skip_mode_present: false,
@@ -366,6 +382,7 @@ impl ParsedFrame {
                 allow_high_precision_mv: false,
                 gm_type: [0u8; 8],
                 enable_interintra_compound: false,
+                enable_dual_filter: false,
                 enable_masked_compound: false,
                 enable_jnt_comp: false,
                 enable_warped_motion: false,
@@ -418,7 +435,9 @@ impl ParsedFrame {
         let mut subsampling_y = false;
         let mut enable_filter_intra = false;
         let mut cdef_bits = 0u8;
+        let mut show_existing_slot: Option<u8> = None;
         let mut ref_frame_sign_bias = [false; 7];
+        let mut ref_order_distance = [0i32; 7];
         let mut loop_restoration = crate::frame_header::LoopRestorationInfo::default();
         let mut superres = false;
         let mut skip_mode_present = false;
@@ -430,6 +449,7 @@ impl ParsedFrame {
         let mut allow_high_precision_mv = false;
         let mut gm_type = [0u8; 8];
         let mut enable_interintra_compound = false;
+        let mut enable_dual_filter = false;
         let mut enable_masked_compound = false;
         let mut enable_jnt_comp = false;
         let mut enable_warped_motion = false;
@@ -467,6 +487,7 @@ impl ParsedFrame {
                         subsampling_y = seq_hdr.color_config.subsampling_y;
                         enable_filter_intra = seq_hdr.enable_filter_intra;
                         enable_interintra_compound = seq_hdr.enable_interintra_compound;
+                        enable_dual_filter = seq_hdr.enable_dual_filter;
                         enable_masked_compound = seq_hdr.enable_masked_compound;
                         enable_jnt_comp = seq_hdr.enable_jnt_comp;
                         enable_warped_motion = seq_hdr.enable_warped_motion;
@@ -553,7 +574,14 @@ impl ParsedFrame {
                             refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
+                            show_existing_slot = full_hdr.frame_to_show_map_idx;
                             ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
+                                &prev_ref_order_hint,
+                                full_hdr.ref_frame_idx.as_ref(),
+                                full_hdr.order_hint,
+                                seq,
+                            );
+                            ref_order_distance = crate::frame_header_full::ref_order_distance(
                                 &prev_ref_order_hint,
                                 full_hdr.ref_frame_idx.as_ref(),
                                 full_hdr.order_hint,
@@ -611,7 +639,14 @@ impl ParsedFrame {
                             refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
+                            show_existing_slot = full_hdr.frame_to_show_map_idx;
                             ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
+                                &prev_ref_order_hint,
+                                full_hdr.ref_frame_idx.as_ref(),
+                                full_hdr.order_hint,
+                                seq,
+                            );
+                            ref_order_distance = crate::frame_header_full::ref_order_distance(
                                 &prev_ref_order_hint,
                                 full_hdr.ref_frame_idx.as_ref(),
                                 full_hdr.order_hint,
@@ -672,7 +707,10 @@ impl ParsedFrame {
             subsampling_y,
             enable_filter_intra,
             cdef_bits,
+            show_existing_slot,
+            decoded: None,
             ref_frame_sign_bias,
+            ref_order_distance,
             loop_restoration,
             superres,
             skip_mode_present,
@@ -684,6 +722,7 @@ impl ParsedFrame {
             allow_high_precision_mv,
             gm_type,
             enable_interintra_compound,
+            enable_dual_filter,
             enable_masked_compound,
             enable_jnt_comp,
             enable_warped_motion,

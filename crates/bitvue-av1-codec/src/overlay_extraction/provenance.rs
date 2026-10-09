@@ -63,10 +63,14 @@ pub(crate) fn no_decodable_tile() -> bitvue_engine::BitvueError {
     bitvue_engine::BitvueError::Decode("frame has no decodable tile data".into())
 }
 
+/// The arithmetic decoder cannot start on fewer bytes. A frame that is all skip blocks can be
+/// this small, so no larger guess is used.
+const MIN_TILE_BYTES: usize = 2;
+
 /// Whether the extractors try to decode `parsed`'s tile at all. A frame without tile data (a
 /// `show_existing_frame`, a tile too small to hold a symbol) is never decoded.
 pub(crate) fn has_decodable_tile(parsed: &ParsedFrame) -> bool {
-    parsed.has_tile_data() && parsed.tile_data.len() > 10
+    parsed.tile_data.len() >= MIN_TILE_BYTES
 }
 
 /// The [`Provenance`] of `parsed`'s analysis data, from the same (cached) parse every extractor
@@ -211,7 +215,7 @@ mod tests {
     #[test]
     fn a_tile_too_small_to_decode_is_scaffold() {
         let mut tiny = parse_chunk(0);
-        tiny.tile_data = vec![0x80u8; 5].into();
+        tiny.tile_data = vec![0x80u8; 1].into();
         assert_eq!(frame_provenance(&tiny), Provenance::Scaffold);
     }
 

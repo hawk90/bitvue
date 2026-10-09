@@ -66,6 +66,7 @@ use std::io::{self, Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+mod analysis_session;
 mod av1_features;
 mod codec_extended_info;
 mod coding_flow;
