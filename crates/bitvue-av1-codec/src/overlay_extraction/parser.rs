@@ -121,6 +121,10 @@ pub struct ParsedFrame {
     /// `frame_to_show_map_idx` of a `show_existing_frame` header: the reference slot whose frame
     /// this unit displays. Such a unit has no tile of its own.
     pub show_existing_slot: Option<u8>,
+    /// Whether this frame's `frame_type` is exactly `KEY_FRAME` (not `INTRA_ONLY_FRAME`, which
+    /// [`FrameTypeInfo::is_intra_only`] includes). A `show_existing_frame` of such a frame
+    /// refreshes every reference slot with it (spec 7.21).
+    pub key_frame: bool,
     /// The coding units of this frame when they were decoded with the state of the frames before
     /// it (see [`crate::overlay_extraction::StreamDecodeState`]); every extractor then uses them
     /// instead of decoding the tile on its own, which would start from the default CDFs.
@@ -368,6 +372,7 @@ impl ParsedFrame {
                 enable_filter_intra: false,
                 cdef_bits: 0,
                 show_existing_slot: None,
+                key_frame: false,
                 decoded: None,
                 ref_frame_sign_bias: [false; 7],
                 ref_order_distance: [0; 7],
@@ -436,6 +441,7 @@ impl ParsedFrame {
         let mut enable_filter_intra = false;
         let mut cdef_bits = 0u8;
         let mut show_existing_slot: Option<u8> = None;
+        let mut key_frame = false;
         let mut ref_frame_sign_bias = [false; 7];
         let mut ref_order_distance = [0i32; 7];
         let mut loop_restoration = crate::frame_header::LoopRestorationInfo::default();
@@ -575,6 +581,9 @@ impl ParsedFrame {
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             show_existing_slot = full_hdr.frame_to_show_map_idx;
+                            key_frame = !full_hdr.show_existing_frame
+                                && full_hdr.frame_type.is_intra()
+                                && !full_hdr.frame_type.is_intra_only();
                             ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
                                 &prev_ref_order_hint,
                                 full_hdr.ref_frame_idx.as_ref(),
@@ -640,6 +649,9 @@ impl ParsedFrame {
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             show_existing_slot = full_hdr.frame_to_show_map_idx;
+                            key_frame = !full_hdr.show_existing_frame
+                                && full_hdr.frame_type.is_intra()
+                                && !full_hdr.frame_type.is_intra_only();
                             ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
                                 &prev_ref_order_hint,
                                 full_hdr.ref_frame_idx.as_ref(),
@@ -708,6 +720,7 @@ impl ParsedFrame {
             enable_filter_intra,
             cdef_bits,
             show_existing_slot,
+            key_frame,
             decoded: None,
             ref_frame_sign_bias,
             ref_order_distance,

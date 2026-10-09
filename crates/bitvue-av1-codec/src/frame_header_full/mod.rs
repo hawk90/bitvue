@@ -127,6 +127,15 @@ impl RefFrameState {
     /// ParsedFrame)'s `order_hint`/`refresh_frame_flags` fields are sourced from the same
     /// bit-position-independent header fields this update reads, so a caller with access to a
     /// `ParsedFrame` never needs a second header parse just to keep this state current.
+    /// Copies slot `from` into every other slot: the state a `show_existing_frame` of a key frame
+    /// leaves behind (spec 7.21, `refresh_frame_flags = allFrames`).
+    pub fn copy_slot_to_all(&mut self, from: usize) {
+        let from = from % NUM_REF_FRAMES;
+        let (hint, segmentation) = (self.ref_order_hint[from], self.segmentation[from]);
+        self.ref_order_hint = [hint; NUM_REF_FRAMES];
+        self.segmentation = [segmentation; NUM_REF_FRAMES];
+    }
+
     pub fn apply_refresh(&mut self, refresh_frame_flags: u8, order_hint: u32) {
         for i in 0..NUM_REF_FRAMES {
             if (refresh_frame_flags >> i) & 1 == 1 {
