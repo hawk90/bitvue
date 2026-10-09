@@ -43,6 +43,7 @@ mod contexts;
 mod delta;
 mod interp_filter;
 mod intra;
+mod intrabc;
 mod is_inter;
 mod palette;
 mod ref_frames;
@@ -168,7 +169,7 @@ pub fn parse_coding_unit(
         // dav1d uses for both cases -- see `SymbolDecoder::read_intra_mode_inter_frame`'s doc for
         // the one real difference (which CDF/context source `y_mode` draws from).
         cu.ref_frames = [RefFrame::Intra, RefFrame::Intra];
-        if !is_key_frame {
+        if !is_key_frame || allow_intrabc {
             tile_ctx.set_spatial_ref_intra_block(mi.x4, mi.y4, mi.width, mi.height);
         }
 
@@ -197,17 +198,25 @@ pub fn parse_coding_unit(
         // `src/decode.c`'s `if (b->intra) { ... }` wrapper (2026-08-13, found while implementing
         // palette: this crate previously read `y_mode` here UNCONDITIONALLY, a real desync bug on
         // every IntraBC CU that predates this fix).
+        if cu.use_intrabc {
+            // Displacement vector (before the transform tree, like an inter block's mode info).
+            let has_chroma = contexts::has_chroma(mi, &tx_type_flags);
+            cu.mv[0] = intrabc::read_displacement_vector(
+                decoder,
+                tile_ctx,
+                mi,
+                mi_cols,
+                sb.size4 == 32,
+                has_chroma,
+                (tx_type_flags.subsampling_x, tx_type_flags.subsampling_y),
+            )?;
+        }
         if !cu.use_intrabc {
             y_mode_raw = intra::read_intra_mode_info(decoder, tile_ctx, rect, mi, frame, &mut cu)?;
         } else {
-            // Real-fixture-verified (2026-08-12): this crate's only committed fixture
-            // (`test_data/av1_test.ivf`) has zero `use_intrabc` CUs, so this path was verified
-            // separately against a real screen-content encode (official libaom test asset
-            // `screendata.y4m`, `storage.googleapis.com/aom-test-data`, encoded locally with
-            // `aomenc --tune-content=screen --enable-intrabc=1` -- scratchpad-only, never
-            // committed, per this repo's third-party-test-data policy) -- 10 real IntraBC CUs
-            // observed, 100% got a real `tx_blocks` breakdown, zero parse errors across the
-            // clip. See `DEVELOPMENT_PHASES.md` for the full verification record.
+            // The displacement vector was read above; the rest of an IntraBC block is parsed
+            // like an inter block's transform tree (verified symbol-for-symbol against dav1d on
+            // locally encoded aomenc and SVT-AV1 screen-content key frames, scratch-only).
             cu.tx_blocks = var_tx::compute_inter_tx_blocks(
                 decoder,
                 tile_ctx,
@@ -263,6 +272,24 @@ pub fn parse_coding_unit(
     // the *neighbours'* values; writing these any earlier makes them read the block itself.
     // dav1d does the same: its `decode_b` updates the context arrays after parsing the block.
     tile_ctx.set_intra_flag(x4, y4, width_4x4, height_4x4, !is_inter);
+    if cu.use_intrabc {
+        // Neighbouring key-frame intra blocks see an IntraBC block as DC_PRED (dav1d's
+        // `edge->mode = DC_PRED`).
+        tile_ctx.set_mode(x4, y4, width_4x4, height_4x4, 0);
+        // The vector is a candidate for later IntraBC blocks (dav1d `splat_intrabc_mv`: reference
+        // 0 = the current frame, no second reference, not NEWMV).
+        tile_ctx.set_spatial_ref_block(
+            x4,
+            y4,
+            width_4x4,
+            height_4x4,
+            -1,
+            -1,
+            false,
+            cu.mv[0],
+            MotionVector::zero(),
+        );
+    }
     if is_inter || cu.use_intrabc {
         // Inter and IntraBC blocks have no palette; record that for their neighbours.
         tile_ctx.set_pal_size(0, x4, y4, width_4x4, height_4x4, 0);
