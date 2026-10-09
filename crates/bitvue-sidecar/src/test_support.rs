@@ -154,3 +154,16 @@ pub(crate) fn stream_with_an_undecodable_frame() -> Vec<u8> {
     }
     panic!("the fixture's first packet has a Frame OBU");
 }
+
+/// The fixture's first three packets with the end of the third one's tile data flipped: an inter
+/// frame the decoder starts on but does not read to the end the way an encoder wrote it, so its
+/// decode is not trustworthy (provenance `unverified`).
+pub(crate) fn stream_with_a_corrupted_inter_frame() -> Vec<u8> {
+    let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+    let mut corrupted = frames[2].data.clone();
+    let end = corrupted.len();
+    for byte in &mut corrupted[end - 24..] {
+        *byte ^= 0xA5;
+    }
+    ivf_of_chunks(&[&frames[0].data, &frames[1].data, &corrupted])
+}

@@ -338,8 +338,7 @@ mod tests {
 
     #[test]
     fn get_coding_flow_analysis_reports_whether_the_frame_was_verified() {
-        // The key frame and the first inter frames decode exactly; the fixture's packet 65 is the first
-        // one that still hits unimplemented syntax (#102).
+        // The fixture decodes exactly, packet by packet; a damaged inter frame does not.
         assert_eq!(
             get_coding_flow_analysis(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
             "verified"
@@ -349,7 +348,11 @@ mod tests {
             "verified"
         );
         assert_eq!(
-            get_coding_flow_analysis(AV1_IVF_FIXTURE, 65).unwrap()["provenance"],
+            get_coding_flow_analysis(
+                &crate::test_support::stream_with_a_corrupted_inter_frame(),
+                2
+            )
+            .unwrap()["provenance"],
             "unverified"
         );
     }

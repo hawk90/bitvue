@@ -349,16 +349,22 @@ mod tests {
         assert!(result["mv_grid"].is_object());
     }
 
-    /// The first inter frames decode with the state of the frames before them and are verified;
-    /// the fixture's packet 65 is the first one that still hits unimplemented syntax (#102): its grids are sent,
-    /// flagged.
+    /// Inter frames decode with the state of the frames before them and are verified; a damaged
+    /// inter frame's grids are still sent, flagged.
     #[test]
-    fn get_frame_analysis_verifies_early_inter_frames_and_flags_later_ones() {
+    fn get_frame_analysis_verifies_inter_frames_and_flags_a_damaged_one() {
         let early = get_frame_analysis(AV1_IVF_FIXTURE, 2).unwrap();
         assert_eq!(early["provenance"], "verified");
         assert!(early["qp_grid"].is_object());
 
-        let later = get_frame_analysis(AV1_IVF_FIXTURE, 65).unwrap();
+        let late = get_frame_analysis(AV1_IVF_FIXTURE, 65).unwrap();
+        assert_eq!(late["provenance"], "verified");
+
+        let later = get_frame_analysis(
+            &crate::test_support::stream_with_a_corrupted_inter_frame(),
+            2,
+        )
+        .unwrap();
         assert_eq!(later["provenance"], "unverified");
         assert!(later["partition_grid"].is_object());
     }
