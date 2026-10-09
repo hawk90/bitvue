@@ -809,13 +809,37 @@ mod tests {
         }
     }
 
-    /// A second, independent stream: 12 frames of a synthetic test pattern encoded with rav1e
+    /// Decodes every frame of `clip` and requires each frame's symbol count and FNV-1a digest of
+    /// the `"{rng} {cnt} {dif}\n"` lines to equal `oracle`, which comes from dav1d 1.5.1
+    /// (instrumented `msac`).
+    fn assert_clip_decodes_like_dav1d(clip: &[u8], oracle: &[(usize, u64)]) {
+        let traces = decode_traces(clip, oracle.len());
+        assert_eq!(traces.len(), oracle.len());
+        let matches = |trace: &[(u32, i32, usize)], &(symbols, digest): &(usize, u64)| {
+            let mut hash = 0xcbf2_9ce4_8422_2325u64;
+            for (rng, cnt, dif) in trace {
+                for byte in format!("{rng} {cnt} {dif}\n").bytes() {
+                    hash ^= u64::from(byte);
+                    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+                }
+            }
+            trace.len() == symbols && hash == digest
+        };
+        for (frame, (trace, expected)) in traces.iter().zip(oracle).enumerate() {
+            assert!(
+                matches(trace, expected),
+                "frame {frame} diverges from dav1d ({} symbols, expected {})",
+                trace.len(),
+                expected.0
+            );
+        }
+    }
+
+    /// 12 frames of a synthetic test pattern encoded with rav1e
     /// (`test_data/av1_rav1e_testsrc2.ivf`, see `docs/PARITY_CHECKLIST.md`). Unlike the fixture it
     /// is a typical encoder output: every frame updates its CDFs at the end of the frame
     /// (`disable_frame_end_update_cdf = 0`), frames load their CDFs from a reference, segmentation
-    /// features carry over between frames, and its key frame uses loop restoration. `ORACLE` is
-    /// dav1d 1.5.1's per-frame symbol count and FNV-1a digest of the `"{rng} {cnt} {dif}\n"`
-    /// lines, for all 12 frames; every one of them must match.
+    /// features carry over between frames, and its key frame uses loop restoration.
     #[test]
     fn rav1e_clip_decodes_symbol_for_symbol_like_dav1d() {
         const ORACLE: [(usize, u64); 12] = [
@@ -832,28 +856,60 @@ mod tests {
             (8_843, 0xab45_9ff6_76ca_d372),
             (7_863, 0x777e_d8ef_8959_bc8f),
         ];
-        const CLIP: &[u8] = include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf");
+        assert_clip_decodes_like_dav1d(
+            include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
+            &ORACLE,
+        );
+    }
 
-        let traces = decode_traces(CLIP, ORACLE.len());
-        assert_eq!(traces.len(), ORACLE.len());
-        let matches = |trace: &[(u32, i32, usize)], &(symbols, digest): &(usize, u64)| {
-            let mut hash = 0xcbf2_9ce4_8422_2325u64;
-            for (rng, cnt, dif) in trace {
-                for byte in format!("{rng} {cnt} {dif}\n").bytes() {
-                    hash ^= u64::from(byte);
-                    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-                }
-            }
-            trace.len() == symbols && hash == digest
-        };
-        for (frame, (trace, expected)) in traces.iter().zip(&ORACLE).enumerate() {
-            assert!(
-                matches(trace, expected),
-                "frame {frame} diverges from dav1d ({} symbols, expected {})",
-                trace.len(),
-                expected.0
-            );
-        }
+    /// 13 frames (one hidden) encoded with aomenc: IntraBC and delta-q on the key frame,
+    /// compound prediction with jnt_comp and masked compound, one interpolation filter shared by
+    /// both axes (`enable_dual_filter = 0`).
+    #[test]
+    fn aomenc_clip_decodes_symbol_for_symbol_like_dav1d() {
+        const ORACLE: [(usize, u64); 13] = [
+            (36_976, 0x8ad9_2b7c_9793_aec0),
+            (19_122, 0xcafe_83d0_6a62_253f),
+            (12_248, 0xe7cd_6f61_5a51_e547),
+            (11_875, 0x5039_7c82_99d0_01eb),
+            (8_005, 0x04b3_a8ea_64c4_e504),
+            (7_801, 0x6534_6ff8_eeb5_2875),
+            (7_760, 0xd58f_2223_14d3_c2af),
+            (10_303, 0xe424_7dbb_a1de_5b36),
+            (9_710, 0x47ef_35be_d6d3_eba9),
+            (8_740, 0x5769_e594_84ed_da30),
+            (7_697, 0x3780_efae_761a_0647),
+            (7_396, 0xd3e4_edc0_1224_567d),
+            (53, 0x0573_dc75_c66c_f904),
+        ];
+        assert_clip_decodes_like_dav1d(
+            include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
+            &ORACLE,
+        );
+    }
+
+    /// 12 frames encoded with SVT-AV1 4.2.0: IntraBC on the key frame, hierarchical prediction
+    /// with compound references, interintra, a single shared interpolation filter.
+    #[test]
+    fn svt_av1_clip_decodes_symbol_for_symbol_like_dav1d() {
+        const ORACLE: [(usize, u64); 12] = [
+            (38_011, 0xc2d7_a4e8_4882_c9c3),
+            (16_872, 0x6fa0_6593_810f_b287),
+            (14_111, 0x4138_60de_4b02_849b),
+            (10_287, 0x40e2_4554_944b_70c5),
+            (6_905, 0x75e2_1291_f50b_be32),
+            (7_013, 0x278c_b5b9_05f5_2a31),
+            (10_393, 0x2cea_3cf9_261d_ddf5),
+            (9_541, 0x22c6_a392_f6e6_0bb2),
+            (7_660, 0x18e9_3670_c2e3_3d8f),
+            (12_720, 0x80b8_3fba_1760_50a4),
+            (6_213, 0x2aac_3c40_a08b_177a),
+            (9_211, 0x17fe_18f1_94a0_2a25),
+        ];
+        assert_clip_decodes_like_dav1d(
+            include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
+            &ORACLE,
+        );
     }
 
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential

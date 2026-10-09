@@ -152,6 +152,8 @@ Out of scope, by design: broadcast QC (live TS conformance TR 101290, SCTE-35, C
 |---|---|---|
 | `test_data/av1_test.ivf` | AV1 IVF | 250 frames, IPPP (no reordering), PTS 0..249 sequential, no HDR/timing info |
 | `test_data/av1_rav1e_testsrc2.ivf` | AV1 IVF | 12 frames, 22 KB, rav1e 0.8.1 (default settings) from `ffmpeg -f lavfi -i testsrc2=size=320x240:rate=30 -frames:v 12 -pix_fmt yuv420p` (generated pattern, regenerates byte-identically); typical encoder output: every frame updates CDFs at frame end (`refresh_context=1`), `primary_ref_frame` chain, key frame with loop restoration. dav1d 1.5.1 per-frame symbol digests pinned in `cu_parser.rs` (`rav1e_clip_*`); encoder flags not recorded |
+| `test_data/av1_aomenc_testsrc2.ivf` | AV1 IVF | 13 frames (one hidden), 17 KB, aomenc (libaom, version not recorded) from the same generated `testsrc2` pattern as the rav1e clip; IntraBC and delta-q on the key frame, compound + jnt_comp + masked compound, `enable_dual_filter=0`. Per-frame dav1d 1.5.1 symbol digests pinned in `cu_parser.rs` (`aomenc_clip_*`); encoder flags not recorded |
+| `test_data/av1_svtav1_testsrc2.ivf` | AV1 IVF | 12 frames, 16 KB, SVT-AV1 4.2.0 from the same generated pattern; IntraBC on the key frame, hierarchical references, interintra, `enable_dual_filter=0`. Per-frame dav1d 1.5.1 symbol digests pinned (`svt_av1_clip_*`); encoder flags not recorded |
 | `test_data/hevc_test.hevc` | HEVC Annex B | 7.5 KB |
 | `test_data/avc_test.h264` | AVC Annex B | 7.4 KB, VUI `nal_hrd_parameters_present_flag=0` |
 | `test_data/vp9_test.ivf` | VP9 IVF | 11.4 KB |
