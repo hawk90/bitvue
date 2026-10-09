@@ -16,6 +16,8 @@
 //!
 //! For MVP, we use simplified uniform distributions.
 
+mod save;
+
 /// CDF scale (2^15)
 pub const CDF_SCALE: u16 = 32768;
 
