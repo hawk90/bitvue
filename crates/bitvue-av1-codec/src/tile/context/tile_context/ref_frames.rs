@@ -14,8 +14,8 @@ impl TileContext {
     /// derived from the above/left neighbors' reference counts. Source: rav1d `get_comp_ctx`
     /// (`memorysafety/rav1d`, BSD-2-Clause, `src/env.rs`).
     pub fn comp_mode_context(&self, x4: u32, y4: u32) -> u8 {
-        let have_top = y4 > 0;
-        let have_left = x4 > 0;
+        let have_top = self.has_top(y4);
+        let have_left = self.has_left(x4);
         let xi = x4 as usize;
         let yi = y4 as usize;
         let a_comp = || self.above_ref_comp.get(xi).copied().unwrap_or(false);
@@ -56,8 +56,8 @@ impl TileContext {
     /// Source: rav1d `get_comp_dir_ctx` (`memorysafety/rav1d`, BSD-2-Clause, `src/env.rs`), the
     /// most heavily branched of the `ref_frame` context functions.
     pub fn comp_ref_type_context(&self, x4: u32, y4: u32) -> u8 {
-        let have_top = y4 > 0;
-        let have_left = x4 > 0;
+        let have_top = self.has_top(y4);
+        let have_left = self.has_left(x4);
         let xi = x4 as usize;
         let yi = y4 as usize;
         let (a_intra, a_comp, a_ref0, a_ref1) = (
@@ -143,8 +143,8 @@ impl TileContext {
         num_buckets: usize,
         bucket: impl Fn(i8) -> Option<usize>,
     ) -> [u8; 4] {
-        let have_top = y4 > 0;
-        let have_left = x4 > 0;
+        let have_top = self.has_top(y4);
+        let have_left = self.has_left(x4);
         let xi = x4 as usize;
         let yi = y4 as usize;
         let mut cnt = [0u8; 4];

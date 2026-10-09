@@ -125,6 +125,12 @@ pub struct ParsedFrame {
     /// [`FrameTypeInfo::is_intra_only`] includes). A `show_existing_frame` of such a frame
     /// refreshes every reference slot with it (spec 7.21).
     pub key_frame: bool,
+    /// The frame's tile layout (spec 5.9.15); `None` when it is not known (no sequence header
+    /// to parse the frame header with), which is read as one tile.
+    pub tiles: Option<crate::frame_header::TileLayout>,
+    /// Where each tile group's payload lies within `tile_data` (one range per tile group OBU, or
+    /// the part of a `Frame` OBU after its header). Empty: all of `tile_data` is one group.
+    pub tile_groups: Vec<std::ops::Range<usize>>,
     /// The coding units of this frame when they were decoded with the state of the frames before
     /// it (see [`crate::overlay_extraction::StreamDecodeState`]); every extractor then uses them
     /// instead of decoding the tile on its own, which would start from the default CDFs.
@@ -373,6 +379,8 @@ impl ParsedFrame {
                 cdef_bits: 0,
                 show_existing_slot: None,
                 key_frame: false,
+                tiles: None,
+                tile_groups: Vec::new(),
                 decoded: None,
                 ref_frame_sign_bias: [false; 7],
                 ref_order_distance: [0; 7],
@@ -442,6 +450,8 @@ impl ParsedFrame {
         let mut cdef_bits = 0u8;
         let mut show_existing_slot: Option<u8> = None;
         let mut key_frame = false;
+        let mut tiles = None;
+        let mut tile_groups: Vec<std::ops::Range<usize>> = Vec::new();
         let mut ref_frame_sign_bias = [false; 7];
         let mut ref_order_distance = [0i32; 7];
         let mut loop_restoration = crate::frame_header::LoopRestorationInfo::default();
@@ -533,6 +543,7 @@ impl ParsedFrame {
                     // frame): every field below describes the frame parsed last, so the tile
                     // bytes of an earlier one must not stay in front of them.
                     tile_data.clear();
+                    tile_groups.clear();
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
                         // `FrameTypeInfo::is_intra_only`'s doc says "key/intra-only" -- i.e. spec
                         // 5.9.2's `FrameIsIntra` (`frame_type == KEY_FRAME || frame_type ==
@@ -581,6 +592,7 @@ impl ParsedFrame {
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             show_existing_slot = full_hdr.frame_to_show_map_idx;
+                            tiles = full_hdr.tiles.clone();
                             key_frame = !full_hdr.show_existing_frame
                                 && full_hdr.frame_type.is_intra()
                                 && !full_hdr.frame_type.is_intra_only();
@@ -607,8 +619,10 @@ impl ParsedFrame {
                             allow_high_precision_mv = full_hdr.allow_high_precision_mv;
                             gm_type = full_hdr.gm_type;
                             if full_hdr.header_size_bytes < obu.payload.len() {
+                                let start = tile_data.len();
                                 tile_data
                                     .extend_from_slice(&obu.payload[full_hdr.header_size_bytes..]);
+                                tile_groups.push(start..tile_data.len());
                             }
                         }
                     }
@@ -649,6 +663,7 @@ impl ParsedFrame {
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             show_existing_slot = full_hdr.frame_to_show_map_idx;
+                            tiles = full_hdr.tiles.clone();
                             key_frame = !full_hdr.show_existing_frame
                                 && full_hdr.frame_type.is_intra()
                                 && !full_hdr.frame_type.is_intra_only();
@@ -678,7 +693,9 @@ impl ParsedFrame {
                     }
                 }
                 ObuType::TileGroup => {
+                    let start = tile_data.len();
                     tile_data.extend_from_slice(&obu.payload);
+                    tile_groups.push(start..tile_data.len());
                 }
                 _ => {}
             }
@@ -721,6 +738,8 @@ impl ParsedFrame {
             cdef_bits,
             show_existing_slot,
             key_frame,
+            tiles,
+            tile_groups,
             decoded: None,
             ref_frame_sign_bias,
             ref_order_distance,

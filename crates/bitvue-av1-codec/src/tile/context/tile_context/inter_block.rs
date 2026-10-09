@@ -14,8 +14,8 @@ impl TileContext {
     /// `left+above` (that a "default array value" shortcut would produce for an unwritten neighbor)
     /// is NOT behaviorally equivalent here.
     pub fn intra_ctx(&self, x4: u32, y4: u32) -> u8 {
-        let have_left = x4 > 0;
-        let have_top = y4 > 0;
+        let have_left = self.has_left(x4);
+        let have_top = self.has_top(y4);
         let above = u8::from(
             self.above_ref_intra
                 .get(x4 as usize)

@@ -63,9 +63,9 @@ pub(crate) fn no_decodable_tile() -> bitvue_engine::BitvueError {
     bitvue_engine::BitvueError::Decode("frame has no decodable tile data".into())
 }
 
-/// The arithmetic decoder cannot start on fewer bytes. A frame that is all skip blocks can be
-/// this small, so no larger guess is used.
-const MIN_TILE_BYTES: usize = 2;
+/// The arithmetic decoder cannot start on fewer bytes. A tile that is all skip blocks can be this
+/// small, so no larger guess is used.
+const MIN_TILE_BYTES: usize = 1;
 
 /// Whether the extractors try to decode `parsed`'s tile at all. A frame without tile data (a
 /// `show_existing_frame`, a tile too small to hold a symbol) is never decoded.
@@ -211,12 +211,14 @@ mod tests {
         );
     }
 
-    /// Too few bytes to hold a decodable tile: not decoded, however the parser would cope.
+    /// No tile bytes: not decoded, however the parser would cope. One byte is already a tile.
     #[test]
-    fn a_tile_too_small_to_decode_is_scaffold() {
+    fn a_frame_without_tile_bytes_is_scaffold_and_one_byte_is_decoded() {
         let mut tiny = parse_chunk(0);
-        tiny.tile_data = vec![0x80u8; 1].into();
+        tiny.tile_data = Vec::new().into();
         assert_eq!(frame_provenance(&tiny), Provenance::Scaffold);
+        tiny.tile_data = vec![0x80u8; 1].into();
+        assert_eq!(frame_provenance(&tiny), Provenance::Unverified);
     }
 
     /// Same invariant when the failure is in the middle: flip one bit somewhere in the tile and

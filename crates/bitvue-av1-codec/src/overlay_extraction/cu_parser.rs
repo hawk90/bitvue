@@ -113,7 +113,6 @@ pub(crate) fn decode_frame(
     inputs: FrameDecodeInputs<'_>,
 ) -> Result<FrameDecode, BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-    let tile_data = Arc::clone(&parsed.tile_data);
     let sb_size = parsed.dimensions.sb_size;
     let sb_cols = parsed.dimensions.sb_cols;
     let sb_rows = parsed.dimensions.sb_rows;
@@ -125,88 +124,170 @@ pub(crate) fn decode_frame(
     let estimated_cus = (sb_cols * sb_rows) as usize * 4;
     all_cus.reserve(estimated_cus);
 
-    // The tile starts from the saved CDFs of the primary reference frame, or from the defaults
+    // Every tile starts from the saved CDFs of the primary reference frame, or from the defaults
     // seeded with the real per-frame qindex-bucket (`qcat`) residual-coefficient CDFs -- see
     // `crate::symbol::cdf::CdfContext::new_with_qcat`'s doc for the dav1d selection formula.
     let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-    let decoder = match inputs.initial_cdf {
-        Some(cdf) => crate::SymbolDecoder::with_cdf_context(&tile_data, cdf)?,
-        None => crate::SymbolDecoder::new_with_qcat(&tile_data, qcat)?,
-    };
+    let initial_cdf = inputs
+        .initial_cdf
+        .unwrap_or_else(|| crate::symbol::CdfContext::new_with_qcat(qcat));
 
-    // Track running QP value across superblocks
-    let mut current_qp = base_qp;
-
-    let mut tile_ctx = tile_context_for(parsed);
-    if let Some((projected, pocdiff)) = inputs.temporal {
-        tile_ctx.set_temporal_context(projected.clone(), pocdiff);
-        tile_ctx.set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
-    }
-
-    let mut state = crate::tile::TileState {
-        decoder,
-        mv_ctx: crate::tile::MvPredictorContext::new(sb_cols, sb_rows),
-        tile_ctx,
-    };
-    #[cfg(test)]
-    {
-        state.decoder.decoder.range_trace = Some(Vec::new());
-    }
+    let tiles = tile_slices(parsed)?;
+    let layout = parsed.tiles.as_ref().filter(|l| l.tile_count() > 1);
+    let cols = layout.map_or(1, |l| l.tile_cols());
+    let update_tile = layout.map_or(0, |l| l.context_update_tile_id);
 
     let superblocks_total = sb_cols * sb_rows;
     let mut superblocks_decoded = 0;
-    'frame: for sb_y in 0..sb_rows {
-        state.tile_ctx.start_superblock_row();
-        for sb_x in 0..sb_cols {
-            let sb_pixel_x = sb_x * sb_size;
-            let sb_pixel_y = sb_y * sb_size;
+    let mut padding_conformant = true;
+    let mut final_cdf = None;
+    // dav1d decodes one superblock row of every tile column in turn, so its trace interleaves
+    // the tiles: segments are keyed `(tile row, superblock row, tile column)` to merge alike.
+    #[cfg(test)]
+    let mut trace_segments: Vec<TraceSegment> = Vec::new();
 
-            match crate::parse_superblock(
-                &mut state,
-                sb_pixel_x,
-                sb_pixel_y,
-                sb_size,
-                &frame_params,
-                current_qp,
-            ) {
-                Ok((sb, new_qp)) => {
-                    all_cus.extend(sb.coding_units);
-                    current_qp = new_qp;
-                    superblocks_decoded += 1;
+    for (tile_num, bytes) in &tiles {
+        let (col_sbs, row_sbs) = match layout {
+            Some(l) => {
+                let (col, row) = ((tile_num % cols) as usize, (tile_num / cols) as usize);
+                (
+                    l.col_starts_sb[col]..l.col_starts_sb[col + 1],
+                    l.row_starts_sb[row]..l.row_starts_sb[row + 1],
+                )
+            }
+            None => (0..sb_cols, 0..sb_rows),
+        };
+
+        let decoder = crate::SymbolDecoder::with_cdf_context(bytes, initial_cdf.clone())?;
+        let mut tile_ctx = tile_context_for(parsed);
+        let sb_4x4 = sb_size / 4;
+        tile_ctx.set_tile_extent(
+            col_sbs.start * sb_4x4,
+            col_sbs.end * sb_4x4,
+            row_sbs.start * sb_4x4,
+            row_sbs.end * sb_4x4,
+        );
+        if let Some((projected, pocdiff)) = inputs.temporal {
+            tile_ctx.set_temporal_context(projected.clone(), pocdiff);
+            tile_ctx.set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
+        }
+        let mut state = crate::tile::TileState {
+            decoder,
+            mv_ctx: crate::tile::MvPredictorContext::new(sb_cols, sb_rows),
+            tile_ctx,
+        };
+        #[cfg(test)]
+        {
+            state.decoder.decoder.range_trace = Some(Vec::new());
+        }
+
+        // Track running QP value across superblocks
+        let mut current_qp = base_qp;
+        #[cfg(test)]
+        let tile_pos = layout.map_or((0, 0), |_| (tile_num / cols, tile_num % cols));
+        'tile: for sb_y in row_sbs.clone() {
+            #[cfg(test)]
+            {
+                let done = state.decoder.decoder.range_trace.take().unwrap_or_default();
+                if let Some(last) = trace_segments.last_mut() {
+                    last.1.extend(done);
                 }
-                Err(e) => {
-                    tracing::debug!(
-                        "Failed to parse superblock ({}, {}): {}, stopping",
-                        sb_pixel_x,
-                        sb_pixel_y,
-                        e
-                    );
-                    break 'frame;
+                trace_segments.push(((tile_pos.0, sb_y, tile_pos.1), Vec::new()));
+                state.decoder.decoder.range_trace = Some(Vec::new());
+            }
+            state.tile_ctx.start_superblock_row();
+            for sb_x in col_sbs.clone() {
+                let sb_pixel_x = sb_x * sb_size;
+                let sb_pixel_y = sb_y * sb_size;
+
+                match crate::parse_superblock(
+                    &mut state,
+                    sb_pixel_x,
+                    sb_pixel_y,
+                    sb_size,
+                    &frame_params,
+                    current_qp,
+                ) {
+                    Ok((sb, new_qp)) => {
+                        all_cus.extend(sb.coding_units);
+                        current_qp = new_qp;
+                        superblocks_decoded += 1;
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            "Failed to parse superblock ({}, {}): {}, stopping",
+                            sb_pixel_x,
+                            sb_pixel_y,
+                            e
+                        );
+                        break 'tile;
+                    }
                 }
             }
+        }
+        padding_conformant &= state.decoder.padding_is_conformant();
+        #[cfg(test)]
+        if let Some(last) = trace_segments.last_mut() {
+            last.1
+                .extend(state.decoder.decoder.range_trace.take().unwrap_or_default());
+        }
+        if *tile_num == update_tile || final_cdf.is_none() {
+            final_cdf = Some(state.decoder.cdf_context);
         }
     }
 
     let outcome = DecodeOutcome {
         superblocks_total,
         superblocks_decoded,
-        padding_conformant: state.decoder.padding_is_conformant(),
+        padding_conformant,
     };
     tracing::debug!(
-        "Parsed {} coding units from tile data (final QP: {}, {:?})",
+        "Parsed {} coding units from tile data ({:?})",
         all_cus.len(),
-        current_qp,
         outcome
     );
-    #[cfg(test)]
-    let trace = state.decoder.decoder.range_trace.take().unwrap_or_default();
     Ok(FrameDecode {
         units: all_cus,
         outcome,
-        final_cdf: state.decoder.cdf_context,
+        final_cdf: final_cdf.unwrap_or(initial_cdf),
         #[cfg(test)]
-        trace,
+        trace: {
+            trace_segments.sort_by_key(|(key, _)| *key);
+            trace_segments.into_iter().flat_map(|(_, t)| t).collect()
+        },
     })
+}
+
+/// `(tile row, superblock row, tile column)`: the order dav1d decodes (and traces) tiles in.
+#[cfg(test)]
+type TileRowKey = (u32, u32, u32);
+
+/// The `(rng, cnt, dif)` trace of one superblock row of one tile.
+#[cfg(test)]
+type TraceSegment = (TileRowKey, Vec<(u32, i32, usize)>);
+
+/// The tiles of the frame as `(tile number, bytes)`, in decode order. A frame without a known
+/// layout, or with a single tile, is all of `tile_data`; otherwise every tile group is split
+/// into its tiles (spec 5.11.1).
+fn tile_slices(parsed: &ParsedFrame) -> Result<Vec<(u32, &[u8])>, BitvueError> {
+    let data: &[u8] = &parsed.tile_data;
+    let Some(layout) = parsed.tiles.as_ref().filter(|l| l.tile_count() > 1) else {
+        return Ok(vec![(0, data)]);
+    };
+    let whole = std::iter::once(0..data.len());
+    let groups: Vec<std::ops::Range<usize>> = if parsed.tile_groups.is_empty() {
+        whole.collect()
+    } else {
+        parsed.tile_groups.clone()
+    };
+    let mut tiles = Vec::new();
+    for group in &groups {
+        let payload = &data[group.clone()];
+        for (tile, range) in crate::tile::layout::split_tile_group(payload, layout)? {
+            tiles.push((tile, &payload[range]));
+        }
+    }
+    Ok(tiles)
 }
 
 /// Spatial index for O(1) coding unit lookup by grid position
@@ -1140,6 +1221,55 @@ mod tests {
             include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
             &ORACLE,
         );
+    }
+
+    /// 12 frames from aomenc 3.15.1 with `--tile-columns=3 --tile-rows=2`: a 5x2 superblock frame
+    /// splits into 5 tile columns (`TileColsLog2` is 3, more than the five tiles need) and 2 tile
+    /// rows, so every tile is one superblock wide. Covers the tile layout, the size field in front
+    /// of each tile, per-tile reset of the contexts, tiles of a single byte (an all-skip tile), and
+    /// the CDFs the frame saves coming from `context_update_tile_id`. dav1d decodes one superblock
+    /// row of every tile column in turn; the comparison trace is merged in that order.
+    #[test]
+    fn aomenc_five_tile_columns_clip_decodes_symbol_for_symbol_like_dav1d() {
+        const ORACLE: [(usize, u64); 12] = [
+            (42_172, 0x011b_98a6_771a_6170),
+            (5_625, 0x83e6_efbd_f738_1b22),
+            (8_953, 0x23f8_22ea_d51c_f7ce),
+            (5_234, 0xeb69_99fe_67bc_f3c2),
+            (6_307, 0x2f6c_3410_04a7_8f09),
+            (7_516, 0x9e34_69e4_febf_46c4),
+            (8_114, 0x0d4c_0ad9_e392_36b1),
+            (5_621, 0x0208_146b_c150_27b8),
+            (6_203, 0x1a15_a567_b87d_6f54),
+            (4_660, 0xd9c3_dee5_d5e2_a269),
+            (6_546, 0x723a_3c80_f8de_84f1),
+            (4_549, 0x028b_01af_0dc6_c837),
+        ];
+        const CLIP: &[u8] = include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf");
+        assert_clip_decodes_like_dav1d(CLIP, &ORACLE);
+    }
+
+    /// 12 frames from aomenc 3.15.1 with `--tile-columns=1 --tile-rows=1 --num-tile-groups=2`:
+    /// every frame is a `FrameHeader` OBU and two `TileGroup` OBUs, the second starting at tile 2
+    /// (`tile_start_and_end_present_flag` set).
+    #[test]
+    fn aomenc_two_tile_groups_clip_decodes_symbol_for_symbol_like_dav1d() {
+        const ORACLE: [(usize, u64); 12] = [
+            (39_070, 0xad66_3c4d_7aa4_5276),
+            (5_585, 0x1bf0_7dde_229b_26d3),
+            (9_058, 0x9e89_17ce_412b_f4a9),
+            (5_044, 0x7023_f4dc_08e7_ed95),
+            (6_473, 0x4c39_a0c3_55db_eeca),
+            (7_841, 0x13f1_12f8_54c7_200f),
+            (8_487, 0x4624_7d14_146c_78e9),
+            (5_216, 0xbb39_2607_6a0c_8db2),
+            (5_532, 0x3856_f83f_52e9_cfe4),
+            (4_540, 0xed17_8cc1_ab1b_cacc),
+            (6_472, 0xfc89_d7bb_3292_222b),
+            (4_361, 0xd787_4c30_4380_a6d4),
+        ];
+        const CLIP: &[u8] = include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf");
+        assert_clip_decodes_like_dav1d(CLIP, &ORACLE);
     }
 
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential
