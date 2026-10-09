@@ -151,6 +151,7 @@ Out of scope, by design: broadcast QC (live TS conformance TR 101290, SCTE-35, C
 | File | Codec | Notes |
 |---|---|---|
 | `test_data/av1_test.ivf` | AV1 IVF | 250 frames, IPPP (no reordering), PTS 0..249 sequential, no HDR/timing info |
+| `test_data/av1_rav1e_testsrc2.ivf` | AV1 IVF | 12 frames, 22 KB, rav1e 0.8.1 (default settings) from `ffmpeg -f lavfi -i testsrc2=size=320x240:rate=30 -frames:v 12 -pix_fmt yuv420p` (generated pattern, regenerates byte-identically); typical encoder output: every frame updates CDFs at frame end (`refresh_context=1`), `primary_ref_frame` chain, key frame with loop restoration. dav1d 1.5.1 per-frame symbol digests pinned in `cu_parser.rs` (`rav1e_clip_*`); encoder flags not recorded |
 | `test_data/hevc_test.hevc` | HEVC Annex B | 7.5 KB |
 | `test_data/avc_test.h264` | AVC Annex B | 7.4 KB, VUI `nal_hrd_parameters_present_flag=0` |
 | `test_data/vp9_test.ivf` | VP9 IVF | 11.4 KB |

@@ -611,7 +611,20 @@ mod tests {
     /// so a hidden frame is its own entry), threading reference state and the motion field, and
     /// returns each frame's `(rng, cnt, dif)` trace.
     fn decode_fixture_traces(count: usize) -> Vec<Vec<(u32, i32, usize)>> {
-        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        decode_traces(AV1_IVF_FIXTURE, count, true)
+    }
+
+    /// [`decode_fixture_traces`] for any IVF. `exact_cdf_save`: require every frame to leave its
+    /// CDFs unchanged for later frames (`disable_frame_end_update_cdf`), the only case this
+    /// harness saves correctly; with `false` the CDFs of a frame that adapts them at its end are
+    /// saved as they were at its start, so only the traces up to the first frame that loads such
+    /// CDFs are meaningful.
+    fn decode_traces(
+        ivf: &[u8],
+        count: usize,
+        exact_cdf_save: bool,
+    ) -> Vec<Vec<(u32, i32, usize)>> {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(ivf).unwrap();
         let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
         let seq = crate::parse_sequence_header(
             &crate::obu::ObuIterator::new(&seq_bytes)
@@ -693,7 +706,7 @@ mod tests {
                     _ => crate::symbol::CdfContext::new_with_qcat(qcat),
                 };
                 assert!(
-                    parsed.disable_frame_end_update_cdf,
+                    parsed.disable_frame_end_update_cdf || !exact_cdf_save,
                     "saving end-of-frame CDFs is not implemented"
                 );
                 let mut state = crate::tile::TileState {
@@ -790,6 +803,58 @@ mod tests {
                 "frame {frame}: decoder state diverges from dav1d"
             );
         }
+    }
+
+    /// A second, independent stream: 12 frames of a synthetic test pattern encoded with rav1e
+    /// (`test_data/av1_rav1e_testsrc2.ivf`, see `docs/PARITY_CHECKLIST.md`). Unlike the fixture it
+    /// is a typical encoder output: every frame updates its CDFs at the end of the frame
+    /// (`disable_frame_end_update_cdf = 0`) and frames load their CDFs from a reference, and its
+    /// key frame uses loop restoration. `ORACLE` is dav1d 1.5.1's per-frame symbol count and
+    /// FNV-1a digest of the `"{rng} {cnt} {dif}\n"` lines, for all 12 frames.
+    ///
+    /// Only the key frame matches today: later frames start from CDFs saved at the end of the
+    /// previous frame, which is not implemented. The assertion is a ratchet -- when more frames
+    /// match, raise `MATCHING_FRAMES`.
+    #[test]
+    fn rav1e_clip_decodes_symbol_for_symbol_like_dav1d_as_far_as_state_is_supported() {
+        const ORACLE: [(usize, u64); 12] = [
+            (35_205, 0xf4d9_4bf6_a511_c1c9),
+            (22_555, 0x42d5_5223_c818_2a18),
+            (11_473, 0x2aba_ef6c_d37e_9aed),
+            (8_381, 0x7973_73b8_e2e5_2884),
+            (7_941, 0x1819_8407_bce6_6e1c),
+            (20_374, 0xcdb0_c9eb_d52b_09d8),
+            (10_645, 0x6431_871b_8538_b750),
+            (8_469, 0x7b6e_fc92_c08b_1b1a),
+            (7_945, 0x13ad_24e2_75f6_7348),
+            (12_429, 0x65b6_a13a_35da_e0ef),
+            (8_843, 0xab45_9ff6_76ca_d372),
+            (7_863, 0x777e_d8ef_8959_bc8f),
+        ];
+        const MATCHING_FRAMES: usize = 1;
+        const CLIP: &[u8] = include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf");
+
+        let traces = decode_traces(CLIP, ORACLE.len(), false);
+        assert_eq!(traces.len(), ORACLE.len());
+        let matches = |trace: &[(u32, i32, usize)], &(symbols, digest): &(usize, u64)| {
+            let mut hash = 0xcbf2_9ce4_8422_2325u64;
+            for (rng, cnt, dif) in trace {
+                for byte in format!("{rng} {cnt} {dif}\n").bytes() {
+                    hash ^= u64::from(byte);
+                    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+                }
+            }
+            trace.len() == symbols && hash == digest
+        };
+        let matching = traces
+            .iter()
+            .zip(&ORACLE)
+            .take_while(|(trace, expected)| matches(trace, expected))
+            .count();
+        assert!(
+            matching >= MATCHING_FRAMES,
+            "only {matching} leading frames match dav1d, expected at least {MATCHING_FRAMES}"
+        );
     }
 
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential
