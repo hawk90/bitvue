@@ -693,23 +693,20 @@ mod tests {
         let mut state = crate::overlay_extraction::StreamDecodeState::new();
         let mut traces = Vec::new();
         for chunk in &frames {
-            let mut iter = crate::obu::ObuIterator::new(&chunk.data);
-            let mut has_frame = false;
-            while let Some(Ok(found)) = iter.next_obu_with_offset() {
-                if found.obu.header.obu_type != crate::obu::ObuType::Frame {
-                    continue;
-                }
-                has_frame = true;
+            let units = crate::overlay_extraction::stream_state::frame_units(
+                &chunk.data,
+                seq.reduced_still_picture_header,
+            );
+            for unit in &units {
                 if traces.len() == count {
                     return traces;
                 }
-                let raw = &chunk.data[found.offset..found.offset + found.consumed];
-                let obu_data = [seq_bytes.as_slice(), raw].concat();
+                let obu_data = [seq_bytes.as_slice(), unit.as_slice()].concat();
                 state.decode_next(&obu_data, &seq).unwrap();
                 traces.push(state.last_trace.clone());
             }
             // A unit without a frame (a `show_existing_frame` header) still updates the state.
-            if !has_frame {
+            if units.is_empty() {
                 let obu_data = [seq_bytes.as_slice(), chunk.data.as_slice()].concat();
                 state.skip_unit(&obu_data).unwrap();
             }

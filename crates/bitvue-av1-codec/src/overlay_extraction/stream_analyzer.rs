@@ -18,7 +18,7 @@
 //! (for example a `show_existing_frame` header) yields a frame without coding units.
 
 use super::parser::ParsedFrame;
-use super::stream_state::StreamDecodeState;
+use super::stream_state::{frame_units, StreamDecodeState};
 use crate::ivf::{parse_ivf_frames, IvfFrame};
 use crate::obu::{ObuIterator, ObuType};
 use crate::sequence::{parse_sequence_header, SequenceHeader};
@@ -152,24 +152,18 @@ impl StreamAnalyzer {
         }
     }
 
-    /// Decodes every frame OBU of the packet, in order, and returns the last one with tile data.
+    /// Decodes every frame of the packet, in order, and returns the last one with tile data.
     fn decode_packet(&mut self, index: usize) -> Result<Arc<ParsedFrame>, BitvueError> {
         let data = &self.frames[index].data;
         let mut last = None;
-        let mut iter = ObuIterator::new(data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type != ObuType::Frame {
-                continue;
-            }
-            let raw = &data[found.offset..found.offset + found.consumed];
-            let obu_data = [self.seq_bytes.as_slice(), raw].concat();
+        for unit in frame_units(data, self.seq.reduced_still_picture_header) {
+            let obu_data = [self.seq_bytes.as_slice(), unit.as_slice()].concat();
             last = Some(self.state.decode_next(&obu_data, &self.seq)?);
         }
         match last {
             Some(frame) => Ok(frame),
             None => {
-                // No Frame OBU (a `show_existing_frame` header, or a frame header with separate
-                // tile groups, which is not decoded): keep the header state current.
+                // No frame (a `show_existing_frame` header): keep the header state current.
                 let obu_data = [self.seq_bytes.as_slice(), data.as_slice()].concat();
                 self.state.skip_unit(&obu_data)
             }
@@ -233,6 +227,117 @@ mod tests {
 
     /// Asking for frames out of order, with checkpoints and results evicted along the way, gives
     /// the same analysis as decoding straight through.
+    /// `clip` with every `Frame` OBU rewritten as a `FrameHeader` OBU (header bits, then the
+    /// trailing bits) followed by a `TileGroup` OBU, and, when `redundant` is set, a
+    /// `RedundantFrameHeader` copy in between. The tile data is the same bytes, so the decoded
+    /// frames must not change.
+    fn with_split_frame_obus(clip: &[u8], redundant: bool) -> Vec<u8> {
+        use crate::frame_header_full::{parse_frame_header_full, RefFrameState};
+        fn obu(obu_type: u8, payload: &[u8]) -> Vec<u8> {
+            let mut out = vec![(obu_type << 3) | 0b10];
+            let mut size = payload.len();
+            loop {
+                let low = (size & 0x7f) as u8;
+                size >>= 7;
+                out.push(if size > 0 { low | 0x80 } else { low });
+                if size == 0 {
+                    break;
+                }
+            }
+            out.extend_from_slice(payload);
+            out
+        }
+
+        let (_hdr, packets) = parse_ivf_frames(clip).unwrap();
+        let (_, seq) = find_sequence_header(&packets).unwrap();
+        let mut ref_state = RefFrameState::new();
+        let mut out = clip[..32].to_vec();
+        for (pts, packet) in packets.iter().enumerate() {
+            let mut data = Vec::new();
+            let mut iter = ObuIterator::new(&packet.data);
+            while let Some(Ok(found)) = iter.next_obu_with_offset() {
+                let raw = &packet.data[found.offset..found.offset + found.consumed];
+                if found.obu.header.obu_type != ObuType::Frame {
+                    if found.obu.header.obu_type == ObuType::FrameHeader {
+                        parse_frame_header_full(&found.obu.payload, &seq, &mut ref_state).unwrap();
+                    }
+                    data.extend_from_slice(raw);
+                    continue;
+                }
+                assert!(
+                    !found.obu.header.has_extension,
+                    "no OBU extensions expected"
+                );
+                let payload = &found.obu.payload;
+                let header = parse_frame_header_full(payload, &seq, &mut ref_state).unwrap();
+                let bits = header.header_size_bits as usize;
+                // Header bits, then trailing bits: a one and zeros up to the byte boundary.
+                let mut header_obu = payload[..bits / 8].to_vec();
+                header_obu.push(if bits.is_multiple_of(8) {
+                    0x80
+                } else {
+                    (payload[bits / 8] & (0xffu8 << (8 - bits % 8))) | (0x80 >> (bits % 8))
+                });
+                data.extend(obu(ObuType::FrameHeader as u8, &header_obu));
+                if redundant {
+                    data.extend(obu(ObuType::RedundantFrameHeader as u8, &header_obu));
+                }
+                data.extend(obu(
+                    ObuType::TileGroup as u8,
+                    &payload[header.header_size_bytes..],
+                ));
+            }
+            out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            out.extend_from_slice(&(pts as u64).to_le_bytes());
+            out.extend_from_slice(&data);
+        }
+        out
+    }
+
+    /// A frame header OBU followed by its tile group OBU (and redundant copies of the header)
+    /// decodes exactly like the same frame in one `Frame` OBU.
+    #[test]
+    fn a_frame_header_with_a_separate_tile_group_decodes_like_a_frame_obu() {
+        for (name, clip) in [("rav1e", RAV1E), ("aomenc", AOMENC), ("svt-av1", SVT)] {
+            let mut whole = StreamAnalyzer::new(clip).unwrap();
+            for redundant in [false, true] {
+                let split_clip = with_split_frame_obus(clip, redundant);
+                let mut split = StreamAnalyzer::new(&split_clip).unwrap();
+                assert_eq!(split.frame_count(), whole.frame_count());
+                for index in 0..whole.frame_count() {
+                    let split_frame = split.analyze(index).unwrap();
+                    assert_eq!(
+                        fingerprint(&split_frame),
+                        fingerprint(&whole.analyze(index).unwrap()),
+                        "{name} (redundant={redundant}): packet {index}"
+                    );
+                    assert_eq!(
+                        frame_provenance(&split_frame),
+                        Provenance::Verified,
+                        "{name} (redundant={redundant}): packet {index}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn frame_units_groups_headers_with_their_tile_groups() {
+        let (_hdr, packets) = parse_ivf_frames(&with_split_frame_obus(AOMENC, true)).unwrap();
+        // The second packet holds several frames.
+        let units = frame_units(&packets[1].data, false);
+        assert!(units.len() > 1);
+        for unit in &units {
+            let types: Vec<ObuType> = {
+                let mut iter = ObuIterator::new(unit);
+                std::iter::from_fn(|| iter.next_obu_with_offset().and_then(|r| r.ok()))
+                    .map(|found| found.obu.header.obu_type)
+                    .collect()
+            };
+            assert_eq!(types, [ObuType::FrameHeader, ObuType::TileGroup]);
+        }
+    }
+
     #[test]
     fn random_access_matches_sequential_decoding() {
         let mut sequential = StreamAnalyzer::new(AOMENC).unwrap();

@@ -17,6 +17,41 @@ use crate::tile::MotionFieldState;
 use bitvue_engine::BitvueError;
 use std::sync::Arc;
 
+/// The decodable frames of one temporal unit, each as the bytes of its OBUs: a `Frame` OBU on its
+/// own, or a `FrameHeader` OBU followed by its `TileGroup` OBUs. Redundant frame headers are
+/// dropped. A `show_existing_frame` header holds no frame of its own and is left out (feed such a
+/// unit to [`StreamDecodeState::skip_unit`] instead).
+pub(crate) fn frame_units(packet: &[u8], reduced_still_picture_header: bool) -> Vec<Vec<u8>> {
+    use crate::obu::{ObuIterator, ObuType};
+    let mut units: Vec<Vec<u8>> = Vec::new();
+    let mut open = false;
+    let mut iter = ObuIterator::new(packet);
+    while let Some(Ok(found)) = iter.next_obu_with_offset() {
+        let raw = &packet[found.offset..found.offset + found.consumed];
+        match found.obu.header.obu_type {
+            ObuType::Frame => {
+                units.push(raw.to_vec());
+                open = false;
+            }
+            ObuType::FrameHeader => {
+                let shows_existing = !reduced_still_picture_header
+                    && found.obu.payload.first().is_some_and(|b| b & 0x80 != 0);
+                open = !shows_existing;
+                if open {
+                    units.push(raw.to_vec());
+                }
+            }
+            ObuType::TileGroup if open => {
+                if let Some(unit) = units.last_mut() {
+                    unit.extend_from_slice(raw);
+                }
+            }
+            _ => {}
+        }
+    }
+    units
+}
+
 /// The state of one stream after the frames decoded so far.
 #[derive(Debug, Clone, Default)]
 pub struct StreamDecodeState {
