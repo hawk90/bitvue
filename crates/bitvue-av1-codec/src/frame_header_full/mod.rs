@@ -321,6 +321,7 @@ pub fn parse_frame_header_full(
             delta_q_present: false,
             delta_q_residue: None,
             header_size_bytes: reader.byte_position(),
+            header_size_bits: reader.position(),
             refresh_frame_flags: None,
             ref_frame_idx: None,
             order_hint,
@@ -668,6 +669,7 @@ pub fn parse_frame_header_full(
         header_size_bytes: reader
             .byte_position()
             .saturating_add(usize::from(!reader.position().is_multiple_of(8))),
+        header_size_bits: reader.position(),
         refresh_frame_flags: Some(refresh_frame_flags as u8),
         ref_frame_idx: if frame_is_intra {
             None

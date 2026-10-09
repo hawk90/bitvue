@@ -176,6 +176,9 @@ pub struct FrameHeader {
     pub delta_q_residue: Option<bool>,
     /// Uncompressed header size in bytes (for finding tile data start)
     pub header_size_bytes: usize,
+    /// Exact length of the uncompressed header in bits, before its byte alignment (or trailing
+    /// bits, for a `FrameHeader` OBU).
+    pub header_size_bits: u64,
     /// Refresh frame flags (8 bits) - which reference slots to refresh
     pub refresh_frame_flags: Option<u8>,
     /// Reference frame indices, one per `ref_frame_sign_bias` slot
@@ -627,6 +630,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
 
         let header_size_bytes =
             reader.byte_position() + usize::from(!reader.position().is_multiple_of(8));
+        let header_size_bits = reader.position();
 
         return Ok(FrameHeader {
             frame_type: FrameType::Key,
@@ -640,6 +644,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             delta_q_present: false,
             delta_q_residue: None,
             header_size_bytes,
+            header_size_bits,
             refresh_frame_flags: None,
             ref_frame_idx: None,
             order_hint: 0,
@@ -810,6 +815,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     let header_size_bytes = reader
         .byte_position()
         .saturating_add(usize::from(!reader.position().is_multiple_of(8)));
+    let header_size_bits = reader.position();
 
     Ok(FrameHeader {
         frame_type,
@@ -823,6 +829,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         delta_q_present,
         delta_q_residue: None,
         header_size_bytes,
+        header_size_bits,
         refresh_frame_flags,
         ref_frame_idx,
         order_hint: 0,
