@@ -37,6 +37,9 @@ pub struct InterModeFlags {
     pub switchable_motion_mode: bool,
     pub allow_warped_motion: bool,
     pub enable_interintra_compound: bool,
+    /// Sequence header's `enable_dual_filter`: whether `interp_filter` codes one filter per axis
+    /// (two symbols) or a single one shared by both.
+    pub enable_dual_filter: bool,
     pub enable_masked_compound: bool,
     pub enable_jnt_comp: bool,
     pub subpel_filter_switchable: bool,

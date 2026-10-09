@@ -161,21 +161,24 @@ impl TileContext {
         (a_ctx + l_ctx).min(5)
     }
 
-    /// `jnt_comp` context (0..=5) -- source: rav1d `get_jnt_comp_ctx`. Real spec also factors a
-    /// POC-distance-derived `offset` term (`d0 == d1`, comparing the current frame's and both
-    /// references' display-order distance) this crate approximates as always `0` (`offset` term
-    /// omitted) -- this crate doesn't track cross-frame `OrderHint`/reference-frame POC state (no
-    /// real DPB), same scope limit as `crate::frame_header_full::SegmentationInfo`'s missing
-    /// per-segment feature data. A real, documented approximation, not a bug fix candidate without
-    /// building that state first.
-    pub fn jnt_comp_context(&self, x4: u32, y4: u32) -> u8 {
+    /// The POC distances of the frame's references -- see `jnt_comp_context`.
+    pub fn set_ref_order_distance(&mut self, distance: [i32; 7]) {
+        self.ref_order_distance = distance;
+    }
+
+    /// `jnt_comp` context (0..=5), dav1d `get_jnt_comp_ctx`: 3 when both references are the same
+    /// POC distance from the current frame, plus one for each neighbour that is compound-averaged
+    /// or uses ALTREF.
+    pub fn jnt_comp_context(&self, x4: u32, y4: u32, ref0: i8, ref1: i8) -> u8 {
         let a_comp_type = self.above_comp_type.get(x4 as usize).copied().unwrap_or(0);
         let l_comp_type = self.left_comp_type.get(y4 as usize).copied().unwrap_or(0);
         let a_ref0 = self.above_ref0.get(x4 as usize).copied().unwrap_or(0);
         let l_ref0 = self.left_ref0.get(y4 as usize).copied().unwrap_or(0);
         let a_ctx = u8::from(a_comp_type >= 2 || a_ref0 == 6);
         let l_ctx = u8::from(l_comp_type >= 2 || l_ref0 == 6);
-        a_ctx + l_ctx
+        let distance = |r: i8| self.ref_order_distance[r.clamp(0, 6) as usize].unsigned_abs();
+        let offset = u8::from(distance(ref0) == distance(ref1));
+        3 * offset + a_ctx + l_ctx
     }
 
     /// Record a decoded subpel `filter` across the block's 4x4-unit footprint, for the given
@@ -277,5 +280,27 @@ impl TileContext {
                 .copied()
                 .unwrap_or(true);
         above || left
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `jnt_comp`'s context starts at 3 when both references are the same POC distance from the
+    /// frame (in either direction), and neighbours add one each.
+    #[test]
+    fn jnt_comp_context_adds_three_for_references_at_equal_poc_distance() {
+        let mut ctx = TileContext::new(16, 16);
+        // LAST is 2 frames before, BWDREF 2 after, ALTREF 4 after.
+        ctx.set_ref_order_distance([-2, 0, 0, 0, 2, 0, 4]);
+
+        assert_eq!(ctx.jnt_comp_context(0, 0, 0, 4), 3, "|-2| == |2|");
+        assert_eq!(ctx.jnt_comp_context(0, 0, 0, 6), 0, "|-2| != |4|");
+
+        // A compound-averaged neighbour above adds one.
+        ctx.set_comp_type(5, 0, 4, 4, 2);
+        ctx.set_ref_frames(5, 0, 4, 4, false, true, 0, 4);
+        assert_eq!(ctx.jnt_comp_context(5, 5, 0, 4), 4);
     }
 }

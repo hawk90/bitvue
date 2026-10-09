@@ -19,55 +19,17 @@
 //! at all). Every grid here is hand-mapped to JSON explicitly for this reason -- same reasoning
 //! `main.rs`'s module doc gives for hand-mapping `bitvue-engine` types generally.
 
-use bitvue_av1_codec::frame_header_full::thread_ref_state_before;
-use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_energy_grid_from_parsed, extract_mv_grid_from_parsed,
     extract_partition_grid_from_parsed, extract_prediction_mode_grid_from_parsed,
     extract_qp_grid_from_parsed, extract_transform_grid_from_parsed, frame_provenance, EnergyGrid,
     ParsedFrame, PredictionModeGrid, Provenance, TransformGrid,
 };
-use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use bitvue_av1_codec::tile::PredictionMode;
 use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 use bitvue_engine::partition_grid::{PartitionBlock, PartitionGrid};
 use bitvue_engine::qp_heatmap::QPGrid;
 use serde_json::{json, Value};
-
-/// AV1 streams typically carry the sequence header once (frame 0), not repeated every frame --
-/// but `ParsedFrame::parse` needs one present in whatever `obu_data` it's given to resolve real
-/// frame dimensions (falls back to a hardcoded 1920x1080 scaffold otherwise, see its doc). Scans
-/// a bounded prefix of frames rather than the whole stream -- if the sequence header isn't within
-/// the first several frames, something unusual is going on and grids will fall back to the
-/// scaffold dimensions rather than this function scanning arbitrarily far into a long stream.
-const SEQUENCE_HEADER_SCAN_LIMIT: usize = 8;
-
-fn find_sequence_header_bytes(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<Vec<u8>> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
-            }
-        }
-    }
-    None
-}
-
-/// Parsed variant of `find_sequence_header_bytes`, needed for `thread_ref_state_before`'s real
-/// `SequenceHeader` parameter (`av1_features`/`deblocking`/`codec_extended_info`'s existing
-/// pattern).
-fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return parse_sequence_header(&found.obu.payload).ok();
-            }
-        }
-    }
-    None
-}
 
 pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, String> {
     let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(data)
@@ -79,28 +41,14 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
         ));
     }
 
-    // Prepending the sequence header is idempotent -- if the target frame's own chunk already
-    // has one (or none is found at all), this still parses correctly.
-    let obu_data: Vec<u8> = match find_sequence_header_bytes(&frames) {
-        Some(seq) => [seq.as_slice(), frames[frame_index].data.as_slice()].concat(),
-        None => frames[frame_index].data.clone(),
-    };
-
-    // Real cross-frame ref-order-hint state (threaded from frame 0) is what
-    // `ParsedFrame::parse_with_ref_state` needs to correctly locate `tile_data` for any frame
-    // other than 0 -- see that method's doc. Falls back to the old fresh-state `parse` only when
-    // no sequence header could be found at all (this function's existing lenient-degrade
-    // behavior, unlike `deblocking`/`av1_features`'s hard error -- preserved here rather than
-    // widened, since frame_analysis's scaffold-dimension fallback for a missing seq header is a
-    // real, tested contract).
-    let parsed = match find_sequence_header(&frames) {
-        Some(seq) => {
-            let mut ref_state =
-                thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
-            ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state)
-                .map_err(|e| e.to_string())?
-        }
-        None => ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?,
+    // Decoded with the state of the frames before it (see `analysis_session`). Only a stream
+    // without any sequence header degrades to the scaffold dimensions, as before.
+    let parsed = match crate::analysis_session::analyzed_frame(data, frame_index) {
+        Ok(frame) => frame,
+        Err(crate::analysis_session::AnalysisError::NoSequenceHeader) => std::sync::Arc::new(
+            ParsedFrame::parse(&frames[frame_index].data).map_err(|e| e.to_string())?,
+        ),
+        Err(e) => return Err(e.to_string()),
     };
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
 
@@ -394,23 +342,6 @@ mod tests {
 
     const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
 
-    /// An IVF made of the fixture's first chunk (sequence header + key frame) followed by `extra`
-    /// chunks, to reach frames the fixture itself does not contain.
-    fn fixture_ivf_with_extra_chunks(extra: &[&[u8]]) -> Vec<u8> {
-        let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
-        let mut out = AV1_IVF_FIXTURE[..32].to_vec();
-        out[24..28].copy_from_slice(&(1 + extra.len() as u32).to_le_bytes());
-        for (pts, data) in std::iter::once(frames[0].data.as_slice())
-            .chain(extra.iter().copied())
-            .enumerate()
-        {
-            out.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            out.extend_from_slice(&(pts as u64).to_le_bytes());
-            out.extend_from_slice(data);
-        }
-        out
-    }
-
     #[test]
     fn get_frame_analysis_marks_the_key_frame_verified() {
         let result = get_frame_analysis(AV1_IVF_FIXTURE, 0).unwrap();
@@ -418,23 +349,42 @@ mod tests {
         assert!(result["mv_grid"].is_object());
     }
 
-    /// Parsed on its own, an inter frame starts from default CDFs and has no motion field, so
-    /// it does not decode correctly. Its grids are still sent, but flagged.
+    /// The first inter frames decode with the state of the frames before them and are verified;
+    /// the fixture's packet 65 is the first one that still hits unimplemented syntax (#102): its grids are sent,
+    /// flagged.
     #[test]
-    fn get_frame_analysis_marks_an_inter_frame_unverified_and_still_sends_its_grids() {
-        let result = get_frame_analysis(AV1_IVF_FIXTURE, 2).unwrap();
-        assert_eq!(result["provenance"], "unverified");
-        assert!(result["qp_grid"].is_object());
-        assert!(result["partition_grid"].is_object());
+    fn get_frame_analysis_verifies_early_inter_frames_and_flags_later_ones() {
+        let early = get_frame_analysis(AV1_IVF_FIXTURE, 2).unwrap();
+        assert_eq!(early["provenance"], "verified");
+        assert!(early["qp_grid"].is_object());
+
+        let later = get_frame_analysis(AV1_IVF_FIXTURE, 65).unwrap();
+        assert_eq!(later["provenance"], "unverified");
+        assert!(later["partition_grid"].is_object());
+    }
+
+    /// A `show_existing_frame` packet displays a frame decoded earlier: it carries that frame's
+    /// analysis.
+    #[test]
+    fn get_frame_analysis_of_a_show_existing_frame_is_the_shown_frames_analysis() {
+        let ivf = crate::test_support::ivf_of_chunks(&[
+            &bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE)
+                .unwrap()
+                .1[0]
+                .data,
+            crate::test_support::SHOW_EXISTING_SLOT_0,
+        ]);
+        let key = get_frame_analysis(&ivf, 0).unwrap();
+        let shown = get_frame_analysis(&ivf, 1).unwrap();
+        assert_eq!(shown["provenance"], "verified");
+        assert_eq!(shown["qp_grid"], key["qp_grid"]);
     }
 
     /// A frame with no tile (here a `show_existing_frame` header) was never decoded: no grids
     /// at all, rather than the invented scaffold ones the extractors would build.
     #[test]
     fn get_frame_analysis_sends_no_grids_for_a_frame_that_was_not_decoded() {
-        // temporal delimiter, then a frame header OBU with show_existing_frame = 1, slot 0.
-        let show_existing: &[u8] = &[0x12, 0x00, 0x1A, 0x01, 0x80];
-        let ivf = fixture_ivf_with_extra_chunks(&[show_existing]);
+        let ivf = crate::test_support::stream_with_an_undecodable_frame();
         let result = get_frame_analysis(&ivf, 1).unwrap();
         assert_eq!(result["provenance"], "scaffold");
         assert_eq!(result["width"], 320);
@@ -447,6 +397,27 @@ mod tests {
             "energy_grid",
         ] {
             assert!(result.get(grid).is_none(), "{grid} must not be sent");
+        }
+    }
+
+    /// End to end through the shared analysis sessions: every packet of a typical encoder's clip
+    /// (hidden frames and `show_existing_frame` packets included) comes back verified, in any
+    /// order, with real grids.
+    #[test]
+    fn every_packet_of_the_rav1e_clip_is_verified_through_the_command_functions() {
+        let clip = include_bytes!("../../../test_data/av1_rav1e_testsrc2.ivf");
+        for index in [7, 2, 11, 0, 1, 3, 4, 5, 6, 8, 9, 10] {
+            let result = get_frame_analysis(clip, index).unwrap();
+            assert_eq!(result["provenance"], "verified", "packet {index}");
+            assert!(result["partition_grid"].is_object(), "packet {index}");
+            for check in [
+                crate::residual_analysis::get_residual_analysis(clip, index),
+                crate::coding_flow::get_coding_flow_analysis(clip, index),
+                crate::codec_extended_info::get_codec_extended_info(clip, index),
+                crate::deblocking::get_deblocking_analysis(clip, index),
+            ] {
+                assert_eq!(check.unwrap()["provenance"], "verified", "packet {index}");
+            }
         }
     }
 
@@ -533,16 +504,6 @@ mod tests {
     fn get_frame_analysis_out_of_range_frame_index_is_a_real_error() {
         let result = get_frame_analysis(AV1_IVF_FIXTURE, 999_999);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn find_sequence_header_bytes_finds_it_in_a_real_fixture() {
-        let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
-        let seq = find_sequence_header_bytes(&frames);
-        assert!(
-            seq.is_some(),
-            "expected a real sequence header OBU in the fixture"
-        );
     }
 
     /// Decodes a `get_frame_analysis_command` two-frame response into (Control `Response`, raw

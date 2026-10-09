@@ -37,8 +37,11 @@ mod parser;
 mod partition;
 mod provenance;
 mod qp_extractor;
+mod stream_analyzer;
+mod stream_state;
 
 // Re-export public API
+pub use cache::ParsedCodingUnits;
 pub use cu_parser::{parse_all_coding_units, parse_coding_units_checked};
 pub use deblocking::{extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge};
 pub use energy_extractor::{extract_energy_grid_from_parsed, EnergyGrid};
@@ -53,6 +56,8 @@ pub use partition::{
 };
 pub use provenance::{frame_provenance, DecodeOutcome, Provenance};
 pub use qp_extractor::{extract_qp_grid, extract_qp_grid_from_parsed};
+pub use stream_analyzer::StreamAnalyzer;
+pub use stream_state::StreamDecodeState;
 
 // Test utilities (only available in tests)
 #[cfg(test)]

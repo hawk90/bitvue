@@ -148,6 +148,7 @@ fn test_mv_extraction_with_spec_cdfs() {
                 switchable_motion_mode: false,
                 allow_warped_motion: false,
                 enable_interintra_compound: false,
+                enable_dual_filter: true,
                 enable_masked_compound: false,
                 enable_jnt_comp: false,
                 subpel_filter_switchable: false,

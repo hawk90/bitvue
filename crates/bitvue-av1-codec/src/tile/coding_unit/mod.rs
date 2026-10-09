@@ -309,6 +309,12 @@ pub fn parse_coding_unit(
     }
     if is_inter {
         let is_compound = cu.ref_frames[1] != RefFrame::Intra;
+        if !is_compound {
+            // A single-reference block leaves `COMP_INTER_NONE` for its neighbours' `mask_comp` /
+            // `jnt_comp` contexts (dav1d: `b->comp_type = COMP_INTER_NONE`); without this a
+            // compound block further up or left would stay visible through it.
+            tile_ctx.set_comp_type(x4, y4, width_4x4, height_4x4, 0);
+        }
         tile_ctx.set_ref_frames(
             x4,
             y4,

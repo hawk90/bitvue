@@ -16,39 +16,8 @@
 //! monotonic-with-actual-residual-magnitude quantity, not a spatial-domain energy metric (that
 //! would require the inverse transform this crate doesn't implement).
 
-use bitvue_av1_codec::frame_header_full::thread_ref_state_before;
-use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{frame_provenance, parse_all_coding_units, ParsedFrame};
-use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
-
-const SEQUENCE_HEADER_SCAN_LIMIT: usize = 8;
-
-fn find_sequence_header_bytes(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<Vec<u8>> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
-            }
-        }
-    }
-    None
-}
-
-/// Parsed variant of `find_sequence_header_bytes`, needed for `thread_ref_state_before`'s real
-/// `SequenceHeader` parameter.
-fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return parse_sequence_header(&found.obu.payload).ok();
-            }
-        }
-    }
-    None
-}
 
 pub fn get_residual_analysis(data: &[u8], frame_index: usize) -> Result<Value, String> {
     let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(data)
@@ -60,23 +29,12 @@ pub fn get_residual_analysis(data: &[u8], frame_index: usize) -> Result<Value, S
         ));
     }
 
-    let obu_data: Vec<u8> = match find_sequence_header_bytes(&frames) {
-        Some(seq_bytes) => [seq_bytes.as_slice(), frames[frame_index].data.as_slice()].concat(),
-        None => frames[frame_index].data.clone(),
-    };
-    // Real cross-frame ref-order-hint state (threaded from frame 0) is what
-    // `ParsedFrame::parse_with_ref_state` needs to correctly locate `tile_data` for any frame
-    // other than 0 -- see that method's doc. A fresh-state parse silently desyncs the entropy
-    // decoder from its first read on frames whose header needs real `skip_mode_params` state,
-    // producing a near-empty (not erroring) coding-unit list -- the actual axis-7 bug this fixes.
-    let parsed = match find_sequence_header(&frames) {
-        Some(seq) => {
-            let mut ref_state =
-                thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
-            ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state)
-                .map_err(|e| e.to_string())?
-        }
-        None => ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?,
+    let parsed = match crate::analysis_session::analyzed_frame(data, frame_index) {
+        Ok(frame) => frame,
+        Err(crate::analysis_session::AnalysisError::NoSequenceHeader) => std::sync::Arc::new(
+            ParsedFrame::parse(&frames[frame_index].data).map_err(|e| e.to_string())?,
+        ),
+        Err(e) => return Err(e.to_string()),
     };
     let coding_units = parse_all_coding_units(&parsed).map_err(|e| e.to_string())?;
 
@@ -256,21 +214,26 @@ mod tests {
     /// *fresh* `RefFrameState` for every frame (see its doc), which makes the frame header of
     /// any frame needing real `skip_mode_params` state read the wrong slot order hints and so
     /// start `tile_data` at the wrong byte. IVF chunk 2's tile group is 182 bytes (dav1d's
-    /// `TILEGRP` size); a fresh-state parse gets a different length.
-    ///
-    /// This used to assert that the frame had residual blocks, which only held because a
-    /// misaligned decode still produced some. A stateless parse of an inter frame cannot decode
-    /// it correctly -- it starts from default CDFs and has no motion field -- so what is checked
-    /// is the property this fix is about.
+    /// `TILEGRP` size); a fresh-state parse gets a different length. The analysis sessions decode
+    /// with the real state.
     #[test]
     fn tile_data_of_a_later_frame_needs_the_threaded_ref_state() {
         let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
-        let seq_bytes = find_sequence_header_bytes(&frames).expect("sequence header");
-        let seq = find_sequence_header(&frames).expect("sequence header");
-        let obu_data = [seq_bytes.as_slice(), frames[2].data.as_slice()].concat();
+        let mut seq_bytes = None;
+        let mut iter = bitvue_av1_codec::obu::ObuIterator::new(&frames[0].data);
+        while let Some(Ok(found)) = iter.next_obu_with_offset() {
+            if found.obu.header.obu_type == bitvue_av1_codec::obu::ObuType::SequenceHeader {
+                seq_bytes =
+                    Some(frames[0].data[found.offset..found.offset + found.consumed].to_vec());
+            }
+        }
+        let obu_data = [
+            seq_bytes.expect("sequence header").as_slice(),
+            frames[2].data.as_slice(),
+        ]
+        .concat();
 
-        let mut threaded = thread_ref_state_before(&frames, &seq, 2).unwrap();
-        let parsed = ParsedFrame::parse_with_ref_state(&obu_data, &mut threaded).unwrap();
+        let parsed = crate::analysis_session::analyzed_frame(AV1_IVF_FIXTURE, 2).unwrap();
         assert_eq!(parsed.tile_data.len(), 182);
 
         let fresh = ParsedFrame::parse(&obu_data).unwrap();
@@ -279,13 +242,18 @@ mod tests {
 
     #[test]
     fn get_residual_analysis_reports_whether_the_frame_was_verified() {
-        // The key frame decodes exactly; an inter frame parsed on its own does not.
+        // The key frame and the first inter frames decode exactly; the fixture's packet 65 is the first
+        // one that still hits unimplemented syntax (#102).
         assert_eq!(
             get_residual_analysis(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
             "verified"
         );
         assert_eq!(
             get_residual_analysis(AV1_IVF_FIXTURE, 2).unwrap()["provenance"],
+            "verified"
+        );
+        assert_eq!(
+            get_residual_analysis(AV1_IVF_FIXTURE, 65).unwrap()["provenance"],
             "unverified"
         );
     }
