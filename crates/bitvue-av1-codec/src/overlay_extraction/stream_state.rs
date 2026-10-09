@@ -153,6 +153,7 @@ impl StreamDecodeState {
             parsed.refresh_frame_flags,
             parsed.ref_frame_idx.as_ref(),
             grid,
+            !parsed.frame_type.is_intra_only || parsed.allow_intrabc,
         );
 
         parsed.decoded = Some(ParsedCodingUnits {

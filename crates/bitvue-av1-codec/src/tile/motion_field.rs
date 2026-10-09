@@ -206,7 +206,10 @@ impl MotionFieldState {
     /// `&mut self.ref_state` directly per the existing threading pattern, already applies this
     /// frame's own `ref_order_hint` update as a side effect -- by the time this method runs,
     /// `self.ref_state` reflects the POST-update state, too late to read this frame's own
-    /// resolved references from). This mirrors `dav1d_refmvs_init_frame`'s `ref_ref_poc` being the
+    /// resolved references from). `has_motion`: whether the frame keeps motion vectors for later
+    /// frames -- dav1d allocates them only for inter frames and frames with `allow_intrabc`, so a
+    /// slot holding any other intra frame offers no temporal candidates (`rp_ref[i] == NULL`).
+    /// This mirrors `dav1d_refmvs_init_frame`'s `ref_ref_poc` being the
     /// state as of when the frame owning a slot was itself decoded, not after.
     pub fn update(
         &mut self,
@@ -214,6 +217,7 @@ impl MotionFieldState {
         refresh_frame_flags: u8,
         ref_frame_idx: Option<&[u8; 7]>,
         grid: MotionFieldGrid,
+        has_motion: bool,
     ) {
         let this_frame_ref_hints: [u32; 7] = match ref_frame_idx {
             Some(idx) => std::array::from_fn(|m| prev_ref_order_hint[idx[m] as usize]),
@@ -223,7 +227,7 @@ impl MotionFieldState {
         for i in 0..8 {
             if (refresh_frame_flags >> i) & 1 == 1 {
                 self.ref_ref_order_hint[i] = this_frame_ref_hints;
-                self.grids[i] = Some(std::sync::Arc::clone(&grid));
+                self.grids[i] = has_motion.then(|| std::sync::Arc::clone(&grid));
             }
         }
         // ref_state.ref_order_hint's own update already happened as a side effect of the caller's
@@ -632,6 +636,32 @@ mod tests {
         let mut state = MotionFieldState::new();
         state.grids[0] = Some(std::sync::Arc::new(grid));
         state
+    }
+
+    /// An intra frame (without intra block copy) leaves no motion vectors in its slots, so the
+    /// slot cannot be a temporal source -- even though its order hint says it lies in the future
+    /// of a later frame (dav1d: `rp_ref[i] == NULL`).
+    #[test]
+    fn a_slot_refreshed_by_an_intra_frame_keeps_no_motion_field() {
+        let mut state = MotionFieldState::new();
+        state.update(
+            &[0; 8],
+            0b0000_0011,
+            None,
+            MotionFieldGrid::empty(4, 4),
+            false,
+        );
+        assert!(state.grids[0].is_none() && state.grids[1].is_none());
+
+        state.update(
+            &[0; 8],
+            0b0000_0010,
+            None,
+            MotionFieldGrid::empty(4, 4),
+            true,
+        );
+        assert!(state.grids[0].is_none(), "slot 0 was not refreshed");
+        assert!(state.grids[1].is_some());
     }
 
     fn source(forward: bool) -> MfmvSource {
