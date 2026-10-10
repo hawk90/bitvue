@@ -1,4 +1,4 @@
-//! Transform size and transform type reading (spec 5.11.15-5.11.17, `transform_type()`), plus the
+//! Transform size (spec 5.11.15/16) and transform type (spec 5.11.47) reading, plus the
 //! luma/chroma transform-class types the residual reader consumes.
 
 use super::*;
