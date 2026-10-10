@@ -384,6 +384,87 @@ impl ParsedFrame {
         }
     }
 
+    /// Takes the three values the approximate [`parse_frame_header_basic`] supplies (intra flag,
+    /// base QP, delta-q flag). They stand until [`ParsedFrame::apply_full_header`] replaces them,
+    /// and are the only ones there are while no sequence header has been seen.
+    fn apply_basic_header(&mut self, frame_hdr: &crate::frame_header::FrameHeader) {
+        // `FrameTypeInfo::is_intra_only`'s doc says "key/intra-only" -- i.e. spec
+        // 5.9.2's `FrameIsIntra` (`frame_type == KEY_FRAME || frame_type ==
+        // INTRA_ONLY_FRAME`), which is `FrameType::is_intra()`, NOT
+        // `FrameType::is_intra_only()` (`bitvue-engine`'s codec-agnostic type --
+        // that method only matches AV1's literal, rare INTRA_ONLY_FRAME type,
+        // excluding ordinary KEY_FRAME). Using the narrower method meant every
+        // real KEY_FRAME in every fixture this session ever parsed was silently
+        // routed through `parse_coding_unit`'s INTER branch instead of its INTRA
+        // one -- found while verifying the new key-frame `intra_mode`/`kfym`
+        // context work (`SymbolDecoder::read_intra_mode`) had zero real frames to
+        // exercise it on.
+        self.frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
+        self.frame_type.base_qp = frame_hdr.base_q_idx;
+        self.delta_q_enabled = frame_hdr.delta_q_present;
+    }
+
+    /// Takes every value of a fully parsed frame header; `prev_ref_order_hint` is the reference
+    /// slots' order hints from before this frame's own header.
+    fn apply_full_header(
+        &mut self,
+        full_hdr: &crate::frame_header::FrameHeader,
+        seq: &crate::SequenceHeader,
+        prev_ref_order_hint: &[u32; 8],
+    ) {
+        // The exact header parse wins over `parse_frame_header_basic`'s
+        // approximation for the two values it also supplied.
+        self.delta_q_enabled = full_hdr.delta_q_present;
+        if full_hdr.base_q_idx.is_some() {
+            self.frame_type.base_qp = full_hdr.base_q_idx;
+        }
+        self.reference_select = full_hdr.reference_select;
+        self.allow_intrabc = full_hdr.allow_intrabc;
+        self.allow_screen_content_tools = full_hdr.allow_screen_content_tools;
+        self.delta_lf_present = full_hdr.delta_lf_present;
+        self.delta_lf_multi = full_hdr.delta_lf_multi;
+        self.reduced_tx_set = full_hdr.reduced_tx_set;
+        self.coded_lossless = full_hdr.base_q_idx == Some(0)
+            && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
+            && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
+        self.txfm_mode = full_hdr.txfm_mode;
+        self.use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+        self.primary_ref_frame = full_hdr.primary_ref_frame;
+        self.disable_frame_end_update_cdf = full_hdr.disable_frame_end_update_cdf;
+        self.order_hint = full_hdr.order_hint;
+        self.ref_frame_idx = full_hdr.ref_frame_idx;
+        self.refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
+        self.segmentation = full_hdr.segmentation;
+        self.cdef_bits = full_hdr.cdef_damping.bits;
+        self.show_existing_slot = full_hdr.frame_to_show_map_idx;
+        self.tiles = full_hdr.tiles.clone();
+        self.key_frame = !full_hdr.show_existing_frame
+            && full_hdr.frame_type.is_intra()
+            && !full_hdr.frame_type.is_intra_only();
+        self.ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
+            prev_ref_order_hint,
+            full_hdr.ref_frame_idx.as_ref(),
+            full_hdr.order_hint,
+            seq,
+        );
+        self.ref_order_distance = crate::frame_header_full::ref_order_distance(
+            prev_ref_order_hint,
+            full_hdr.ref_frame_idx.as_ref(),
+            full_hdr.order_hint,
+            seq,
+        );
+        self.loop_restoration = full_hdr.loop_restoration.clone();
+        self.superres = full_hdr.super_resolution.enabled;
+        self.skip_mode_present = full_hdr.skip_mode_present;
+        self.skip_mode_refs = full_hdr.skip_mode_refs;
+        self.subpel_filter_switchable = full_hdr.subpel_filter_switchable;
+        self.switchable_motion_mode = full_hdr.switchable_motion_mode;
+        self.allow_warped_motion = full_hdr.allow_warped_motion;
+        self.force_integer_mv = full_hdr.force_integer_mv;
+        self.allow_high_precision_mv = full_hdr.allow_high_precision_mv;
+        self.gm_type = full_hdr.gm_type;
+    }
+
     /// Same as [`ParsedFrame::parse`], but threads a caller-supplied `RefFrameState` into the
     /// frame-header parse used to locate `tile_data`'s real start (`header_size_bytes`), instead
     /// of assuming a fresh/default state. `ref_state` should reflect every frame from 0 up to
@@ -509,20 +590,7 @@ impl ParsedFrame {
                     tile_data.clear();
                     frame.tile_groups.clear();
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
-                        // `FrameTypeInfo::is_intra_only`'s doc says "key/intra-only" -- i.e. spec
-                        // 5.9.2's `FrameIsIntra` (`frame_type == KEY_FRAME || frame_type ==
-                        // INTRA_ONLY_FRAME`), which is `FrameType::is_intra()`, NOT
-                        // `FrameType::is_intra_only()` (`bitvue-engine`'s codec-agnostic type --
-                        // that method only matches AV1's literal, rare INTRA_ONLY_FRAME type,
-                        // excluding ordinary KEY_FRAME). Using the narrower method meant every
-                        // real KEY_FRAME in every fixture this session ever parsed was silently
-                        // routed through `parse_coding_unit`'s INTER branch instead of its INTRA
-                        // one -- found while verifying the new key-frame `intra_mode`/`kfym`
-                        // context work (`SymbolDecoder::read_intra_mode`) had zero real frames to
-                        // exercise it on.
-                        frame.frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
-                        frame.frame_type.base_qp = frame_hdr.base_q_idx;
-                        frame.delta_q_enabled = frame_hdr.delta_q_present;
+                        frame.apply_basic_header(&frame_hdr);
                         if seq_header.is_none() && frame_hdr.header_size_bytes < obu.payload.len() {
                             tile_data
                                 .extend_from_slice(&obu.payload[frame_hdr.header_size_bytes..]);
@@ -531,59 +599,7 @@ impl ParsedFrame {
                     if let Some(seq) = &seq_header {
                         if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
                         {
-                            // The exact header parse wins over `parse_frame_header_basic`'s
-                            // approximation for the two values it also supplied.
-                            frame.delta_q_enabled = full_hdr.delta_q_present;
-                            if full_hdr.base_q_idx.is_some() {
-                                frame.frame_type.base_qp = full_hdr.base_q_idx;
-                            }
-                            frame.reference_select = full_hdr.reference_select;
-                            frame.allow_intrabc = full_hdr.allow_intrabc;
-                            frame.allow_screen_content_tools = full_hdr.allow_screen_content_tools;
-                            frame.delta_lf_present = full_hdr.delta_lf_present;
-                            frame.delta_lf_multi = full_hdr.delta_lf_multi;
-                            frame.reduced_tx_set = full_hdr.reduced_tx_set;
-                            frame.coded_lossless = full_hdr.base_q_idx == Some(0)
-                                && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
-                                && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
-                            frame.txfm_mode = full_hdr.txfm_mode;
-                            frame.use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
-                            frame.primary_ref_frame = full_hdr.primary_ref_frame;
-                            frame.disable_frame_end_update_cdf =
-                                full_hdr.disable_frame_end_update_cdf;
-                            frame.order_hint = full_hdr.order_hint;
-                            frame.ref_frame_idx = full_hdr.ref_frame_idx;
-                            frame.refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
-                            frame.segmentation = full_hdr.segmentation;
-                            frame.cdef_bits = full_hdr.cdef_damping.bits;
-                            frame.show_existing_slot = full_hdr.frame_to_show_map_idx;
-                            frame.tiles = full_hdr.tiles.clone();
-                            frame.key_frame = !full_hdr.show_existing_frame
-                                && full_hdr.frame_type.is_intra()
-                                && !full_hdr.frame_type.is_intra_only();
-                            frame.ref_frame_sign_bias =
-                                crate::frame_header_full::ref_frame_sign_bias(
-                                    &prev_ref_order_hint,
-                                    full_hdr.ref_frame_idx.as_ref(),
-                                    full_hdr.order_hint,
-                                    seq,
-                                );
-                            frame.ref_order_distance = crate::frame_header_full::ref_order_distance(
-                                &prev_ref_order_hint,
-                                full_hdr.ref_frame_idx.as_ref(),
-                                full_hdr.order_hint,
-                                seq,
-                            );
-                            frame.loop_restoration = full_hdr.loop_restoration.clone();
-                            frame.superres = full_hdr.super_resolution.enabled;
-                            frame.skip_mode_present = full_hdr.skip_mode_present;
-                            frame.skip_mode_refs = full_hdr.skip_mode_refs;
-                            frame.subpel_filter_switchable = full_hdr.subpel_filter_switchable;
-                            frame.switchable_motion_mode = full_hdr.switchable_motion_mode;
-                            frame.allow_warped_motion = full_hdr.allow_warped_motion;
-                            frame.force_integer_mv = full_hdr.force_integer_mv;
-                            frame.allow_high_precision_mv = full_hdr.allow_high_precision_mv;
-                            frame.gm_type = full_hdr.gm_type;
+                            frame.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
                             if full_hdr.header_size_bytes < obu.payload.len() {
                                 let start = tile_data.len();
                                 tile_data
@@ -599,68 +615,12 @@ impl ParsedFrame {
                     tile_data.clear();
                     frame.tile_groups.clear();
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
-                        // See the `ObuType::Frame` branch above for why this is `is_intra()`, not
-                        // `is_intra_only()`.
-                        frame.frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
-                        frame.frame_type.base_qp = frame_hdr.base_q_idx;
-                        frame.delta_q_enabled = frame_hdr.delta_q_present;
+                        frame.apply_basic_header(&frame_hdr);
                     }
                     if let Some(seq) = &seq_header {
                         if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
                         {
-                            // The exact header parse wins over `parse_frame_header_basic`'s
-                            // approximation for the two values it also supplied.
-                            frame.delta_q_enabled = full_hdr.delta_q_present;
-                            if full_hdr.base_q_idx.is_some() {
-                                frame.frame_type.base_qp = full_hdr.base_q_idx;
-                            }
-                            frame.reference_select = full_hdr.reference_select;
-                            frame.allow_intrabc = full_hdr.allow_intrabc;
-                            frame.allow_screen_content_tools = full_hdr.allow_screen_content_tools;
-                            frame.delta_lf_present = full_hdr.delta_lf_present;
-                            frame.delta_lf_multi = full_hdr.delta_lf_multi;
-                            frame.reduced_tx_set = full_hdr.reduced_tx_set;
-                            frame.coded_lossless = full_hdr.base_q_idx == Some(0)
-                                && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
-                                && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
-                            frame.txfm_mode = full_hdr.txfm_mode;
-                            frame.use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
-                            frame.primary_ref_frame = full_hdr.primary_ref_frame;
-                            frame.disable_frame_end_update_cdf =
-                                full_hdr.disable_frame_end_update_cdf;
-                            frame.order_hint = full_hdr.order_hint;
-                            frame.ref_frame_idx = full_hdr.ref_frame_idx;
-                            frame.refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
-                            frame.segmentation = full_hdr.segmentation;
-                            frame.cdef_bits = full_hdr.cdef_damping.bits;
-                            frame.show_existing_slot = full_hdr.frame_to_show_map_idx;
-                            frame.tiles = full_hdr.tiles.clone();
-                            frame.key_frame = !full_hdr.show_existing_frame
-                                && full_hdr.frame_type.is_intra()
-                                && !full_hdr.frame_type.is_intra_only();
-                            frame.ref_frame_sign_bias =
-                                crate::frame_header_full::ref_frame_sign_bias(
-                                    &prev_ref_order_hint,
-                                    full_hdr.ref_frame_idx.as_ref(),
-                                    full_hdr.order_hint,
-                                    seq,
-                                );
-                            frame.ref_order_distance = crate::frame_header_full::ref_order_distance(
-                                &prev_ref_order_hint,
-                                full_hdr.ref_frame_idx.as_ref(),
-                                full_hdr.order_hint,
-                                seq,
-                            );
-                            frame.loop_restoration = full_hdr.loop_restoration.clone();
-                            frame.superres = full_hdr.super_resolution.enabled;
-                            frame.skip_mode_present = full_hdr.skip_mode_present;
-                            frame.skip_mode_refs = full_hdr.skip_mode_refs;
-                            frame.subpel_filter_switchable = full_hdr.subpel_filter_switchable;
-                            frame.switchable_motion_mode = full_hdr.switchable_motion_mode;
-                            frame.allow_warped_motion = full_hdr.allow_warped_motion;
-                            frame.force_integer_mv = full_hdr.force_integer_mv;
-                            frame.allow_high_precision_mv = full_hdr.allow_high_precision_mv;
-                            frame.gm_type = full_hdr.gm_type;
+                            frame.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
                         }
                     }
                 }
@@ -845,6 +805,81 @@ mod tests {
         data.extend_from_slice(&[0x00u8; 10]); // Payload placeholder
 
         data
+    }
+
+    /// The first `Frame` OBU of a real clip (a key frame): its sequence header and payload.
+    fn first_frame() -> (crate::SequenceHeader, Vec<u8>) {
+        const CLIP: &[u8] = include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf");
+        let (_h, packets) = crate::parse_ivf_frames(CLIP).unwrap();
+        let (mut seq, mut frame) = (None, None);
+        for obu in parse_all_obus(&packets[0].data).unwrap() {
+            match obu.header.obu_type {
+                ObuType::SequenceHeader => seq = crate::parse_sequence_header(&obu.payload).ok(),
+                ObuType::Frame => frame = Some(obu.payload.to_vec()),
+                _ => {}
+            }
+        }
+        (seq.unwrap(), frame.unwrap())
+    }
+
+    #[test]
+    fn apply_basic_header_counts_a_key_frame_as_intra() {
+        let (_seq, payload) = first_frame();
+        let header = parse_frame_header_basic(&payload).unwrap();
+        let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+
+        frame.apply_basic_header(&header);
+
+        // `FrameIsIntra` covers KEY_FRAME too; `FrameType::is_intra_only` would not.
+        assert!(frame.frame_type.is_intra_only);
+        assert_eq!(frame.frame_type.base_qp, header.base_q_idx);
+        assert_eq!(frame.delta_q_enabled, header.delta_q_present);
+    }
+
+    #[test]
+    fn apply_full_header_derives_coded_lossless_and_key_frame() {
+        let (seq, payload) = first_frame();
+        let full = parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
+        let apply = |header: &crate::frame_header::FrameHeader| {
+            let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+            frame.apply_full_header(header, &seq, &[0; 8]);
+            frame
+        };
+        assert!(apply(&full).key_frame, "a shown key frame");
+
+        let mut shown_again = full.clone();
+        shown_again.show_existing_frame = true;
+        assert!(
+            !apply(&shown_again).key_frame,
+            "showing an existing frame is not a new one"
+        );
+
+        // Lossless needs a zero base index and zero DC deltas, all three.
+        let mut lossless = full.clone();
+        lossless.base_q_idx = Some(0);
+        lossless.y_dc_delta_q = Some(0);
+        lossless.uv_dc_delta_q = Some(0);
+        assert!(apply(&lossless).coded_lossless);
+        lossless.uv_dc_delta_q = Some(1);
+        assert!(!apply(&lossless).coded_lossless);
+        lossless.uv_dc_delta_q = Some(0);
+        lossless.base_q_idx = Some(1);
+        assert!(!apply(&lossless).coded_lossless);
+    }
+
+    #[test]
+    fn apply_full_header_keeps_the_basic_base_qp_when_it_has_none() {
+        let (seq, payload) = first_frame();
+        let basic = parse_frame_header_basic(&payload).unwrap();
+        let mut full = parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
+        full.base_q_idx = None;
+        let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+
+        frame.apply_basic_header(&basic);
+        frame.apply_full_header(&full, &seq, &[0; 8]);
+
+        assert_eq!(frame.frame_type.base_qp, basic.base_q_idx);
+        assert!(basic.base_q_idx.is_some());
     }
 
     #[test]
