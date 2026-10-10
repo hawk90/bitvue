@@ -20,6 +20,13 @@ cargo +nightly fuzz run frame_analysis -- -max_total_time=60
 | `frame_analysis` | `ParsedFrame::parse` + QP/MV/partition/prediction/transform extractors | sequence/frame header, symbol decoder, coding-unit parser panics (deepest path) |
 | `av1_decode` | `Av1Decoder` (dav1d) | decoder wrapper robustness |
 
+## CI
+
+`fuzz/` is not a workspace member, so `cargo build/test --workspace` never compiles it. The `Fuzz targets
+build` job (and `scripts/run_regression_suite.sh`) runs `scripts/check_fuzz_targets.sh`: every
+`fuzz_targets/*.rs` must be registered as a `[[bin]]` in `Cargo.toml` and every target must compile. Adding
+a target means adding its `[[bin]]` entry, or that check fails. This does not run the fuzzers.
+
 ## Corpus
 
 `corpus/` and `artifacts/` are gitignored. Random bytes rarely get past the sequence header, so seed

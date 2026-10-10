@@ -6,6 +6,7 @@ name: CI
 #            ├─ rust-test   one job per crate per OS (19 x 3, 12 at a time, as in #37)
 #            ├─ rust-vmaf   bitvue-metrics with the optional `vmaf` feature, 3 OSes
 #            ├─ rust-vvdec  bitvue-decode with the optional `vvdec` feature (real VVC stream), 2 OSes
+#            ├─ fuzz-build  every fuzz target is registered and compiles (fuzz/ is outside the workspace)
 #            ├─ parity      scripts/parity_check.sh --local against the CLI
 #            ├─ coverage    cargo-llvm-cov -> Codecov
 #            ├─ docs        cargo doc
@@ -50,6 +51,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
+      fuzz: ${{ steps.filter.outputs.fuzz }}
       frontend: ${{ steps.filter.outputs.frontend }}
       desktop: ${{ steps.filter.outputs.desktop }}
     steps:
@@ -69,6 +71,16 @@ jobs:
               - 'test_data/**'
               - 'scripts/parity_check.sh'
               - 'scripts/run_regression_suite.sh'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
+            # fuzz/ is not a workspace member, so no other job compiles it; it breaks whenever a
+            # crate it depends on changes its API.
+            fuzz:
+              - 'fuzz/**'
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
+              - 'scripts/check_fuzz_targets.sh'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
             # The frontend's vitest config aliases bitvue-desktop/electron/menuEvents.ts, so a
@@ -120,6 +132,29 @@ jobs:
       # Benches are never run in CI; compile them so they cannot silently rot again.
       - name: Compile benches
         run: cargo check --workspace --exclude abseil --benches --locked
+
+  # fuzz/ has its own Cargo.toml and is excluded from the workspace, so `--workspace` jobs never
+  # build it. A crate rename once left every target uncompilable unnoticed (#98).
+  fuzz-build:
+    name: Fuzz targets build
+    needs: changes
+    if: needs.changes.outputs.fuzz == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache: false
+          build-warnings: allow
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: fuzz
+          shared-key: fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/install-dav1d
+      - name: Every target is registered and compiles
+        run: ./scripts/check_fuzz_targets.sh
 
   rust-test:
     name: Test (${{ matrix.crate }}, ${{ matrix.os }})
@@ -499,7 +534,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [changes, rust-lint, rust-test, rust-vmaf, rust-vvdec, parity-regression, coverage, frontend, desktop, docs]
+    needs: [changes, rust-lint, fuzz-build, rust-test, rust-vmaf, rust-vvdec, parity-regression, coverage, frontend, desktop, docs]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

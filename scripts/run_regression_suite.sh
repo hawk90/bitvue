@@ -6,6 +6,7 @@
 # Runs all bitvue regression and parity checks in one command:
 #   1. cargo test  — unit + integration tests (all workspace crates)
 #   2. parity_check.sh --local  — CLI-level parity checks (local fixtures only)
+#   3. check_fuzz_targets.sh  — fuzz/ is outside the workspace; every target registered and compiling
 #
 # Usage:
 #   ./scripts/run_regression_suite.sh           # full suite
@@ -82,6 +83,11 @@ run_stage "cargo test (workspace)" \
 # shellcheck disable=SC2086
 run_stage "parity_check.sh" \
   bash "$SCRIPT_DIR/parity_check.sh" $PARITY_LOCAL
+
+# ── Stage 3: fuzz targets build ───────────────────────────────────────────────
+# fuzz/ is excluded from the workspace, so stage 1 never builds it.
+run_stage "fuzz targets build" \
+  bash "$SCRIPT_DIR/check_fuzz_targets.sh"
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 echo
