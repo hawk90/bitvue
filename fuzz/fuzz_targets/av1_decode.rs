@@ -23,7 +23,7 @@ fuzz_target!(|data: &[u8]| {
         if !is_ivf {
             // Treat as raw OBU
             if let Ok(mut decoder) = Av1Decoder::new() {
-                let _ = decoder.send_data(data, Some(0));
+                let _ = decoder.send_data(data, 0);
                 let _ = decoder.get_frame();
             }
         }

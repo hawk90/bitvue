@@ -1,75 +1,34 @@
 # Fuzzing
 
-This directory contains fuzz targets for testing Bitvue's parsers against malformed input.
+Fuzz targets for the AV1 parsing path. Requires nightly + cargo-fuzz (`cargo install cargo-fuzz`).
+This crate is excluded from the main workspace (`exclude = ["fuzz"]`); run everything from `fuzz/`.
 
-## Prerequisites
-
-Install cargo-fuzz:
-```bash
-cargo install cargo-fuzz
-```
-
-## Running Fuzzers
-
-Run all fuzz targets:
 ```bash
 cd fuzz
-cargo fuzz run
+cargo +nightly fuzz run frame_analysis -- -max_total_time=60
 ```
 
-Run specific fuzz target:
-```bash
-cd fuzz
-cargo fuzz run obu_parser
-cargo fuzz run ivf_parser
-cargo fuzz run leb128
-```
+## Targets
 
-## Fuzz Targets
-
-### obu_parser
-Fuzzes the AV1 OBU parser with arbitrary byte input.
-- **Target**: `bitvue_av1::parse_obu`
-- **Goal**: Find panics or crashes in OBU parsing
-
-### ivf_parser
-Fuzzes the IVF parser with arbitrary byte input.
-- **Targets**: `bitvue_av1::parse_ivf_header`, `parse_ivf_frames`
-- **Goal**: Find panics or crashes in IVF parsing
-
-### leb128
-Fuzzes the LEB128 encoder/decoder roundtrip.
-- **Target**: `bitvue_av1::{decode_uleb128, encode_uleb128}`
-- **Goal**: Find roundtrip errors or crashes
-
-## Continuous Integration
-
-To run fuzzing in CI (limited time):
-
-```bash
-# Run for 60 seconds per target
-cargo fuzz run obu_parser -- -max_total_time=60
-```
+| Target | Entry points | Catches |
+|---|---|---|
+| `leb128` | `decode_uleb128`/`encode_uleb128` | roundtrip errors |
+| `ivf_parser` | `parse_ivf_header`, `parse_ivf_frames`, `is_ivf` | container parse panics |
+| `obu_parser` | `parse_obu` | single-OBU header/size panics |
+| `obu_stream` | `ObuIterator`, `parse_all_obus`, `parse_all_obus_resilient` | panics, non-terminating iteration |
+| `syntax_parser` | `parse_bitstream_syntax`, `parse_obu_syntax` | syntax-tree builder panics |
+| `frame_analysis` | `ParsedFrame::parse` + QP/MV/partition/prediction/transform extractors | sequence/frame header, symbol decoder, coding-unit parser panics (deepest path) |
+| `av1_decode` | `Av1Decoder` (dav1d) | decoder wrapper robustness |
 
 ## Corpus
 
-The `corpus/` directory contains seed inputs for the fuzzer. Add real-world video file samples here to improve fuzzing effectiveness:
+`corpus/` and `artifacts/` are gitignored. Random bytes rarely get past the sequence header, so seed
+`frame_analysis`, `obu_stream`, `syntax_parser` and `obu_parser` with the first frame payloads of
+`test_data/av1_*.ivf` (IVF frame data without the 12-byte frame header), and `ivf_parser`/`av1_decode`
+with whole files. Without seeds `frame_analysis` stays at shallow coverage.
 
-```bash
-# Add a sample AV1 file to the corpus
-cp test_data/video.av1 fuzz/corpus/obu_parser/
-```
+## Crashes
 
-## Viewing Coverage
-
-To see which code paths are covered by fuzzing:
-
-```bash
-cargo fuzz coverage obu_parser
-```
-
-## Resources
-
-- [libFuzzer documentation](https://llvm.org/docs/LibFuzzer/)
-- [cargo-fuzz documentation](https://github.com/rust-fuzz/cargo-fuzz)
-- [Fuzzing Book](https://doc.rust-lang.org/beta/book/unstable-book/ch06-00-testing.html)
+A crash is written to `artifacts/<target>/`. Reproduce with
+`cargo +nightly fuzz run <target> artifacts/<target>/<file>`, fix, and add a regression test next to the
+fixed code (not in `fuzz/`).

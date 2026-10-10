@@ -9,15 +9,13 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+bitvue-av1-codec = { path = "../crates/bitvue-av1-codec" }
+bitvue-engine = { path = "../crates/bitvue-engine" }
+bitvue-decode = { path = "../crates/bitvue-decode" }
 
-# Add bitvue crates as dependencies
-[dependencies.bitvue-av1]
-path = "../crates/bitvue-av1"
+# Keep out of the parent workspace
+[workspace]
 
-[dependencies.bitvue-engine]
-path = "../crates/bitvue-engine"
-
-# Fuzz targets for AV1 parsing
 [[bin]]
 name = "obu_parser"
 path = "fuzz_targets/obu_parser.rs"
@@ -35,6 +33,34 @@ bench = false
 [[bin]]
 name = "leb128"
 path = "fuzz_targets/leb128.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "obu_stream"
+path = "fuzz_targets/obu_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "frame_analysis"
+path = "fuzz_targets/frame_analysis.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "syntax_parser"
+path = "fuzz_targets/syntax_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "av1_decode"
+path = "fuzz_targets/av1_decode.rs"
 test = false
 doc = false
 bench = false
