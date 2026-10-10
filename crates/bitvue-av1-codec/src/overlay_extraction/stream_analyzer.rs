@@ -321,6 +321,111 @@ mod tests {
         }
     }
 
+    /// The clip's sequence header OBU, to put in front of a packet so that its frame headers are
+    /// parsed in full.
+    fn sequence_header_obu(clip: &[u8]) -> Vec<u8> {
+        let (_h, packets) = parse_ivf_frames(clip).unwrap();
+        let mut iter = ObuIterator::new(&packets[0].data);
+        while let Some(Ok(found)) = iter.next_obu_with_offset() {
+            if found.obu.header.obu_type == ObuType::SequenceHeader {
+                return packets[0].data[found.offset..found.offset + found.consumed].to_vec();
+            }
+        }
+        panic!("clip starts with a sequence header");
+    }
+
+    /// A packet holding several frames describes only the last one, however the frames are
+    /// carried: the tile data of a `FrameHeader` + `TileGroup` frame may not stay in front of the
+    /// next frame's, exactly as for `Frame` OBUs (#142). Checked against parsing the last frame
+    /// alone and against the `Frame` OBU form of the same packet.
+    #[test]
+    fn multi_frame_packet_tile_data_is_the_last_frames_only() {
+        for (name, clip) in [("rav1e", RAV1E), ("aomenc", AOMENC), ("svt-av1", SVT)] {
+            let seq = sequence_header_obu(clip);
+            let with_seq = |data: &[u8]| [seq.as_slice(), data].concat();
+            let (_h, whole) = parse_ivf_frames(clip).unwrap();
+            for redundant in [false, true] {
+                let (_h, split) =
+                    parse_ivf_frames(&with_split_frame_obus(clip, redundant)).unwrap();
+                let mut checked = 0;
+                for i in 1..whole.len() {
+                    let units = frame_units(&split[i].data, false);
+                    if units.len() < 2 {
+                        continue;
+                    }
+                    let label = format!("{name} (redundant={redundant}) packet {i}");
+                    let packet = ParsedFrame::parse(&with_seq(&split[i].data)).unwrap();
+                    let last = ParsedFrame::parse(&with_seq(units.last().unwrap())).unwrap();
+                    let frame_form = ParsedFrame::parse(&with_seq(&whole[i].data)).unwrap();
+                    assert!(packet.has_tile_data(), "{label}");
+                    assert!(
+                        packet.tile_data == last.tile_data,
+                        "{label}: tile bytes differ from the last frame's ({} vs {})",
+                        packet.tile_data.len(),
+                        last.tile_data.len()
+                    );
+                    assert_eq!(
+                        packet.tile_groups, last.tile_groups,
+                        "{label}: vs the last frame"
+                    );
+                    assert_eq!(
+                        (packet.tile_groups.len(), packet.tile_data.len()),
+                        (frame_form.tile_groups.len(), frame_form.tile_data.len()),
+                        "{label}: vs the Frame OBU form"
+                    );
+                    checked += 1;
+                }
+                assert!(checked > 0, "{name}: no multi-frame packet to check");
+            }
+        }
+    }
+
+    /// A `show_existing_frame` header carries no tile data: after frames in the same packet it must
+    /// not leave their tile bytes behind. The packets are joined by hand (the clips never put the
+    /// two in one packet), so this tests the parse only, not a conformant temporal unit.
+    #[test]
+    fn show_existing_frame_header_after_frames_leaves_no_tile_data() {
+        for (name, clip) in [("aomenc", AOMENC), ("rav1e", RAV1E), ("svt-av1", SVT)] {
+            let seq = sequence_header_obu(clip);
+            let (_h, whole) = parse_ivf_frames(clip).unwrap();
+            let (_h, split) = parse_ivf_frames(&with_split_frame_obus(clip, false)).unwrap();
+            // The first packet that only holds a `show_existing_frame` header.
+            let shown = whole
+                .iter()
+                .position(|p| frame_units(&p.data, false).is_empty() && p.data.len() > 2)
+                .expect("a show_existing_frame packet");
+            let shown_header = {
+                let mut iter = ObuIterator::new(&whole[shown].data);
+                let mut raw = None;
+                while let Some(Ok(found)) = iter.next_obu_with_offset() {
+                    if found.obu.header.obu_type == ObuType::FrameHeader {
+                        raw = Some(
+                            whole[shown].data[found.offset..found.offset + found.consumed].to_vec(),
+                        );
+                    }
+                }
+                raw.expect("a frame header OBU")
+            };
+            let multi = (1..shown)
+                .rev()
+                .find(|&i| frame_units(&split[i].data, false).len() > 1)
+                .expect("a multi-frame packet before it");
+            for (form, packet) in [
+                ("Frame OBUs", &whole[multi]),
+                ("FrameHeader+TileGroup", &split[multi]),
+            ] {
+                let data = [seq.as_slice(), &packet.data, &shown_header].concat();
+                let parsed = ParsedFrame::parse(&data).unwrap();
+                assert!(parsed.show_existing_slot.is_some(), "{name} ({form})");
+                assert!(
+                    !parsed.has_tile_data(),
+                    "{name} ({form}): tile bytes left behind"
+                );
+                assert!(parsed.tile_groups.is_empty(), "{name} ({form})");
+            }
+        }
+    }
+
     #[test]
     fn frame_units_groups_headers_with_their_tile_groups() {
         let (_hdr, packets) = parse_ivf_frames(&with_split_frame_obus(AOMENC, true)).unwrap();

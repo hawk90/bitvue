@@ -628,6 +628,10 @@ impl ParsedFrame {
                     }
                 }
                 ObuType::FrameHeader => {
+                    // Same reset as for `ObuType::Frame`: this header starts a new frame, so the
+                    // tile groups gathered for an earlier frame of the packet are not its own.
+                    tile_data.clear();
+                    tile_groups.clear();
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
                         // See the `ObuType::Frame` branch above for why this is `is_intra()`, not
                         // `is_intra_only()`.
