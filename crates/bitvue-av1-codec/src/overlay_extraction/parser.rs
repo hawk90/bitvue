@@ -329,6 +329,61 @@ impl ParsedFrame {
         Self::parse_with_ref_state(obu_data, &mut RefFrameState::new())
     }
 
+    /// A frame with nothing parsed yet: what the parse returns for empty data (the default
+    /// 1920x1080 scaffold the extractors fall back to), and where every other parse starts from.
+    fn scaffold(obu_data: Arc<[u8]>) -> Self {
+        Self {
+            obu_data,
+            obus: Vec::new(),
+            dimensions: FrameDimensions::default(),
+            frame_type: FrameTypeInfo::default(),
+            tile_data: Arc::from([]),
+            delta_q_enabled: false,
+            reference_select: false,
+            allow_intrabc: false,
+            allow_screen_content_tools: false,
+            delta_lf_present: false,
+            delta_lf_multi: false,
+            reduced_tx_set: false,
+            coded_lossless: false,
+            txfm_mode: TxfmMode::default(),
+            use_ref_frame_mvs: false,
+            primary_ref_frame: 7,
+            disable_frame_end_update_cdf: true,
+            order_hint: 0,
+            ref_frame_idx: None,
+            refresh_frame_flags: 0,
+            segmentation: crate::frame_header_full::SegmentationInfo::default(),
+            mono_chrome: true,
+            subsampling_x: false,
+            subsampling_y: false,
+            enable_filter_intra: false,
+            cdef_bits: 0,
+            show_existing_slot: None,
+            key_frame: false,
+            tiles: None,
+            tile_groups: Vec::new(),
+            decoded: None,
+            ref_frame_sign_bias: [false; 7],
+            ref_order_distance: [0; 7],
+            loop_restoration: Default::default(),
+            superres: false,
+            skip_mode_present: false,
+            skip_mode_refs: [0, 0],
+            subpel_filter_switchable: false,
+            switchable_motion_mode: false,
+            allow_warped_motion: false,
+            force_integer_mv: false,
+            allow_high_precision_mv: false,
+            gm_type: [0u8; 8],
+            enable_interintra_compound: false,
+            enable_dual_filter: false,
+            enable_masked_compound: false,
+            enable_jnt_comp: false,
+            enable_warped_motion: false,
+        }
+    }
+
     /// Same as [`ParsedFrame::parse`], but threads a caller-supplied `RefFrameState` into the
     /// frame-header parse used to locate `tile_data`'s real start (`header_size_bytes`), instead
     /// of assuming a fresh/default state. `ref_state` should reflect every frame from 0 up to
@@ -350,56 +405,7 @@ impl ParsedFrame {
         // Callers that extract grids from empty data receive the default 1920x1080
         // scaffold, which is the documented behaviour for this module.
         if obu_data.is_empty() {
-            return Ok(Self {
-                obu_data,
-                obus: Vec::new(),
-                dimensions: FrameDimensions::default(),
-                frame_type: FrameTypeInfo::default(),
-                tile_data: Arc::from([]),
-                delta_q_enabled: false,
-                reference_select: false,
-                allow_intrabc: false,
-                allow_screen_content_tools: false,
-                delta_lf_present: false,
-                delta_lf_multi: false,
-                reduced_tx_set: false,
-                coded_lossless: false,
-                txfm_mode: TxfmMode::default(),
-                use_ref_frame_mvs: false,
-                primary_ref_frame: 7,
-                disable_frame_end_update_cdf: true,
-                order_hint: 0,
-                ref_frame_idx: None,
-                refresh_frame_flags: 0,
-                segmentation: crate::frame_header_full::SegmentationInfo::default(),
-                mono_chrome: true,
-                subsampling_x: false,
-                subsampling_y: false,
-                enable_filter_intra: false,
-                cdef_bits: 0,
-                show_existing_slot: None,
-                key_frame: false,
-                tiles: None,
-                tile_groups: Vec::new(),
-                decoded: None,
-                ref_frame_sign_bias: [false; 7],
-                ref_order_distance: [0; 7],
-                loop_restoration: Default::default(),
-                superres: false,
-                skip_mode_present: false,
-                skip_mode_refs: [0, 0],
-                subpel_filter_switchable: false,
-                switchable_motion_mode: false,
-                allow_warped_motion: false,
-                force_integer_mv: false,
-                allow_high_precision_mv: false,
-                gm_type: [0u8; 8],
-                enable_interintra_compound: false,
-                enable_dual_filter: false,
-                enable_masked_compound: false,
-                enable_jnt_comp: false,
-                enable_warped_motion: false,
-            });
+            return Ok(Self::scaffold(obu_data));
         }
 
         // Use resilient parsing: collect whatever OBUs parse successfully and
@@ -422,53 +428,11 @@ impl ParsedFrame {
         };
 
         // Build lightweight OBU references
+        let mut frame = Self::scaffold(Arc::clone(&obu_data));
+        frame.obus.reserve(obus_vec.len());
         let mut offset = 0;
-        let mut obus = Vec::with_capacity(obus_vec.len());
-        let mut dimensions = FrameDimensions::default();
-        let mut frame_type = FrameTypeInfo::default();
+        // The tile bytes of the frame parsed last; moved into `frame` once the loop is done.
         let mut tile_data = Vec::new();
-        let mut delta_q_enabled = false; // Default to false
-        let mut reference_select = false;
-        let mut allow_intrabc = false;
-        let mut allow_screen_content_tools = false;
-        let mut delta_lf_present = false;
-        let mut delta_lf_multi = false;
-        let mut reduced_tx_set = false;
-        let mut coded_lossless = false;
-        let mut txfm_mode = TxfmMode::default();
-        let mut use_ref_frame_mvs = false;
-        let mut primary_ref_frame = 7u32;
-        let mut disable_frame_end_update_cdf = true;
-        let mut order_hint = 0u32;
-        let mut ref_frame_idx: Option<[u8; 7]> = None;
-        let mut refresh_frame_flags = 0u8;
-        let mut segmentation = crate::frame_header_full::SegmentationInfo::default();
-        let mut mono_chrome = true;
-        let mut subsampling_x = false;
-        let mut subsampling_y = false;
-        let mut enable_filter_intra = false;
-        let mut cdef_bits = 0u8;
-        let mut show_existing_slot: Option<u8> = None;
-        let mut key_frame = false;
-        let mut tiles = None;
-        let mut tile_groups: Vec<std::ops::Range<usize>> = Vec::new();
-        let mut ref_frame_sign_bias = [false; 7];
-        let mut ref_order_distance = [0i32; 7];
-        let mut loop_restoration = crate::frame_header::LoopRestorationInfo::default();
-        let mut superres = false;
-        let mut skip_mode_present = false;
-        let mut skip_mode_refs = [0u8, 0u8];
-        let mut subpel_filter_switchable = false;
-        let mut switchable_motion_mode = false;
-        let mut allow_warped_motion = false;
-        let mut force_integer_mv = false;
-        let mut allow_high_precision_mv = false;
-        let mut gm_type = [0u8; 8];
-        let mut enable_interintra_compound = false;
-        let mut enable_dual_filter = false;
-        let mut enable_masked_compound = false;
-        let mut enable_jnt_comp = false;
-        let mut enable_warped_motion = false;
         // Retained across the loop so the frame-header OBU (which comes after the sequence
         // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
         let mut seq_header: Option<crate::SequenceHeader> = None;
@@ -477,7 +441,7 @@ impl ParsedFrame {
             let payload_start = offset + obu.header.header_size;
             let payload_end = payload_start + obu.payload.len();
 
-            obus.push(ObuRef {
+            frame.obus.push(ObuRef {
                 obu_type: obu.header.obu_type,
                 payload_start,
                 payload_end: payload_end.min(obu_data.len()),
@@ -487,7 +451,7 @@ impl ParsedFrame {
             match obu.header.obu_type {
                 ObuType::SequenceHeader => {
                     if let Ok(seq_hdr) = crate::parse_sequence_header(&obu.payload) {
-                        dimensions = FrameDimensions {
+                        frame.dimensions = FrameDimensions {
                             width: seq_hdr.max_frame_width,
                             height: seq_hdr.max_frame_height,
                             sb_size: if seq_hdr.use_128x128_superblock {
@@ -498,15 +462,15 @@ impl ParsedFrame {
                             sb_cols: 0,
                             sb_rows: 0,
                         };
-                        mono_chrome = seq_hdr.color_config.mono_chrome;
-                        subsampling_x = seq_hdr.color_config.subsampling_x;
-                        subsampling_y = seq_hdr.color_config.subsampling_y;
-                        enable_filter_intra = seq_hdr.enable_filter_intra;
-                        enable_interintra_compound = seq_hdr.enable_interintra_compound;
-                        enable_dual_filter = seq_hdr.enable_dual_filter;
-                        enable_masked_compound = seq_hdr.enable_masked_compound;
-                        enable_jnt_comp = seq_hdr.enable_jnt_comp;
-                        enable_warped_motion = seq_hdr.enable_warped_motion;
+                        frame.mono_chrome = seq_hdr.color_config.mono_chrome;
+                        frame.subsampling_x = seq_hdr.color_config.subsampling_x;
+                        frame.subsampling_y = seq_hdr.color_config.subsampling_y;
+                        frame.enable_filter_intra = seq_hdr.enable_filter_intra;
+                        frame.enable_interintra_compound = seq_hdr.enable_interintra_compound;
+                        frame.enable_dual_filter = seq_hdr.enable_dual_filter;
+                        frame.enable_masked_compound = seq_hdr.enable_masked_compound;
+                        frame.enable_jnt_comp = seq_hdr.enable_jnt_comp;
+                        frame.enable_warped_motion = seq_hdr.enable_warped_motion;
                         seq_header = Some(seq_hdr);
                     }
                 }
@@ -543,7 +507,7 @@ impl ParsedFrame {
                     // frame): every field below describes the frame parsed last, so the tile
                     // bytes of an earlier one must not stay in front of them.
                     tile_data.clear();
-                    tile_groups.clear();
+                    frame.tile_groups.clear();
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
                         // `FrameTypeInfo::is_intra_only`'s doc says "key/intra-only" -- i.e. spec
                         // 5.9.2's `FrameIsIntra` (`frame_type == KEY_FRAME || frame_type ==
@@ -556,9 +520,9 @@ impl ParsedFrame {
                         // one -- found while verifying the new key-frame `intra_mode`/`kfym`
                         // context work (`SymbolDecoder::read_intra_mode`) had zero real frames to
                         // exercise it on.
-                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
-                        frame_type.base_qp = frame_hdr.base_q_idx;
-                        delta_q_enabled = frame_hdr.delta_q_present;
+                        frame.frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
+                        frame.frame_type.base_qp = frame_hdr.base_q_idx;
+                        frame.delta_q_enabled = frame_hdr.delta_q_present;
                         if seq_header.is_none() && frame_hdr.header_size_bytes < obu.payload.len() {
                             tile_data
                                 .extend_from_slice(&obu.payload[frame_hdr.header_size_bytes..]);
@@ -569,60 +533,62 @@ impl ParsedFrame {
                         {
                             // The exact header parse wins over `parse_frame_header_basic`'s
                             // approximation for the two values it also supplied.
-                            delta_q_enabled = full_hdr.delta_q_present;
+                            frame.delta_q_enabled = full_hdr.delta_q_present;
                             if full_hdr.base_q_idx.is_some() {
-                                frame_type.base_qp = full_hdr.base_q_idx;
+                                frame.frame_type.base_qp = full_hdr.base_q_idx;
                             }
-                            reference_select = full_hdr.reference_select;
-                            allow_intrabc = full_hdr.allow_intrabc;
-                            allow_screen_content_tools = full_hdr.allow_screen_content_tools;
-                            delta_lf_present = full_hdr.delta_lf_present;
-                            delta_lf_multi = full_hdr.delta_lf_multi;
-                            reduced_tx_set = full_hdr.reduced_tx_set;
-                            coded_lossless = full_hdr.base_q_idx == Some(0)
+                            frame.reference_select = full_hdr.reference_select;
+                            frame.allow_intrabc = full_hdr.allow_intrabc;
+                            frame.allow_screen_content_tools = full_hdr.allow_screen_content_tools;
+                            frame.delta_lf_present = full_hdr.delta_lf_present;
+                            frame.delta_lf_multi = full_hdr.delta_lf_multi;
+                            frame.reduced_tx_set = full_hdr.reduced_tx_set;
+                            frame.coded_lossless = full_hdr.base_q_idx == Some(0)
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
-                            txfm_mode = full_hdr.txfm_mode;
-                            use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
-                            primary_ref_frame = full_hdr.primary_ref_frame;
-                            disable_frame_end_update_cdf = full_hdr.disable_frame_end_update_cdf;
-                            order_hint = full_hdr.order_hint;
-                            ref_frame_idx = full_hdr.ref_frame_idx;
-                            refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
-                            segmentation = full_hdr.segmentation;
-                            cdef_bits = full_hdr.cdef_damping.bits;
-                            show_existing_slot = full_hdr.frame_to_show_map_idx;
-                            tiles = full_hdr.tiles.clone();
-                            key_frame = !full_hdr.show_existing_frame
+                            frame.txfm_mode = full_hdr.txfm_mode;
+                            frame.use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            frame.primary_ref_frame = full_hdr.primary_ref_frame;
+                            frame.disable_frame_end_update_cdf =
+                                full_hdr.disable_frame_end_update_cdf;
+                            frame.order_hint = full_hdr.order_hint;
+                            frame.ref_frame_idx = full_hdr.ref_frame_idx;
+                            frame.refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
+                            frame.segmentation = full_hdr.segmentation;
+                            frame.cdef_bits = full_hdr.cdef_damping.bits;
+                            frame.show_existing_slot = full_hdr.frame_to_show_map_idx;
+                            frame.tiles = full_hdr.tiles.clone();
+                            frame.key_frame = !full_hdr.show_existing_frame
                                 && full_hdr.frame_type.is_intra()
                                 && !full_hdr.frame_type.is_intra_only();
-                            ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
+                            frame.ref_frame_sign_bias =
+                                crate::frame_header_full::ref_frame_sign_bias(
+                                    &prev_ref_order_hint,
+                                    full_hdr.ref_frame_idx.as_ref(),
+                                    full_hdr.order_hint,
+                                    seq,
+                                );
+                            frame.ref_order_distance = crate::frame_header_full::ref_order_distance(
                                 &prev_ref_order_hint,
                                 full_hdr.ref_frame_idx.as_ref(),
                                 full_hdr.order_hint,
                                 seq,
                             );
-                            ref_order_distance = crate::frame_header_full::ref_order_distance(
-                                &prev_ref_order_hint,
-                                full_hdr.ref_frame_idx.as_ref(),
-                                full_hdr.order_hint,
-                                seq,
-                            );
-                            loop_restoration = full_hdr.loop_restoration.clone();
-                            superres = full_hdr.super_resolution.enabled;
-                            skip_mode_present = full_hdr.skip_mode_present;
-                            skip_mode_refs = full_hdr.skip_mode_refs;
-                            subpel_filter_switchable = full_hdr.subpel_filter_switchable;
-                            switchable_motion_mode = full_hdr.switchable_motion_mode;
-                            allow_warped_motion = full_hdr.allow_warped_motion;
-                            force_integer_mv = full_hdr.force_integer_mv;
-                            allow_high_precision_mv = full_hdr.allow_high_precision_mv;
-                            gm_type = full_hdr.gm_type;
+                            frame.loop_restoration = full_hdr.loop_restoration.clone();
+                            frame.superres = full_hdr.super_resolution.enabled;
+                            frame.skip_mode_present = full_hdr.skip_mode_present;
+                            frame.skip_mode_refs = full_hdr.skip_mode_refs;
+                            frame.subpel_filter_switchable = full_hdr.subpel_filter_switchable;
+                            frame.switchable_motion_mode = full_hdr.switchable_motion_mode;
+                            frame.allow_warped_motion = full_hdr.allow_warped_motion;
+                            frame.force_integer_mv = full_hdr.force_integer_mv;
+                            frame.allow_high_precision_mv = full_hdr.allow_high_precision_mv;
+                            frame.gm_type = full_hdr.gm_type;
                             if full_hdr.header_size_bytes < obu.payload.len() {
                                 let start = tile_data.len();
                                 tile_data
                                     .extend_from_slice(&obu.payload[full_hdr.header_size_bytes..]);
-                                tile_groups.push(start..tile_data.len());
+                                frame.tile_groups.push(start..tile_data.len());
                             }
                         }
                     }
@@ -631,75 +597,77 @@ impl ParsedFrame {
                     // Same reset as for `ObuType::Frame`: this header starts a new frame, so the
                     // tile groups gathered for an earlier frame of the packet are not its own.
                     tile_data.clear();
-                    tile_groups.clear();
+                    frame.tile_groups.clear();
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
                         // See the `ObuType::Frame` branch above for why this is `is_intra()`, not
                         // `is_intra_only()`.
-                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
-                        frame_type.base_qp = frame_hdr.base_q_idx;
-                        delta_q_enabled = frame_hdr.delta_q_present;
+                        frame.frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
+                        frame.frame_type.base_qp = frame_hdr.base_q_idx;
+                        frame.delta_q_enabled = frame_hdr.delta_q_present;
                     }
                     if let Some(seq) = &seq_header {
                         if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
                         {
                             // The exact header parse wins over `parse_frame_header_basic`'s
                             // approximation for the two values it also supplied.
-                            delta_q_enabled = full_hdr.delta_q_present;
+                            frame.delta_q_enabled = full_hdr.delta_q_present;
                             if full_hdr.base_q_idx.is_some() {
-                                frame_type.base_qp = full_hdr.base_q_idx;
+                                frame.frame_type.base_qp = full_hdr.base_q_idx;
                             }
-                            reference_select = full_hdr.reference_select;
-                            allow_intrabc = full_hdr.allow_intrabc;
-                            allow_screen_content_tools = full_hdr.allow_screen_content_tools;
-                            delta_lf_present = full_hdr.delta_lf_present;
-                            delta_lf_multi = full_hdr.delta_lf_multi;
-                            reduced_tx_set = full_hdr.reduced_tx_set;
-                            coded_lossless = full_hdr.base_q_idx == Some(0)
+                            frame.reference_select = full_hdr.reference_select;
+                            frame.allow_intrabc = full_hdr.allow_intrabc;
+                            frame.allow_screen_content_tools = full_hdr.allow_screen_content_tools;
+                            frame.delta_lf_present = full_hdr.delta_lf_present;
+                            frame.delta_lf_multi = full_hdr.delta_lf_multi;
+                            frame.reduced_tx_set = full_hdr.reduced_tx_set;
+                            frame.coded_lossless = full_hdr.base_q_idx == Some(0)
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
-                            txfm_mode = full_hdr.txfm_mode;
-                            use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
-                            primary_ref_frame = full_hdr.primary_ref_frame;
-                            disable_frame_end_update_cdf = full_hdr.disable_frame_end_update_cdf;
-                            order_hint = full_hdr.order_hint;
-                            ref_frame_idx = full_hdr.ref_frame_idx;
-                            refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
-                            segmentation = full_hdr.segmentation;
-                            cdef_bits = full_hdr.cdef_damping.bits;
-                            show_existing_slot = full_hdr.frame_to_show_map_idx;
-                            tiles = full_hdr.tiles.clone();
-                            key_frame = !full_hdr.show_existing_frame
+                            frame.txfm_mode = full_hdr.txfm_mode;
+                            frame.use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            frame.primary_ref_frame = full_hdr.primary_ref_frame;
+                            frame.disable_frame_end_update_cdf =
+                                full_hdr.disable_frame_end_update_cdf;
+                            frame.order_hint = full_hdr.order_hint;
+                            frame.ref_frame_idx = full_hdr.ref_frame_idx;
+                            frame.refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
+                            frame.segmentation = full_hdr.segmentation;
+                            frame.cdef_bits = full_hdr.cdef_damping.bits;
+                            frame.show_existing_slot = full_hdr.frame_to_show_map_idx;
+                            frame.tiles = full_hdr.tiles.clone();
+                            frame.key_frame = !full_hdr.show_existing_frame
                                 && full_hdr.frame_type.is_intra()
                                 && !full_hdr.frame_type.is_intra_only();
-                            ref_frame_sign_bias = crate::frame_header_full::ref_frame_sign_bias(
+                            frame.ref_frame_sign_bias =
+                                crate::frame_header_full::ref_frame_sign_bias(
+                                    &prev_ref_order_hint,
+                                    full_hdr.ref_frame_idx.as_ref(),
+                                    full_hdr.order_hint,
+                                    seq,
+                                );
+                            frame.ref_order_distance = crate::frame_header_full::ref_order_distance(
                                 &prev_ref_order_hint,
                                 full_hdr.ref_frame_idx.as_ref(),
                                 full_hdr.order_hint,
                                 seq,
                             );
-                            ref_order_distance = crate::frame_header_full::ref_order_distance(
-                                &prev_ref_order_hint,
-                                full_hdr.ref_frame_idx.as_ref(),
-                                full_hdr.order_hint,
-                                seq,
-                            );
-                            loop_restoration = full_hdr.loop_restoration.clone();
-                            superres = full_hdr.super_resolution.enabled;
-                            skip_mode_present = full_hdr.skip_mode_present;
-                            skip_mode_refs = full_hdr.skip_mode_refs;
-                            subpel_filter_switchable = full_hdr.subpel_filter_switchable;
-                            switchable_motion_mode = full_hdr.switchable_motion_mode;
-                            allow_warped_motion = full_hdr.allow_warped_motion;
-                            force_integer_mv = full_hdr.force_integer_mv;
-                            allow_high_precision_mv = full_hdr.allow_high_precision_mv;
-                            gm_type = full_hdr.gm_type;
+                            frame.loop_restoration = full_hdr.loop_restoration.clone();
+                            frame.superres = full_hdr.super_resolution.enabled;
+                            frame.skip_mode_present = full_hdr.skip_mode_present;
+                            frame.skip_mode_refs = full_hdr.skip_mode_refs;
+                            frame.subpel_filter_switchable = full_hdr.subpel_filter_switchable;
+                            frame.switchable_motion_mode = full_hdr.switchable_motion_mode;
+                            frame.allow_warped_motion = full_hdr.allow_warped_motion;
+                            frame.force_integer_mv = full_hdr.force_integer_mv;
+                            frame.allow_high_precision_mv = full_hdr.allow_high_precision_mv;
+                            frame.gm_type = full_hdr.gm_type;
                         }
                     }
                 }
                 ObuType::TileGroup => {
                     let start = tile_data.len();
                     tile_data.extend_from_slice(&obu.payload);
-                    tile_groups.push(start..tile_data.len());
+                    frame.tile_groups.push(start..tile_data.len());
                 }
                 _ => {}
             }
@@ -708,61 +676,13 @@ impl ParsedFrame {
         }
 
         // Calculate superblock grid dimensions
-        if dimensions.width > 0 && dimensions.sb_size > 0 {
-            dimensions.sb_cols = dimensions.width.div_ceil(dimensions.sb_size);
-            dimensions.sb_rows = dimensions.height.div_ceil(dimensions.sb_size);
+        if frame.dimensions.width > 0 && frame.dimensions.sb_size > 0 {
+            frame.dimensions.sb_cols = frame.dimensions.width.div_ceil(frame.dimensions.sb_size);
+            frame.dimensions.sb_rows = frame.dimensions.height.div_ceil(frame.dimensions.sb_size);
         }
 
-        Ok(Self {
-            obu_data,
-            obus,
-            dimensions,
-            frame_type,
-            tile_data: Arc::from(tile_data),
-            delta_q_enabled,
-            reference_select,
-            allow_intrabc,
-            allow_screen_content_tools,
-            delta_lf_present,
-            delta_lf_multi,
-            reduced_tx_set,
-            coded_lossless,
-            txfm_mode,
-            use_ref_frame_mvs,
-            primary_ref_frame,
-            disable_frame_end_update_cdf,
-            order_hint,
-            ref_frame_idx,
-            refresh_frame_flags,
-            segmentation,
-            mono_chrome,
-            subsampling_x,
-            subsampling_y,
-            enable_filter_intra,
-            cdef_bits,
-            show_existing_slot,
-            key_frame,
-            tiles,
-            tile_groups,
-            decoded: None,
-            ref_frame_sign_bias,
-            ref_order_distance,
-            loop_restoration,
-            superres,
-            skip_mode_present,
-            skip_mode_refs,
-            subpel_filter_switchable,
-            switchable_motion_mode,
-            allow_warped_motion,
-            force_integer_mv,
-            allow_high_precision_mv,
-            gm_type,
-            enable_interintra_compound,
-            enable_dual_filter,
-            enable_masked_compound,
-            enable_jnt_comp,
-            enable_warped_motion,
-        })
+        frame.tile_data = Arc::from(tile_data);
+        Ok(frame)
     }
 
     /// Get OBU payload by reference
