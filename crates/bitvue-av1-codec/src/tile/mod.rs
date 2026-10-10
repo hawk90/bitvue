@@ -24,6 +24,7 @@
 pub mod coding_unit;
 pub mod context;
 pub mod frame_params;
+pub mod layout;
 pub mod motion_field;
 pub mod mv_prediction;
 pub mod partition;

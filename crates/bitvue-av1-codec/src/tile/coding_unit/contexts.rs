@@ -230,7 +230,7 @@ pub(super) fn has_overlappable_neighbors(
     width_4x4: u32,
     height_4x4: u32,
 ) -> bool {
-    if x4 > 0 {
+    if tile_ctx.has_left(x4) {
         let len = height_4x4 / 2;
         for n in 0..len {
             if !tile_ctx.left_is_intra(y4 + 1 + n * 2) {
@@ -238,7 +238,7 @@ pub(super) fn has_overlappable_neighbors(
             }
         }
     }
-    if y4 > 0 {
+    if tile_ctx.has_top(y4) {
         let len = width_4x4 / 2;
         for n in 0..len {
             if !tile_ctx.above_is_intra(x4 + 1 + n * 2) {

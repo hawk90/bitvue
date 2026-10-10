@@ -150,6 +150,39 @@ pub enum TxfmMode {
     Switchable,
 }
 
+/// The tile layout of a frame (spec 5.9.15 `tile_info()`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TileLayout {
+    /// First superblock column of every tile column, then the superblock column count.
+    pub col_starts_sb: Vec<u32>,
+    /// First superblock row of every tile row, then the superblock row count.
+    pub row_starts_sb: Vec<u32>,
+    /// `TileColsLog2` / `TileRowsLog2`: the bit counts of a tile group's first/last tile numbers
+    /// are their sum (not derived from the tile counts: a uniform layout can have fewer tiles
+    /// than `1 << log2`).
+    pub tile_cols_log2: u32,
+    pub tile_rows_log2: u32,
+    /// `context_update_tile_id`: the tile whose final CDFs the frame saves.
+    pub context_update_tile_id: u32,
+    /// `TileSizeBytes`: the width of the size field in front of every tile but the last of a
+    /// tile group.
+    pub tile_size_bytes: u8,
+}
+
+impl TileLayout {
+    pub fn tile_cols(&self) -> u32 {
+        self.col_starts_sb.len().saturating_sub(1) as u32
+    }
+
+    pub fn tile_rows(&self) -> u32 {
+        self.row_starts_sb.len().saturating_sub(1) as u32
+    }
+
+    pub fn tile_count(&self) -> u32 {
+        self.tile_cols() * self.tile_rows()
+    }
+}
+
 /// Minimal frame header information
 #[derive(Debug, Clone)]
 pub struct FrameHeader {
@@ -179,6 +212,9 @@ pub struct FrameHeader {
     /// Exact length of the uncompressed header in bits, before its byte alignment (or trailing
     /// bits, for a `FrameHeader` OBU).
     pub header_size_bits: u64,
+    /// The frame's tile layout (spec 5.9.15); `None` when the header was not parsed that far
+    /// (`show_existing_frame`, or the approximate parser), meaning one tile.
+    pub tiles: Option<TileLayout>,
     /// Refresh frame flags (8 bits) - which reference slots to refresh
     pub refresh_frame_flags: Option<u8>,
     /// Reference frame indices, one per `ref_frame_sign_bias` slot
@@ -645,6 +681,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             delta_q_residue: None,
             header_size_bytes,
             header_size_bits,
+            tiles: None,
             refresh_frame_flags: None,
             ref_frame_idx: None,
             order_hint: 0,
@@ -830,6 +867,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         delta_q_residue: None,
         header_size_bytes,
         header_size_bits,
+        tiles: None,
         refresh_frame_flags,
         ref_frame_idx,
         order_hint: 0,

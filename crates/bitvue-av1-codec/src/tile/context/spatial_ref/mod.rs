@@ -93,6 +93,10 @@ pub struct SpatialRefContext {
     /// allocated grid; `set_frame_extent` narrows it to the real frame.
     col_end: u32,
     row_end: u32,
+    /// First column / row of the tile in 4x4 units (dav1d `rt->tile_col.start` /
+    /// `tile_row.start`): neighbours before it do not exist. Zero for a single-tile frame.
+    col_start: u32,
+    row_start: u32,
     /// Frame size in 4x4 units (dav1d `iw4`/`ih4`), the bound candidate MVs are clamped against.
     iw4: u32,
     ih4: u32,
@@ -131,6 +135,8 @@ impl SpatialRefContext {
             cells: vec![SpatialRefCell::default(); (width_4x4 * height_4x4) as usize],
             col_end: width_4x4,
             row_end: height_4x4,
+            col_start: 0,
+            row_start: 0,
             iw4: width_4x4,
             ih4: height_4x4,
             sign_bias: [false; 7],
@@ -146,6 +152,14 @@ impl SpatialRefContext {
         // dav1d `rf->iw4 = iw8 << 1`: the clamp bound is 8x8-aligned too.
         self.iw4 = 2 * width.div_ceil(8);
         self.ih4 = 2 * height.div_ceil(8);
+    }
+
+    /// Sets the tile's extent in 4x4 units, clipped to the frame (`set_frame_extent` first).
+    pub fn set_tile_extent(&mut self, col_start: u32, col_end: u32, row_start: u32, row_end: u32) {
+        self.col_start = col_start;
+        self.row_start = row_start;
+        self.col_end = col_end.min(self.iw4);
+        self.row_end = row_end.min(self.ih4);
     }
 
     /// Sets the per-reference sign bias. See the `sign_bias` field.

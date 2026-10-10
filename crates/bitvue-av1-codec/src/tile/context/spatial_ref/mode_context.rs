@@ -44,18 +44,22 @@ impl SpatialRefContext {
         // `n_rows`/`n_cols` stay `u32::MAX` while the row/column is outside the tile.
         let mut n_rows = u32::MAX;
         let mut n_cols = u32::MAX;
-        let max_rows = if y4 > 0 {
-            y4.div_ceil(2).min(2 + u32::from(bh4 > 1))
+        let max_rows = if y4 > self.row_start {
+            (y4 - self.row_start)
+                .div_ceil(2)
+                .min(2 + u32::from(bh4 > 1))
         } else {
             0
         } as i32;
-        let max_cols = if x4 > 0 {
-            x4.div_ceil(2).min(2 + u32::from(bw4 > 1))
+        let max_cols = if x4 > self.col_start {
+            (x4 - self.col_start)
+                .div_ceil(2)
+                .min(2 + u32::from(bw4 > 1))
         } else {
             0
         } as i32;
 
-        if y4 > 0 {
+        if y4 > self.row_start {
             n_rows = self.walk_row(
                 y4 - 1,
                 x4,
@@ -71,7 +75,7 @@ impl SpatialRefContext {
                 },
             );
         }
-        if x4 > 0 {
+        if x4 > self.col_start {
             n_cols = self.walk_col(
                 x4 - 1,
                 y4,
@@ -197,6 +201,7 @@ impl SpatialRefContext {
                 w4,
                 h4,
                 ref0,
+                self.col_start,
                 self.col_end,
                 self.row_end,
             );

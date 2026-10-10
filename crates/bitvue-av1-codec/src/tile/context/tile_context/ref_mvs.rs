@@ -37,6 +37,25 @@ impl TileContext {
             .set_intra_block(x4, y4, width_4x4, height_4x4);
     }
 
+    /// Places the tile inside the frame, in 4x4 units (call after `set_frame_extent`): its first
+    /// column and row, and the end it ends at (clipped to the frame).
+    pub fn set_tile_extent(&mut self, col_start: u32, col_end: u32, row_start: u32, row_end: u32) {
+        self.tile_col_start = col_start;
+        self.tile_row_start = row_start;
+        self.spatial_ref
+            .set_tile_extent(col_start, col_end, row_start, row_end);
+    }
+
+    /// Whether the row above `y4` is inside the tile.
+    pub fn has_top(&self, y4: u32) -> bool {
+        y4 > self.tile_row_start
+    }
+
+    /// Whether the column left of `x4` is inside the tile.
+    pub fn has_left(&self, x4: u32) -> bool {
+        x4 > self.tile_col_start
+    }
+
     /// Real frame size -- see `SpatialRefContext::set_frame_extent`.
     pub fn set_frame_extent(&mut self, width: u32, height: u32) {
         self.spatial_ref.set_frame_extent(width, height);

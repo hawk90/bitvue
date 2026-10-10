@@ -38,18 +38,22 @@ impl SpatialRefContext {
         // `n_rows`/`n_cols` stay `u32::MAX` while the row/column is outside the tile.
         let mut n_rows = u32::MAX;
         let mut n_cols = u32::MAX;
-        let max_rows = if y4 > 0 {
-            y4.div_ceil(2).min(2 + u32::from(bh4 > 1))
+        let max_rows = if y4 > self.row_start {
+            (y4 - self.row_start)
+                .div_ceil(2)
+                .min(2 + u32::from(bh4 > 1))
         } else {
             0
         } as i32;
-        let max_cols = if x4 > 0 {
-            x4.div_ceil(2).min(2 + u32::from(bw4 > 1))
+        let max_cols = if x4 > self.col_start {
+            (x4 - self.col_start)
+                .div_ceil(2)
+                .min(2 + u32::from(bw4 > 1))
         } else {
             0
         } as i32;
 
-        if y4 > 0 {
+        if y4 > self.row_start {
             n_rows = self.scan_row_weighted(
                 &mut stack,
                 &mut cnt,
@@ -62,7 +66,7 @@ impl SpatialRefContext {
                 if bw4 >= 16 { 4 } else { 1 },
             );
         }
-        if x4 > 0 {
+        if x4 > self.col_start {
             n_cols = self.scan_col_weighted(
                 &mut stack,
                 &mut cnt,
@@ -99,6 +103,7 @@ impl SpatialRefContext {
                     w4,
                     h4,
                     ref0,
+                    self.col_start,
                     self.col_end,
                     self.row_end,
                 ) {
@@ -199,6 +204,7 @@ impl SpatialRefContext {
         w4: u32,
         h4: u32,
         ref0: i8,
+        col_start: u32,
         col_end: u32,
         row_end: u32,
     ) -> Vec<(crate::tile::coding_unit::MotionVector, bool)> {
@@ -212,6 +218,7 @@ impl SpatialRefContext {
                 bh4,
                 w4,
                 h4,
+                col_start,
                 col_end,
                 row_end,
             },

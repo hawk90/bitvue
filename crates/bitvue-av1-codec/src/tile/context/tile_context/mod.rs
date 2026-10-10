@@ -35,6 +35,10 @@ use super::tables::VAR_TX_UNSET;
 pub struct TileContext {
     /// Loop-restoration coefficient references per plane (see `tile::restoration`); reset to the
     /// spec defaults with every new tile, i.e. every `TileContext`.
+    /// First column / row of the tile in 4x4 units: above/left neighbours before them do not
+    /// exist. Zero for a single-tile frame.
+    tile_col_start: u32,
+    tile_row_start: u32,
     pub(crate) restoration_refs: [crate::tile::RestorationRef; 3],
     above_skip: Vec<bool>,
     left_skip: Vec<bool>,
@@ -222,6 +226,8 @@ impl TileContext {
                 vec![3; tile_height_4x4.max(1) as usize],
             ],
             spatial_ref: SpatialRefContext::new(tile_width_4x4, tile_height_4x4),
+            tile_col_start: 0,
+            tile_row_start: 0,
             above_tx_class: vec![-1; tile_width_4x4.max(1) as usize],
             left_tx_class: vec![-1; tile_height_4x4.max(1) as usize],
             above_cul_level: vec![0; tile_width_4x4.max(1) as usize],

@@ -47,8 +47,8 @@ impl TileContext {
     /// `a` when `a == al`, else `l` -- when only one of `AvailU`/`AvailL` holds, `ctx = 0` and
     /// `pred` is whichever single neighbor is available (`0` if neither).
     pub fn segment_id_context(&self, x4: u32, y4: u32) -> (u8, u8) {
-        let have_top = y4 > 0;
-        let have_left = x4 > 0;
+        let have_top = self.has_top(y4);
+        let have_left = self.has_left(x4);
         if have_top && have_left {
             let l = self.seg_id_grid_get(x4 - 1, y4);
             let a = self.seg_id_grid_get(x4, y4 - 1);
