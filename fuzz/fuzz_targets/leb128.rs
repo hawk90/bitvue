@@ -3,12 +3,12 @@
 use libfuzzer_sys::fuzz_target;
 use bitvue_av1_codec::{decode_uleb128, encode_uleb128};
 
-/// Fuzz target for LEB128 decoder
-///
-/// This fuzz target tests the LEB128 decoder/encoder roundtrip:
-/// 1. Encode a value using LEB128
-/// 2. Decode the encoded bytes
-/// 3. Verify the roundtrip preserves the value
+// Fuzz target for LEB128 decoder
+//
+// This fuzz target tests the LEB128 decoder/encoder roundtrip:
+// 1. Encode a value using LEB128
+// 2. Decode the encoded bytes
+// 3. Verify the roundtrip preserves the value
 fuzz_target!(|data: &[u8]| {
     // Use the first 8 bytes as input data for encoding
     let input_value = u64::from_le_bytes(match data.len() {
