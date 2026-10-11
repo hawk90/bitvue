@@ -1161,3 +1161,86 @@ fn error_resilient_frame_with_size_override_reads_the_size_without_found_ref_fla
     assert!(h.error_resilient_mode);
     assert_eq!(h.header_size_bits, b.bit_len());
 }
+
+/// A SWITCH_FRAME is an inter frame that is error resilient, overrides the frame size and
+/// refreshes every slot, all without a bit: so it reads the `ref_order_hint[]` list, no
+/// `primary_ref_frame`, no `refresh_frame_flags`, and the size directly.
+#[test]
+fn switch_frame_implies_error_resilience_size_override_and_refresh_of_every_slot() {
+    let seq = base_seq();
+    let mut b = HeaderBits::default();
+    b.put(0, 1); // show_existing_frame
+    b.put(3, 2); // frame_type = SWITCH_FRAME
+    b.put(1, 1); // show_frame
+                 // error_resilient_mode, frame_size_override_flag: implied true
+    b.put(0, 1); // disable_cdf_update
+    b.put(0, 1); // allow_screen_content_tools
+    b.put(INTER_ORDER_HINT, 7);
+    // primary_ref_frame: error resilient; refresh_frame_flags: implied 0xFF
+    for hint in 1..=8 {
+        b.put(hint, 7); // ref_order_hint[i]
+    }
+    b.put(0, 1); // frame_refs_short_signaling
+    for idx in 1..=7 {
+        b.put(idx, 3); // ref_frame_idx[i]
+    }
+    // frame_size_with_refs(): not for an error resilient frame, so frame_size() directly
+    b.put(159, 9).put(119, 8);
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(0, 1); // allow_high_precision_mv
+    b.put(1, 1); // is_filter_switchable
+    b.put(0, 1); // is_motion_mode_switchable
+    b.put(1, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reference_select
+    b.put(0, 1); // reduced_tx_set
+    for _ in 0..7 {
+        b.put(0, 1);
+    }
+
+    let (result, ref_state) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!(h.frame_type, FrameType::Switch);
+    assert!(h.error_resilient_mode);
+    assert_eq!(h.primary_ref_frame, PRIMARY_REF_NONE);
+    assert_eq!(h.refresh_frame_flags, Some(0xFF));
+    assert_eq!((h.width, h.height), (160, 120));
+    assert_eq!(h.header_size_bits, b.bit_len());
+    assert_eq!(ref_state.ref_order_hint, [INTER_ORDER_HINT; 8]);
+}
+
+/// An error-resilient INTRA_ONLY frame that does not refresh every slot reads the
+/// `ref_order_hint[]` list even though it is intra, and a 1-bit order hint is one bit, not none.
+#[test]
+fn error_resilient_intra_only_frame_reads_ref_order_hints_when_it_does_not_refresh_every_slot() {
+    let mut seq = base_seq();
+    seq.order_hint_bits_minus_1 = Some(0);
+    let mut b = HeaderBits::default();
+    b.put(0, 1); // show_existing_frame
+    b.put(2, 2); // frame_type = INTRA_ONLY_FRAME
+    b.put(1, 1); // show_frame
+    b.put(1, 1); // error_resilient_mode
+    b.put(0, 1); // disable_cdf_update
+    b.put(0, 1); // allow_screen_content_tools
+    b.put(0, 1); // frame_size_override_flag
+    b.put(1, 1); // order_hint (1 bit)
+                 // primary_ref_frame: intra
+    b.put(0x0F, 8); // refresh_frame_flags: not every slot
+    for hint in 0..8 {
+        b.put(hint & 1, 1); // ref_order_hint[i] (1 bit each)
+    }
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(1, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reduced_tx_set
+                 // global_motion_params(): intra frame, none
+
+    let (result, ref_state) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!(h.frame_type, FrameType::IntraOnly);
+    assert!(h.error_resilient_mode);
+    assert_eq!(h.order_hint, 1);
+    assert_eq!(h.refresh_frame_flags, Some(0x0F));
+    assert_eq!(h.header_size_bits, b.bit_len());
+    assert_eq!(ref_state.ref_order_hint, [1, 1, 1, 1, 0, 0, 0, 0]);
+}
