@@ -51,12 +51,15 @@
 //! introspection, so there is no independent ground truth to diff against, unlike e.g.
 //! `decode_bridge`'s pixel-byte tests pinned against known-correct output.
 
+mod coding_tools;
 mod film_grain;
+mod frame_prelude;
 mod frame_size;
 mod global_motion;
 mod loop_filters;
 mod segmentation;
 mod show_existing;
+mod size_and_refs;
 mod skip_mode;
 #[cfg(test)]
 mod tests;
@@ -67,20 +70,22 @@ pub(crate) use self::global_motion::GM_TYPE_ROTZOOM;
 #[cfg(test)]
 use self::global_motion::{classify_gm_type, GM_TYPE_AFFINE};
 pub(crate) use self::global_motion::{GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION};
+#[cfg(test)]
+use self::loop_filters::parse_lr_params;
 pub use self::segmentation::SegmentationInfo;
 #[cfg(test)]
 use self::segmentation::{MAX_SEGMENTS, SEG_LVL_MAX};
 pub(crate) use self::segmentation::{SEG_LVL_GLOBALMV, SEG_LVL_REF_FRAME, SEG_LVL_SKIP};
 pub use self::skip_mode::relative_dist;
 use self::{
-    film_grain::parse_film_grain_params,
-    frame_size::{read_frame_size, read_interpolation_filter, read_render_size},
+    coding_tools::{read_coding_tools, CodingTools, CodingToolsInput},
+    frame_prelude::{read_frame_prelude, FramePrelude},
+    frame_size::FrameSize,
     global_motion::parse_global_motion_params,
-    loop_filters::{
-        parse_cdef_params, parse_delta_lf_params, parse_loop_filter_params, parse_lr_params,
-    },
+    loop_filters::parse_delta_lf_params,
     segmentation::{parse_segmentation_params, SegmentationFeatures},
     show_existing::parse_show_existing_frame,
+    size_and_refs::{read_size_and_refs, SizeAndRefs, SizeAndRefsInput},
     skip_mode::read_skip_mode_params,
     tile_info::read_tile_info,
 };
@@ -294,11 +299,6 @@ pub fn parse_frame_header_full(
     ref_state: &mut RefFrameState,
 ) -> std::result::Result<FrameHeader, BitvueError> {
     let mut reader = BitReader::new(payload);
-    let order_hint_bits = seq
-        .order_hint_bits_minus_1
-        .map(|v| v as u32 + 1)
-        .unwrap_or(0);
-
     let show_existing_frame = if seq.reduced_still_picture_header {
         false
     } else {
@@ -308,178 +308,48 @@ pub fn parse_frame_header_full(
         return parse_show_existing_frame(&mut reader, ref_state);
     }
 
-    let frame_type = if seq.reduced_still_picture_header {
-        FrameType::Key
-    } else {
-        FrameType::from_av1_bits(reader.read_bits(2)?)
-    };
-    let frame_is_intra = frame_type.is_intra();
-    let show_frame = if seq.reduced_still_picture_header {
-        true
-    } else {
-        reader.read_bit()?
-    };
-    let showable_frame = if seq.reduced_still_picture_header {
-        false
-    } else if show_frame {
-        frame_type != FrameType::Key
-    } else {
-        reader.read_bit()?
-    };
-    let error_resilient_mode = if seq.reduced_still_picture_header {
-        false
-    } else if frame_type == FrameType::Switch || (frame_type == FrameType::Key && show_frame) {
-        true
-    } else {
-        reader.read_bit()?
-    };
+    let FramePrelude {
+        frame_type,
+        frame_is_intra,
+        show_frame,
+        showable_frame,
+        error_resilient_mode,
+        disable_cdf_update,
+        allow_screen_content_tools,
+        force_integer_mv,
+        frame_size_override_flag,
+        order_hint,
+        primary_ref_frame,
+        refresh_frame_flags,
+    } = read_frame_prelude(&mut reader, seq)?;
 
-    let disable_cdf_update = reader.read_bit()?;
-    let allow_screen_content_tools =
-        if seq.seq_force_screen_content_tools == SELECT_SCREEN_CONTENT_TOOLS as u8 {
-            reader.read_bit()?
-        } else {
-            seq.seq_force_screen_content_tools != 0
-        };
-    let force_integer_mv = if allow_screen_content_tools {
-        if seq.seq_force_integer_mv == SELECT_INTEGER_MV as u8 {
-            reader.read_bit()?
-        } else {
-            seq.seq_force_integer_mv != 0
-        }
-    } else {
-        false
-    } || frame_is_intra;
-
-    if seq.frame_id_numbers_present {
-        let id_len = seq.additional_frame_id_length_minus_1.unwrap_or(0) as u32
-            + seq.delta_frame_id_length_minus_2.unwrap_or(0) as u32
-            + 3;
-        reader.read_bits_u64(id_len as u8)?; // current_frame_id
-    }
-
-    let frame_size_override_flag = if frame_type == FrameType::Switch {
-        true
-    } else if seq.reduced_still_picture_header {
-        false
-    } else {
-        reader.read_bit()?
-    };
-
-    let order_hint = if order_hint_bits > 0 {
-        reader.read_bits(order_hint_bits as u8)?
-    } else {
-        0
-    };
-
-    let primary_ref_frame = if frame_is_intra || error_resilient_mode {
-        PRIMARY_REF_NONE
-    } else {
-        reader.read_bits(3)?
-    };
-
-    // decoder_model_info / buffer_removal_time: this crate's SequenceHeader carries
-    // decoder_model_info as Option, but not per-operating-point decoder_model_present flags
-    // needed to size buffer_removal_time's per-op loop -- streams using this (rare outside
-    // low-delay broadcast profiles) aren't supported here. Real-world encoders overwhelmingly
-    // don't set decoder_model_info_present_flag, matching parse_frame_header_basic's own
-    // "assume absent" precedent for similarly rare fields.
-    if seq.decoder_model_info.is_some() {
-        return Err(err(
-            "decoder_model_info_present streams are not supported by parse_frame_header_full",
-        ));
-    }
-
-    let mut ref_frame_idx = [0u32; REFS_PER_FRAME];
-    let refresh_frame_flags: u32 =
-        if frame_type == FrameType::Switch || (frame_type == FrameType::Key && show_frame) {
-            0xFF
-        } else {
-            reader.read_bits(8)?
-        };
-    if (!frame_is_intra || refresh_frame_flags != 0xFF)
-        && error_resilient_mode
-        && seq.enable_order_hint
-    {
-        for _ in 0..NUM_REF_FRAMES {
-            reader.read_bits(order_hint_bits as u8)?; // ref_order_hint[i]
-        }
-    }
-
-    let mut allow_intrabc = false;
-    let (width, height, upscaled_width, upscaled_height, use_superres, superres_denom);
-    let mut allow_high_precision_mv = false;
-    let mut use_ref_frame_mvs = false;
-    let mut subpel_filter_switchable = false;
-    let mut switchable_motion_mode = false;
-    if frame_is_intra {
-        let size = read_frame_size(&mut reader, seq, frame_size_override_flag)?;
-        read_render_size(&mut reader)?;
-        if allow_screen_content_tools && size.upscaled_width == size.width {
-            allow_intrabc = reader.read_bit()?;
-        }
-        width = size.width;
-        height = size.height;
-        upscaled_width = size.upscaled_width;
-        upscaled_height = size.upscaled_height;
-        use_superres = size.use_superres;
-        superres_denom = size.superres_denom;
-    } else {
-        let frame_refs_short_signaling = if seq.enable_order_hint {
-            reader.read_bit()?
-        } else {
-            false
-        };
-        if frame_refs_short_signaling {
-            return Err(err(
-                "frame_refs_short_signaling (set_frame_refs) is not supported by parse_frame_header_full",
-            ));
-        }
-        for slot in ref_frame_idx.iter_mut() {
-            *slot = reader.read_bits(3)?;
-            if seq.frame_id_numbers_present {
-                let delta_len = seq.delta_frame_id_length_minus_2.unwrap_or(0) as u32 + 2;
-                reader.read_bits(delta_len as u8)?; // delta_frame_id_minus_1
-            }
-        }
-        if frame_size_override_flag && !error_resilient_mode {
-            // frame_size_with_refs(): if found_ref via any ref frame's stored size, reuse it;
-            // otherwise frame_size()+render_size(). This parser doesn't track ref frame
-            // dimensions (only order hints), so it can't take the found_ref=1 shortcut path --
-            // always falls through to a real frame_size()+render_size() read below. This is only
-            // wrong (reads bits that shouldn't be there) if a *real* encoder actually emits
-            // found_ref=1, which requires explicit ref-size reuse signaling support the encoder
-            // must opt into; flagged here as a real accuracy gap, not silently assumed away.
-            for _ in 0..REFS_PER_FRAME {
-                if reader.read_bit()? {
-                    return Err(err(
-                        "frame_size_with_refs' found_ref=1 path is not supported by parse_frame_header_full",
-                    ));
-                }
-            }
-        }
-        let size = read_frame_size(&mut reader, seq, frame_size_override_flag)?;
-        read_render_size(&mut reader)?;
-        width = size.width;
-        height = size.height;
-        upscaled_width = size.upscaled_width;
-        upscaled_height = size.upscaled_height;
-        use_superres = size.use_superres;
-        superres_denom = size.superres_denom;
-
-        allow_high_precision_mv = if force_integer_mv {
-            false
-        } else {
-            reader.read_bit()?
-        };
-        subpel_filter_switchable = read_interpolation_filter(&mut reader)?;
-        switchable_motion_mode = reader.read_bit()?; // is_motion_mode_switchable
-        use_ref_frame_mvs = if error_resilient_mode || !seq.enable_ref_frame_mvs {
-            false
-        } else {
-            reader.read_bit()?
-        };
-    }
+    let SizeAndRefs {
+        size,
+        allow_intrabc,
+        ref_frame_idx,
+        allow_high_precision_mv,
+        subpel_filter_switchable,
+        switchable_motion_mode,
+        use_ref_frame_mvs,
+    } = read_size_and_refs(
+        &mut reader,
+        seq,
+        &SizeAndRefsInput {
+            frame_is_intra,
+            frame_size_override_flag,
+            allow_screen_content_tools,
+            force_integer_mv,
+            error_resilient_mode,
+        },
+    )?;
+    let FrameSize {
+        width,
+        height,
+        upscaled_width,
+        upscaled_height,
+        use_superres,
+        superres_denom,
+    } = size;
 
     let disable_frame_end_update_cdf = if seq.reduced_still_picture_header || disable_cdf_update {
         true
@@ -539,53 +409,36 @@ pub fn parse_frame_header_full(
     let coded_lossless = base_q_idx == 0 && quant.all_deltas_zero();
     let all_lossless = coded_lossless && width == upscaled_width;
 
-    let loop_filter = parse_loop_filter_params(
-        &mut reader,
-        seq.color_config.num_planes,
-        coded_lossless,
-        allow_intrabc,
-    )?;
-    let cdef = parse_cdef_params(&mut reader, seq, coded_lossless, allow_intrabc)?;
-    let loop_restoration = parse_lr_params(&mut reader, seq, all_lossless, allow_intrabc)?;
-
-    let txfm_mode = read_tx_mode(&mut reader, coded_lossless)?;
-    let reference_select = read_frame_reference_mode(&mut reader, frame_is_intra)?;
-    let (skip_mode_present, skip_mode_refs) = read_skip_mode_params(
-        &mut reader,
-        frame_is_intra,
+    let CodingTools {
+        loop_filter,
+        cdef,
+        loop_restoration,
+        txfm_mode,
         reference_select,
+        skip_mode_present,
+        skip_mode_refs,
+        allow_warped_motion,
+        reduced_tx_set,
+        gm_type,
+        film_grain,
+    } = read_coding_tools(
+        &mut reader,
         seq,
         ref_state,
-        &ref_frame_idx,
-        order_hint,
+        &CodingToolsInput {
+            frame_type,
+            frame_is_intra,
+            show_frame,
+            showable_frame,
+            error_resilient_mode,
+            allow_intrabc,
+            allow_high_precision_mv,
+            order_hint,
+            ref_frame_idx: &ref_frame_idx,
+            coded_lossless,
+            all_lossless,
+        },
     )?;
-    let skip_mode_refs = skip_mode_refs.unwrap_or([0, 0]);
-
-    let allow_warped_motion = if frame_is_intra || error_resilient_mode || !seq.enable_warped_motion
-    {
-        false
-    } else {
-        reader.read_bit()?
-    };
-    let reduced_tx_set = reader.read_bit()?;
-
-    // spec 5.9.2: `global_motion_params()` is only called when `!FrameIsIntra` -- a KEY_FRAME/
-    // INTRA_ONLY_FRAME has no reference frames to hold global motion against, so the encoder
-    // never emits this syntax for one at all. Previously called unconditionally here, which for
-    // a real key frame spuriously read `REFS_PER_FRAME` (7) `is_global` bits (plus whatever
-    // `is_rot_zoom`/`is_translation`/param bits those happened to gate on) that don't exist in
-    // the bitstream at that position -- found via a real dav1d oracle build (`DEBUG_BLOCK_INFO`)
-    // showing this crate's key-frame `header_size_bytes` (25) didn't match the oracle's
-    // independently-derived true tile-data offset (17) for the real fixture's frame 0, an 8-byte
-    // (64-bit) overshoot consistent with this exact miscount.
-    let gm_type = if !frame_is_intra {
-        parse_global_motion_params(&mut reader, allow_high_precision_mv)?
-    } else {
-        [GM_TYPE_IDENTITY; 8]
-    };
-
-    let film_grain =
-        parse_film_grain_params(&mut reader, seq, show_frame, showable_frame, frame_type)?;
 
     // Update reference-slot order-hint state for whichever frames get refreshed, so a later
     // parse_frame_header_full call (a later frame in the same sequential scan) sees this frame's

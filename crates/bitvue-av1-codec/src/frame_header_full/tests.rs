@@ -574,11 +574,14 @@ fn fnv1a(text: &str) -> u64 {
     })
 }
 
+/// `(headers parsed, key frames, shown-again frames, digest)`, see [`header_summary`].
+type HeaderSummary = (usize, usize, usize, u64);
+
 /// What `parse_frame_header_full` makes of every frame header of a clip, threading
 /// `RefFrameState` like a sidecar caller does: `(headers parsed, key frames, shown-again frames,
 /// FNV-1a of every header's full `Debug` text in order)`. A header that fails to parse
 /// contributes its error text, so a parser that starts failing changes the digest too.
-fn header_summary(clip: &[u8]) -> (usize, usize, usize, u64) {
+fn header_summary(clip: &[u8]) -> HeaderSummary {
     let (_hdr, frames) = crate::ivf::parse_ivf_frames(clip).unwrap();
     let seq = parse_sequence_header(&find_seq_header_in(&frames).unwrap()).unwrap();
     let mut ref_state = RefFrameState::new();
@@ -609,7 +612,7 @@ fn header_summary(clip: &[u8]) -> (usize, usize, usize, u64) {
 /// agreement with dav1d, in `cu_parser/oracle_tests.rs`, is what vouches for correctness).
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
-    const CLIPS: [(&str, &[u8], (usize, usize, usize, u64)); 6] = [
+    const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
@@ -1124,4 +1127,231 @@ fn every_truncation_of_a_valid_header_is_an_error() {
             assert!(result.is_err(), "{name} cut to {cut} bytes parsed");
         }
     }
+}
+
+/// `frame_size_with_refs()` (the `found_ref` flags) only exists when `frame_size_override_flag`
+/// is set AND the frame is not error resilient; an error-resilient frame with the override flag
+/// reads `frame_size()` directly.
+#[test]
+fn error_resilient_frame_with_size_override_reads_the_size_without_found_ref_flags() {
+    let seq = base_seq();
+    let mut b = HeaderBits::default();
+    put_inter_header_through_ref_idx(
+        &mut b,
+        &seq,
+        &InterHeader {
+            error_resilient: true,
+            frame_size_override: true,
+            short_signaling: false,
+        },
+    );
+    b.put(159, 9).put(119, 8); // frame_width_minus_1, frame_height_minus_1: 160x120
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(0, 1); // allow_high_precision_mv
+    b.put(1, 1); // is_filter_switchable
+    b.put(0, 1); // is_motion_mode_switchable
+    b.put(1, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reference_select
+    b.put(0, 1); // reduced_tx_set
+    for _ in 0..7 {
+        b.put(0, 1);
+    }
+
+    let (result, _) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!((h.width, h.height), (160, 120));
+    assert!(h.error_resilient_mode);
+    assert_eq!(h.header_size_bits, b.bit_len());
+}
+
+/// A SWITCH_FRAME is an inter frame that is error resilient, overrides the frame size and
+/// refreshes every slot, all without a bit: so it reads the `ref_order_hint[]` list, no
+/// `primary_ref_frame`, no `refresh_frame_flags`, and the size directly.
+#[test]
+fn switch_frame_implies_error_resilience_size_override_and_refresh_of_every_slot() {
+    let seq = base_seq();
+    let mut b = HeaderBits::default();
+    b.put(0, 1); // show_existing_frame
+    b.put(3, 2); // frame_type = SWITCH_FRAME
+    b.put(1, 1); // show_frame
+                 // error_resilient_mode, frame_size_override_flag: implied true
+    b.put(0, 1); // disable_cdf_update
+    b.put(0, 1); // allow_screen_content_tools
+    b.put(INTER_ORDER_HINT, 7);
+    // primary_ref_frame: error resilient; refresh_frame_flags: implied 0xFF
+    for hint in 1..=8 {
+        b.put(hint, 7); // ref_order_hint[i]
+    }
+    b.put(0, 1); // frame_refs_short_signaling
+    for idx in 1..=7 {
+        b.put(idx, 3); // ref_frame_idx[i]
+    }
+    // frame_size_with_refs(): not for an error resilient frame, so frame_size() directly
+    b.put(159, 9).put(119, 8);
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(0, 1); // allow_high_precision_mv
+    b.put(1, 1); // is_filter_switchable
+    b.put(0, 1); // is_motion_mode_switchable
+    b.put(1, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reference_select
+    b.put(0, 1); // reduced_tx_set
+    for _ in 0..7 {
+        b.put(0, 1);
+    }
+
+    let (result, ref_state) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!(h.frame_type, FrameType::Switch);
+    assert!(h.error_resilient_mode);
+    assert_eq!(h.primary_ref_frame, PRIMARY_REF_NONE);
+    assert_eq!(h.refresh_frame_flags, Some(0xFF));
+    assert_eq!((h.width, h.height), (160, 120));
+    assert_eq!(h.header_size_bits, b.bit_len());
+    assert_eq!(ref_state.ref_order_hint, [INTER_ORDER_HINT; 8]);
+}
+
+/// An error-resilient INTRA_ONLY frame that does not refresh every slot reads the
+/// `ref_order_hint[]` list even though it is intra, and a 1-bit order hint is one bit, not none.
+#[test]
+fn error_resilient_intra_only_frame_reads_ref_order_hints_when_it_does_not_refresh_every_slot() {
+    let mut seq = base_seq();
+    seq.order_hint_bits_minus_1 = Some(0);
+    let mut b = HeaderBits::default();
+    b.put(0, 1); // show_existing_frame
+    b.put(2, 2); // frame_type = INTRA_ONLY_FRAME
+    b.put(1, 1); // show_frame
+    b.put(1, 1); // error_resilient_mode
+    b.put(0, 1); // disable_cdf_update
+    b.put(0, 1); // allow_screen_content_tools
+    b.put(0, 1); // frame_size_override_flag
+    b.put(1, 1); // order_hint (1 bit)
+                 // primary_ref_frame: intra
+    b.put(0x0F, 8); // refresh_frame_flags: not every slot
+    for hint in 0..8 {
+        b.put(hint & 1, 1); // ref_order_hint[i] (1 bit each)
+    }
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(1, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reduced_tx_set
+                 // global_motion_params(): intra frame, none
+
+    let (result, ref_state) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!(h.frame_type, FrameType::IntraOnly);
+    assert!(h.error_resilient_mode);
+    assert_eq!(h.order_hint, 1);
+    assert_eq!(h.refresh_frame_flags, Some(0x0F));
+    assert_eq!(h.header_size_bits, b.bit_len());
+    assert_eq!(ref_state.ref_order_hint, [1, 1, 1, 1, 0, 0, 0, 0]);
+}
+
+/// `allow_warped_motion` is only present in inter frames: an intra frame of a sequence that
+/// enables warped motion reads no extra bit. (A shown key frame is error resilient, which already
+/// removes the bit; an INTRA_ONLY frame that is not error resilient is what needs the intra rule.)
+#[test]
+fn intra_only_frame_reads_no_allow_warped_motion_bit() {
+    let mut seq = base_seq();
+    seq.enable_warped_motion = true;
+    let mut b = HeaderBits::default();
+    b.put(0, 1); // show_existing_frame
+    b.put(2, 2); // frame_type = INTRA_ONLY_FRAME
+    b.put(1, 1); // show_frame
+    b.put(0, 1); // error_resilient_mode
+    b.put(0, 1); // disable_cdf_update
+    b.put(0, 1); // allow_screen_content_tools
+    b.put(0, 1); // frame_size_override_flag
+    b.put(3, 7); // order_hint
+    b.put(0x01, 8); // refresh_frame_flags (primary_ref_frame: intra)
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(1, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(1, 1); // reduced_tx_set (allow_warped_motion: intra, so no bit)
+
+    let h = parse_with(&seq, &b).0.unwrap();
+    assert_eq!(h.frame_type, FrameType::IntraOnly);
+    assert!(!h.error_resilient_mode && !h.allow_warped_motion);
+    assert!(h.reduced_tx_set);
+    assert_eq!(h.header_size_bits, b.bit_len());
+}
+
+/// A TRANSLATION parameter is `decode_subexp(2 * 2^bits + 1)` with `bits` = 9 when
+/// `allow_high_precision_mv` and 8 when not. Six "more" flags then a "stop" flag lands the two
+/// symbol counts on different paths: 1025 symbols need one more flag and 8 bits (15 bits in
+/// all), 513 symbols go straight to `ns(257)`, 8 bits (14 bits in all).
+#[test]
+fn translation_parameter_width_follows_allow_high_precision_mv() {
+    for allow_high_precision_mv in [true, false] {
+        let seq = base_seq();
+        let mut b = HeaderBits::default();
+        put_inter_header_through_ref_idx(
+            &mut b,
+            &seq,
+            &InterHeader {
+                error_resilient: false,
+                frame_size_override: false,
+                short_signaling: false,
+            },
+        );
+        b.put(0, 1); // render_and_frame_size_different
+        b.put(u32::from(allow_high_precision_mv), 1);
+        b.put(1, 1); // is_filter_switchable
+        b.put(0, 1); // is_motion_mode_switchable
+        b.put(0, 1); // disable_frame_end_update_cdf
+        put_tile_info_through_tx_mode(&mut b);
+        b.put(0, 1); // reference_select
+        b.put(0, 1); // reduced_tx_set
+        b.put(1, 1).put(0, 1).put(1, 1); // LAST: is_global, !is_rot_zoom, is_translation
+        for _ in 0..6 {
+            b.put(1, 1); // subexp_more_bits
+        }
+        if allow_high_precision_mv {
+            b.put(0, 1); // subexp_more_bits = 0
+        }
+        b.put(0, 8);
+        // A second parameter of a different shape, so that a misread first parameter cannot be
+        // cancelled out by a misread second one.
+        b.put(0, 1).put(0, 3);
+        for _ in 0..6 {
+            b.put(0, 1); // the other six references: IDENTITY
+        }
+
+        let h = parse_with(&seq, &b).0.unwrap();
+        assert_eq!(h.gm_type[1], GM_TYPE_TRANSLATION);
+        assert_eq!(h.header_size_bits, b.bit_len(), "{allow_high_precision_mv}");
+    }
+}
+
+/// A coded-lossless frame normally skips `lr_params()`, but with superres the frame is only
+/// `all_lossless` when the upscaled width equals the frame width, so the loop-restoration types
+/// are still read.
+#[test]
+fn lossless_frame_with_superres_still_reads_loop_restoration() {
+    let mut seq = base_seq();
+    seq.enable_superres = true;
+    let mut b = HeaderBits::default();
+    b.put(0, 1); // show_existing_frame
+    b.put(0, 2); // frame_type = KEY_FRAME
+    b.put(1, 1); // show_frame
+    b.put(0, 1); // disable_cdf_update
+    b.put(0, 1); // allow_screen_content_tools
+    b.put(0, 1); // frame_size_override_flag
+    b.put(0, 7); // order_hint
+    b.put(1, 1).put(0, 3); // use_superres, coded_denom = 0 => denominator 9
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(1, 1); // disable_frame_end_update_cdf
+    b.put(1, 1).put(0, 1).put(0, 1); // tile_info: uniform, no extra column/row bits
+    b.put(0, 8).put(0, 4); // base_q_idx = 0; no delta q, no qmatrix
+    b.put(0, 1); // segmentation_enabled
+                 // delta_q_present, loop filter, CDEF, tx mode: absent for a coded-lossless frame
+    b.put(0, 2).put(0, 2).put(0, 2); // lr_type for the three planes: read, since not all lossless
+    b.put(0, 1); // reduced_tx_set
+
+    let h = parse_with(&seq, &b).0.unwrap();
+    assert_eq!(h.upscaled_width, 320);
+    assert_eq!(h.width, 284, "(320 * 8 + 4) / 9");
+    assert_eq!(h.base_q_idx, Some(0));
+    assert_eq!(h.header_size_bits, b.bit_len());
 }
