@@ -51,6 +51,7 @@
 //! introspection, so there is no independent ground truth to diff against, unlike e.g.
 //! `decode_bridge`'s pixel-byte tests pinned against known-correct output.
 
+mod coding_tools;
 mod film_grain;
 mod frame_prelude;
 mod frame_size;
@@ -69,19 +70,19 @@ pub(crate) use self::global_motion::GM_TYPE_ROTZOOM;
 #[cfg(test)]
 use self::global_motion::{classify_gm_type, GM_TYPE_AFFINE};
 pub(crate) use self::global_motion::{GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION};
+#[cfg(test)]
+use self::loop_filters::parse_lr_params;
 pub use self::segmentation::SegmentationInfo;
 #[cfg(test)]
 use self::segmentation::{MAX_SEGMENTS, SEG_LVL_MAX};
 pub(crate) use self::segmentation::{SEG_LVL_GLOBALMV, SEG_LVL_REF_FRAME, SEG_LVL_SKIP};
 pub use self::skip_mode::relative_dist;
 use self::{
-    film_grain::parse_film_grain_params,
+    coding_tools::{read_coding_tools, CodingTools, CodingToolsInput},
     frame_prelude::{read_frame_prelude, FramePrelude},
     frame_size::FrameSize,
     global_motion::parse_global_motion_params,
-    loop_filters::{
-        parse_cdef_params, parse_delta_lf_params, parse_loop_filter_params, parse_lr_params,
-    },
+    loop_filters::parse_delta_lf_params,
     segmentation::{parse_segmentation_params, SegmentationFeatures},
     show_existing::parse_show_existing_frame,
     size_and_refs::{read_size_and_refs, SizeAndRefs, SizeAndRefsInput},
@@ -408,53 +409,36 @@ pub fn parse_frame_header_full(
     let coded_lossless = base_q_idx == 0 && quant.all_deltas_zero();
     let all_lossless = coded_lossless && width == upscaled_width;
 
-    let loop_filter = parse_loop_filter_params(
-        &mut reader,
-        seq.color_config.num_planes,
-        coded_lossless,
-        allow_intrabc,
-    )?;
-    let cdef = parse_cdef_params(&mut reader, seq, coded_lossless, allow_intrabc)?;
-    let loop_restoration = parse_lr_params(&mut reader, seq, all_lossless, allow_intrabc)?;
-
-    let txfm_mode = read_tx_mode(&mut reader, coded_lossless)?;
-    let reference_select = read_frame_reference_mode(&mut reader, frame_is_intra)?;
-    let (skip_mode_present, skip_mode_refs) = read_skip_mode_params(
-        &mut reader,
-        frame_is_intra,
+    let CodingTools {
+        loop_filter,
+        cdef,
+        loop_restoration,
+        txfm_mode,
         reference_select,
+        skip_mode_present,
+        skip_mode_refs,
+        allow_warped_motion,
+        reduced_tx_set,
+        gm_type,
+        film_grain,
+    } = read_coding_tools(
+        &mut reader,
         seq,
         ref_state,
-        &ref_frame_idx,
-        order_hint,
+        &CodingToolsInput {
+            frame_type,
+            frame_is_intra,
+            show_frame,
+            showable_frame,
+            error_resilient_mode,
+            allow_intrabc,
+            allow_high_precision_mv,
+            order_hint,
+            ref_frame_idx: &ref_frame_idx,
+            coded_lossless,
+            all_lossless,
+        },
     )?;
-    let skip_mode_refs = skip_mode_refs.unwrap_or([0, 0]);
-
-    let allow_warped_motion = if frame_is_intra || error_resilient_mode || !seq.enable_warped_motion
-    {
-        false
-    } else {
-        reader.read_bit()?
-    };
-    let reduced_tx_set = reader.read_bit()?;
-
-    // spec 5.9.2: `global_motion_params()` is only called when `!FrameIsIntra` -- a KEY_FRAME/
-    // INTRA_ONLY_FRAME has no reference frames to hold global motion against, so the encoder
-    // never emits this syntax for one at all. Previously called unconditionally here, which for
-    // a real key frame spuriously read `REFS_PER_FRAME` (7) `is_global` bits (plus whatever
-    // `is_rot_zoom`/`is_translation`/param bits those happened to gate on) that don't exist in
-    // the bitstream at that position -- found via a real dav1d oracle build (`DEBUG_BLOCK_INFO`)
-    // showing this crate's key-frame `header_size_bytes` (25) didn't match the oracle's
-    // independently-derived true tile-data offset (17) for the real fixture's frame 0, an 8-byte
-    // (64-bit) overshoot consistent with this exact miscount.
-    let gm_type = if !frame_is_intra {
-        parse_global_motion_params(&mut reader, allow_high_precision_mv)?
-    } else {
-        [GM_TYPE_IDENTITY; 8]
-    };
-
-    let film_grain =
-        parse_film_grain_params(&mut reader, seq, show_frame, showable_frame, frame_type)?;
 
     // Update reference-slot order-hint state for whichever frames get refreshed, so a later
     // parse_frame_header_full call (a later frame in the same sequential scan) sees this frame's
