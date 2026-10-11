@@ -650,3 +650,478 @@ fn every_frame_header_of_every_clip_is_unchanged() {
         .collect();
     assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
 }
+
+// ---- Hand-built headers for the branches no committed clip reaches ----------------------------
+//
+// Each test writes the header one syntax element at a time (AV1 spec 5.9.2 order) and asserts
+// that the parser both read the values back and stopped exactly at the last bit written
+// (`header_size_bits`). A parser that reads one bit too many or too few desyncs every later
+// element, so the end position is the strongest single check on a header parser.
+
+/// A header under construction, MSB first.
+#[derive(Default)]
+struct HeaderBits(Vec<u8>);
+
+impl HeaderBits {
+    fn put(&mut self, value: u32, width: u8) -> &mut Self {
+        for i in (0..width).rev() {
+            self.0.push(((value >> i) & 1) as u8);
+        }
+        self
+    }
+
+    fn bit_len(&self) -> u64 {
+        self.0.len() as u64
+    }
+
+    fn bytes(&self) -> Vec<u8> {
+        pack(&self.0)
+    }
+}
+
+/// `tile_info()` through `read_tx_mode()` for a 320x240 4:2:0 frame with `base_q_idx = 40`, one
+/// tile, no segmentation, no delta q/lf, loop filter level 0, CDEF with one strength set, no loop
+/// restoration -- the same layout `minimal_key_frame_bytes` writes for the same sequence header.
+fn put_tile_info_through_tx_mode(b: &mut HeaderBits) {
+    b.put(1, 1).put(0, 1).put(0, 1); // uniform_tile_spacing_flag, no extra tile column/row bits
+    b.put(40, 8).put(0, 4); // base_q_idx; DeltaQYDc, DeltaQUDc, DeltaQUAc, using_qmatrix = 0
+    b.put(0, 1); // segmentation_enabled
+    b.put(1, 1).put(0, 2); // delta_q_present, delta_q_res
+    b.put(0, 1); // delta_lf_present
+    b.put(0, 6).put(0, 6).put(0, 3).put(0, 1); // loop filter levels, sharpness, delta_enabled
+    b.put(0, 2)
+        .put(0, 2)
+        .put(5, 4)
+        .put(1, 2)
+        .put(3, 4)
+        .put(0, 2); // cdef
+    b.put(0, 2).put(0, 2).put(0, 2); // lr_type for the three planes
+    b.put(0, 1); // tx_mode_select
+}
+
+/// Which optional parts of an inter frame header to write.
+struct InterHeader {
+    error_resilient: bool,
+    frame_size_override: bool,
+    short_signaling: bool,
+}
+
+const INTER_ORDER_HINT: u32 = 5;
+const INTER_PRIMARY_REF_FRAME: u32 = 2;
+const INTER_REFRESH_FLAGS: u32 = 0b0000_0110;
+
+/// An inter frame header from `show_existing_frame` through the `ref_frame_idx[]` loop (and the
+/// `found_ref` flags, when `frame_size_override` is set without error resilience). Returns
+/// whether `force_integer_mv` ended up set, which decides if `allow_high_precision_mv` is
+/// present. Only `seq_force_screen_content_tools` of 1 or 2 and any `seq_force_integer_mv` are
+/// supported.
+fn put_inter_header_through_ref_idx(
+    b: &mut HeaderBits,
+    seq: &SequenceHeader,
+    o: &InterHeader,
+) -> bool {
+    b.put(0, 1); // show_existing_frame
+    b.put(1, 2); // frame_type = INTER_FRAME
+    b.put(1, 1); // show_frame (showable_frame is implied)
+    b.put(u32::from(o.error_resilient), 1);
+    b.put(0, 1); // disable_cdf_update
+    let allow_screen_content_tools = match seq.seq_force_screen_content_tools {
+        2 => {
+            b.put(0, 1);
+            false
+        }
+        v => v != 0,
+    };
+    let mut force_integer_mv = false;
+    if allow_screen_content_tools {
+        match seq.seq_force_integer_mv {
+            2 => {
+                b.put(0, 1);
+            }
+            v => force_integer_mv = v != 0,
+        }
+    }
+    if seq.frame_id_numbers_present {
+        let id_len = seq.additional_frame_id_length_minus_1.unwrap()
+            + seq.delta_frame_id_length_minus_2.unwrap()
+            + 3;
+        b.put(0xA5, id_len); // current_frame_id
+    }
+    b.put(u32::from(o.frame_size_override), 1);
+    b.put(INTER_ORDER_HINT, 7);
+    if !o.error_resilient {
+        b.put(INTER_PRIMARY_REF_FRAME, 3);
+    }
+    b.put(INTER_REFRESH_FLAGS, 8);
+    if o.error_resilient {
+        for hint in 1..=8 {
+            b.put(hint, 7); // ref_order_hint[i]
+        }
+    }
+    b.put(u32::from(o.short_signaling), 1);
+    for idx in 1..=7 {
+        b.put(idx, 3); // ref_frame_idx[i]
+        if seq.frame_id_numbers_present {
+            b.put(0x5, seq.delta_frame_id_length_minus_2.unwrap() + 2); // delta_frame_id_minus_1
+        }
+    }
+    if o.frame_size_override && !o.error_resilient {
+        for _ in 0..7 {
+            b.put(0, 1); // found_ref = 0
+        }
+    }
+    force_integer_mv
+}
+
+fn base_seq() -> SequenceHeader {
+    parse_sequence_header(&minimal_seq_header_bytes()).unwrap()
+}
+
+fn parse_with(
+    seq: &SequenceHeader,
+    bits: &HeaderBits,
+) -> (std::result::Result<FrameHeader, BitvueError>, RefFrameState) {
+    let mut ref_state = RefFrameState::new();
+    let result = parse_frame_header_full(&bits.bytes(), seq, &mut ref_state);
+    (result, ref_state)
+}
+
+/// Every inter-frame element in order, with values that differ from each other, and a global
+/// motion table with one ROTZOOM, one TRANSLATION and one AFFINE reference (the parameter bits
+/// are all zero-valued `decode_subexp` codes: `0` then 3 bits).
+#[test]
+fn inter_frame_header_reads_every_element_and_stops_at_the_last_bit() {
+    let mut seq = base_seq();
+    seq.enable_ref_frame_mvs = true;
+    seq.enable_warped_motion = true;
+    let mut b = HeaderBits::default();
+    let force_integer_mv = put_inter_header_through_ref_idx(
+        &mut b,
+        &seq,
+        &InterHeader {
+            error_resilient: false,
+            frame_size_override: false,
+            short_signaling: false,
+        },
+    );
+    assert!(!force_integer_mv);
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(1, 1); // allow_high_precision_mv
+    b.put(1, 1); // is_filter_switchable
+    b.put(1, 1); // is_motion_mode_switchable
+    b.put(1, 1); // use_ref_frame_mvs
+    b.put(0, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reference_select (so no skip_mode_present bit)
+    b.put(1, 1); // allow_warped_motion
+    b.put(1, 1); // reduced_tx_set
+    let param = |b: &mut HeaderBits| {
+        b.put(0, 1).put(0, 3);
+    };
+    // LAST: ROTZOOM = is_global, is_rot_zoom, then 4 parameters
+    b.put(1, 1).put(1, 1);
+    (0..4).for_each(|_| param(&mut b));
+    // BWDREF-side neighbour: TRANSLATION = is_global, !is_rot_zoom, is_translation, 2 parameters
+    b.put(1, 1).put(0, 1).put(1, 1);
+    (0..2).for_each(|_| param(&mut b));
+    // AFFINE = is_global, !is_rot_zoom, !is_translation, 6 parameters
+    b.put(1, 1).put(0, 1).put(0, 1);
+    (0..6).for_each(|_| param(&mut b));
+    for _ in 0..4 {
+        b.put(0, 1); // IDENTITY
+    }
+
+    let (result, ref_state) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!(h.frame_type, FrameType::Inter);
+    assert!(h.show_frame && !h.show_existing_frame && !h.error_resilient_mode);
+    assert_eq!((h.width, h.height), (320, 240));
+    assert_eq!(h.order_hint, INTER_ORDER_HINT);
+    assert_eq!(h.primary_ref_frame, INTER_PRIMARY_REF_FRAME);
+    assert_eq!(h.refresh_frame_flags, Some(INTER_REFRESH_FLAGS as u8));
+    assert_eq!(h.ref_frame_idx, Some([1, 2, 3, 4, 5, 6, 7]));
+    assert!(h.allow_high_precision_mv && !h.force_integer_mv);
+    assert!(h.subpel_filter_switchable && h.switchable_motion_mode && h.use_ref_frame_mvs);
+    assert!(!h.disable_frame_end_update_cdf);
+    assert!(!h.reference_select && !h.skip_mode_present);
+    assert!(h.allow_warped_motion && h.reduced_tx_set);
+    assert_eq!(h.base_q_idx, Some(40));
+    assert_eq!(
+        h.gm_type,
+        [
+            GM_TYPE_IDENTITY,
+            GM_TYPE_ROTZOOM,
+            GM_TYPE_TRANSLATION,
+            GM_TYPE_AFFINE,
+            GM_TYPE_IDENTITY,
+            GM_TYPE_IDENTITY,
+            GM_TYPE_IDENTITY,
+            GM_TYPE_IDENTITY
+        ]
+    );
+    assert_eq!(
+        h.header_size_bits,
+        b.bit_len(),
+        "stopped at the last bit written"
+    );
+    // Slots 1 and 2 were refreshed with this frame's order hint, the rest were not.
+    assert_eq!(
+        ref_state.ref_order_hint,
+        [0, 5, 5, 0, 0, 0, 0, 0],
+        "refresh_frame_flags {INTER_REFRESH_FLAGS:#b}"
+    );
+}
+
+/// With `error_resilient_mode`: no `primary_ref_frame`, `use_ref_frame_mvs` or
+/// `allow_warped_motion` bits (even though the sequence enables both tools), and a
+/// `ref_order_hint[8]` loop that no committed clip has.
+#[test]
+fn error_resilient_inter_frame_skips_three_elements_and_reads_the_ref_order_hint_loop() {
+    let mut seq = base_seq();
+    seq.enable_ref_frame_mvs = true;
+    seq.enable_warped_motion = true;
+    let mut b = HeaderBits::default();
+    put_inter_header_through_ref_idx(
+        &mut b,
+        &seq,
+        &InterHeader {
+            error_resilient: true,
+            frame_size_override: false,
+            short_signaling: false,
+        },
+    );
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(0, 1); // allow_high_precision_mv
+    b.put(0, 1).put(1, 2); // is_filter_switchable = 0, interpolation_filter = 1
+    b.put(0, 1); // is_motion_mode_switchable
+                 // use_ref_frame_mvs: not present when error resilient
+    b.put(1, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reference_select
+                 // allow_warped_motion: not present when error resilient
+    b.put(0, 1); // reduced_tx_set
+    for _ in 0..7 {
+        b.put(0, 1); // global motion: all IDENTITY
+    }
+
+    let (result, _) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert!(h.error_resilient_mode);
+    assert_eq!(h.primary_ref_frame, PRIMARY_REF_NONE);
+    assert!(!h.use_ref_frame_mvs && !h.allow_warped_motion);
+    assert!(!h.subpel_filter_switchable && !h.switchable_motion_mode);
+    assert!(h.disable_frame_end_update_cdf);
+    assert_eq!(h.order_hint, INTER_ORDER_HINT);
+    assert_eq!(
+        h.header_size_bits,
+        b.bit_len(),
+        "stopped at the last bit written"
+    );
+}
+
+/// `frame_id_numbers_present_flag`: a `current_frame_id` after the screen-content elements and a
+/// `delta_frame_id_minus_1` after each `ref_frame_idx`.
+#[test]
+fn frame_id_numbers_add_one_id_and_one_delta_per_reference() {
+    let mut seq = base_seq();
+    seq.frame_id_numbers_present = true;
+    seq.additional_frame_id_length_minus_1 = Some(3);
+    seq.delta_frame_id_length_minus_2 = Some(2);
+    let mut b = HeaderBits::default();
+    put_inter_header_through_ref_idx(
+        &mut b,
+        &seq,
+        &InterHeader {
+            error_resilient: false,
+            frame_size_override: false,
+            short_signaling: false,
+        },
+    );
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(0, 1); // allow_high_precision_mv
+    b.put(1, 1); // is_filter_switchable
+    b.put(0, 1); // is_motion_mode_switchable
+                 // use_ref_frame_mvs: enable_ref_frame_mvs is 0 in this sequence
+    b.put(0, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reference_select
+                 // allow_warped_motion: enable_warped_motion is 0 in this sequence
+    b.put(0, 1); // reduced_tx_set
+    for _ in 0..7 {
+        b.put(0, 1);
+    }
+
+    let (result, _) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!(h.ref_frame_idx, Some([1, 2, 3, 4, 5, 6, 7]));
+    assert_eq!(h.order_hint, INTER_ORDER_HINT);
+    assert_eq!(
+        h.header_size_bits,
+        b.bit_len(),
+        "8-bit current_frame_id and 7 four-bit deltas"
+    );
+}
+
+/// A sequence that forces screen content tools on and integer MVs on: neither element has a bit,
+/// `force_integer_mv` is set, and so `allow_high_precision_mv` has none either.
+#[test]
+fn forced_screen_content_tools_and_integer_mv_remove_their_bits() {
+    let mut seq = base_seq();
+    seq.seq_force_screen_content_tools = 1;
+    seq.seq_force_integer_mv = 1;
+    let mut b = HeaderBits::default();
+    let force_integer_mv = put_inter_header_through_ref_idx(
+        &mut b,
+        &seq,
+        &InterHeader {
+            error_resilient: false,
+            frame_size_override: false,
+            short_signaling: false,
+        },
+    );
+    assert!(force_integer_mv);
+    b.put(0, 1); // render_and_frame_size_different
+                 // allow_high_precision_mv: not present with force_integer_mv
+    b.put(1, 1); // is_filter_switchable
+    b.put(0, 1); // is_motion_mode_switchable
+    b.put(0, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reference_select
+    b.put(0, 1); // reduced_tx_set
+    for _ in 0..7 {
+        b.put(0, 1);
+    }
+
+    let (result, _) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert!(h.allow_screen_content_tools && h.force_integer_mv);
+    assert!(!h.allow_high_precision_mv);
+    assert_eq!(h.header_size_bits, b.bit_len());
+}
+
+/// `reduced_still_picture_header`: no `show_existing_frame`, `frame_type`, `show_frame` or
+/// `disable_frame_end_update_cdf` bits, and a KEY frame that is shown.
+#[test]
+fn reduced_still_picture_header_key_frame_has_far_fewer_elements() {
+    let mut seq = base_seq();
+    seq.reduced_still_picture_header = true;
+    seq.still_picture = true;
+    seq.enable_order_hint = false;
+    seq.order_hint_bits_minus_1 = None;
+    let mut b = HeaderBits::default();
+    b.put(0, 1); // disable_cdf_update
+    b.put(0, 1); // allow_screen_content_tools (sequence says SELECT)
+                 // frame_size_override_flag, order_hint, primary_ref_frame, refresh_frame_flags: implied
+    b.put(0, 1); // render_and_frame_size_different
+                 // allow_intrabc: allow_screen_content_tools is 0
+                 // disable_frame_end_update_cdf: implied 1
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reduced_tx_set
+    let intended_end = b.bit_len();
+    // `global_motion_params()` is not called for an intra frame, so these 7 trailing bits must
+    // NOT be consumed: the header has to end right after `reduced_tx_set`.
+    for _ in 0..7 {
+        b.put(0, 1);
+    }
+
+    let (result, _) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!(h.frame_type, FrameType::Key);
+    assert!(h.show_frame && !h.show_existing_frame);
+    assert!(h.disable_frame_end_update_cdf);
+    assert_eq!(h.refresh_frame_flags, Some(0xFF));
+    assert_eq!(h.order_hint, 0);
+    assert_eq!(h.header_size_bits, intended_end);
+}
+
+/// `parse_frame_header_full` refuses what it cannot parse instead of guessing: each of these
+/// would otherwise desync every later element.
+#[test]
+fn streams_it_cannot_parse_are_refused_with_a_reason() {
+    let mut seq = base_seq();
+
+    // frame_refs_short_signaling
+    let mut b = HeaderBits::default();
+    put_inter_header_through_ref_idx(
+        &mut b,
+        &seq,
+        &InterHeader {
+            error_resilient: false,
+            frame_size_override: false,
+            short_signaling: true,
+        },
+    );
+    let message = parse_with(&seq, &b).0.unwrap_err().to_string();
+    assert!(message.contains("frame_refs_short_signaling"), "{message}");
+
+    // frame_size_with_refs: found_ref = 1
+    let mut b = HeaderBits::default();
+    put_inter_header_through_ref_idx(
+        &mut b,
+        &seq,
+        &InterHeader {
+            error_resilient: false,
+            frame_size_override: true,
+            short_signaling: false,
+        },
+    );
+    let mut bits = b.0.clone();
+    let found_ref_start = bits.len() - 7;
+    bits[found_ref_start + 3] = 1; // the fourth reference says "same size as me"
+    let mut ref_state = RefFrameState::new();
+    let message = parse_frame_header_full(&pack(&bits), &seq, &mut ref_state)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("found_ref"), "{message}");
+
+    // decoder_model_info_present
+    seq.decoder_model_info = Some(crate::sequence::DecoderModelInfo {
+        buffer_delay_length_minus_1: 0,
+        num_units_in_decoding_tick: 1,
+        buffer_removal_time_length_minus_1: 0,
+        frame_presentation_time_length_minus_1: 0,
+    });
+    let mut ref_state = RefFrameState::new();
+    let message = parse_frame_header_full(&minimal_key_frame_bytes(40), &seq, &mut ref_state)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("decoder_model_info"), "{message}");
+}
+
+/// A header cut short anywhere is an error, never a panic and never a "successful" parse of
+/// fewer bits than the header needs.
+#[test]
+fn every_truncation_of_a_valid_header_is_an_error() {
+    let seq = base_seq();
+    let mut inter = HeaderBits::default();
+    put_inter_header_through_ref_idx(
+        &mut inter,
+        &seq,
+        &InterHeader {
+            error_resilient: false,
+            frame_size_override: false,
+            short_signaling: false,
+        },
+    );
+    inter.put(0, 1).put(0, 1).put(1, 1).put(0, 1).put(0, 1);
+    put_tile_info_through_tx_mode(&mut inter);
+    inter.put(0, 1).put(0, 1);
+    for _ in 0..7 {
+        inter.put(0, 1);
+    }
+    let inter = inter.bytes();
+    let key = minimal_key_frame_bytes(40);
+
+    for (name, bytes) in [("inter", inter), ("key", key)] {
+        assert!(
+            parse_frame_header_full(&bytes, &seq, &mut RefFrameState::new()).is_ok(),
+            "{name}: the untruncated header parses"
+        );
+        // The last byte holds padding after the final element, so only cuts that remove whole
+        // bytes are guaranteed to lose a real bit.
+        for cut in 0..bytes.len() - 1 {
+            let result = parse_frame_header_full(&bytes[..cut], &seq, &mut RefFrameState::new());
+            assert!(result.is_err(), "{name} cut to {cut} bytes parsed");
+        }
+    }
+}
