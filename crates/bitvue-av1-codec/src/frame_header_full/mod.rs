@@ -57,6 +57,7 @@ mod global_motion;
 mod loop_filters;
 mod segmentation;
 mod show_existing;
+mod size_and_refs;
 mod skip_mode;
 #[cfg(test)]
 mod tests;
@@ -74,13 +75,14 @@ pub(crate) use self::segmentation::{SEG_LVL_GLOBALMV, SEG_LVL_REF_FRAME, SEG_LVL
 pub use self::skip_mode::relative_dist;
 use self::{
     film_grain::parse_film_grain_params,
-    frame_size::{read_frame_size, read_interpolation_filter, read_render_size},
+    frame_size::FrameSize,
     global_motion::parse_global_motion_params,
     loop_filters::{
         parse_cdef_params, parse_delta_lf_params, parse_loop_filter_params, parse_lr_params,
     },
     segmentation::{parse_segmentation_params, SegmentationFeatures},
     show_existing::parse_show_existing_frame,
+    size_and_refs::{read_size_and_refs, SizeAndRefs, SizeAndRefsInput},
     skip_mode::read_skip_mode_params,
     tile_info::read_tile_info,
 };
@@ -390,7 +392,6 @@ pub fn parse_frame_header_full(
         ));
     }
 
-    let mut ref_frame_idx = [0u32; REFS_PER_FRAME];
     let refresh_frame_flags: u32 =
         if frame_type == FrameType::Switch || (frame_type == FrameType::Key && show_frame) {
             0xFF
@@ -406,80 +407,33 @@ pub fn parse_frame_header_full(
         }
     }
 
-    let mut allow_intrabc = false;
-    let (width, height, upscaled_width, upscaled_height, use_superres, superres_denom);
-    let mut allow_high_precision_mv = false;
-    let mut use_ref_frame_mvs = false;
-    let mut subpel_filter_switchable = false;
-    let mut switchable_motion_mode = false;
-    if frame_is_intra {
-        let size = read_frame_size(&mut reader, seq, frame_size_override_flag)?;
-        read_render_size(&mut reader)?;
-        if allow_screen_content_tools && size.upscaled_width == size.width {
-            allow_intrabc = reader.read_bit()?;
-        }
-        width = size.width;
-        height = size.height;
-        upscaled_width = size.upscaled_width;
-        upscaled_height = size.upscaled_height;
-        use_superres = size.use_superres;
-        superres_denom = size.superres_denom;
-    } else {
-        let frame_refs_short_signaling = if seq.enable_order_hint {
-            reader.read_bit()?
-        } else {
-            false
-        };
-        if frame_refs_short_signaling {
-            return Err(err(
-                "frame_refs_short_signaling (set_frame_refs) is not supported by parse_frame_header_full",
-            ));
-        }
-        for slot in ref_frame_idx.iter_mut() {
-            *slot = reader.read_bits(3)?;
-            if seq.frame_id_numbers_present {
-                let delta_len = seq.delta_frame_id_length_minus_2.unwrap_or(0) as u32 + 2;
-                reader.read_bits(delta_len as u8)?; // delta_frame_id_minus_1
-            }
-        }
-        if frame_size_override_flag && !error_resilient_mode {
-            // frame_size_with_refs(): if found_ref via any ref frame's stored size, reuse it;
-            // otherwise frame_size()+render_size(). This parser doesn't track ref frame
-            // dimensions (only order hints), so it can't take the found_ref=1 shortcut path --
-            // always falls through to a real frame_size()+render_size() read below. This is only
-            // wrong (reads bits that shouldn't be there) if a *real* encoder actually emits
-            // found_ref=1, which requires explicit ref-size reuse signaling support the encoder
-            // must opt into; flagged here as a real accuracy gap, not silently assumed away.
-            for _ in 0..REFS_PER_FRAME {
-                if reader.read_bit()? {
-                    return Err(err(
-                        "frame_size_with_refs' found_ref=1 path is not supported by parse_frame_header_full",
-                    ));
-                }
-            }
-        }
-        let size = read_frame_size(&mut reader, seq, frame_size_override_flag)?;
-        read_render_size(&mut reader)?;
-        width = size.width;
-        height = size.height;
-        upscaled_width = size.upscaled_width;
-        upscaled_height = size.upscaled_height;
-        use_superres = size.use_superres;
-        superres_denom = size.superres_denom;
-
-        allow_high_precision_mv = if force_integer_mv {
-            false
-        } else {
-            reader.read_bit()?
-        };
-        subpel_filter_switchable = read_interpolation_filter(&mut reader)?;
-        switchable_motion_mode = reader.read_bit()?; // is_motion_mode_switchable
-        use_ref_frame_mvs = if error_resilient_mode || !seq.enable_ref_frame_mvs {
-            false
-        } else {
-            reader.read_bit()?
-        };
-    }
+    let SizeAndRefs {
+        size,
+        allow_intrabc,
+        ref_frame_idx,
+        allow_high_precision_mv,
+        subpel_filter_switchable,
+        switchable_motion_mode,
+        use_ref_frame_mvs,
+    } = read_size_and_refs(
+        &mut reader,
+        seq,
+        &SizeAndRefsInput {
+            frame_is_intra,
+            frame_size_override_flag,
+            allow_screen_content_tools,
+            force_integer_mv,
+            error_resilient_mode,
+        },
+    )?;
+    let FrameSize {
+        width,
+        height,
+        upscaled_width,
+        upscaled_height,
+        use_superres,
+        superres_denom,
+    } = size;
 
     let disable_frame_end_update_cdf = if seq.reduced_still_picture_header || disable_cdf_update {
         true
