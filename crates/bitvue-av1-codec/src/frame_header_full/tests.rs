@@ -574,11 +574,14 @@ fn fnv1a(text: &str) -> u64 {
     })
 }
 
+/// `(headers parsed, key frames, shown-again frames, digest)`, see [`header_summary`].
+type HeaderSummary = (usize, usize, usize, u64);
+
 /// What `parse_frame_header_full` makes of every frame header of a clip, threading
 /// `RefFrameState` like a sidecar caller does: `(headers parsed, key frames, shown-again frames,
 /// FNV-1a of every header's full `Debug` text in order)`. A header that fails to parse
 /// contributes its error text, so a parser that starts failing changes the digest too.
-fn header_summary(clip: &[u8]) -> (usize, usize, usize, u64) {
+fn header_summary(clip: &[u8]) -> HeaderSummary {
     let (_hdr, frames) = crate::ivf::parse_ivf_frames(clip).unwrap();
     let seq = parse_sequence_header(&find_seq_header_in(&frames).unwrap()).unwrap();
     let mut ref_state = RefFrameState::new();
@@ -609,7 +612,7 @@ fn header_summary(clip: &[u8]) -> (usize, usize, usize, u64) {
 /// agreement with dav1d, in `cu_parser/oracle_tests.rs`, is what vouches for correctness).
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
-    const CLIPS: [(&str, &[u8], (usize, usize, usize, u64)); 6] = [
+    const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
