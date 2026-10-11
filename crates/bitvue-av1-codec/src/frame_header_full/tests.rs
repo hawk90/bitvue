@@ -1125,3 +1125,39 @@ fn every_truncation_of_a_valid_header_is_an_error() {
         }
     }
 }
+
+/// `frame_size_with_refs()` (the `found_ref` flags) only exists when `frame_size_override_flag`
+/// is set AND the frame is not error resilient; an error-resilient frame with the override flag
+/// reads `frame_size()` directly.
+#[test]
+fn error_resilient_frame_with_size_override_reads_the_size_without_found_ref_flags() {
+    let seq = base_seq();
+    let mut b = HeaderBits::default();
+    put_inter_header_through_ref_idx(
+        &mut b,
+        &seq,
+        &InterHeader {
+            error_resilient: true,
+            frame_size_override: true,
+            short_signaling: false,
+        },
+    );
+    b.put(159, 9).put(119, 8); // frame_width_minus_1, frame_height_minus_1: 160x120
+    b.put(0, 1); // render_and_frame_size_different
+    b.put(0, 1); // allow_high_precision_mv
+    b.put(1, 1); // is_filter_switchable
+    b.put(0, 1); // is_motion_mode_switchable
+    b.put(1, 1); // disable_frame_end_update_cdf
+    put_tile_info_through_tx_mode(&mut b);
+    b.put(0, 1); // reference_select
+    b.put(0, 1); // reduced_tx_set
+    for _ in 0..7 {
+        b.put(0, 1);
+    }
+
+    let (result, _) = parse_with(&seq, &b);
+    let h = result.unwrap();
+    assert_eq!((h.width, h.height), (160, 120));
+    assert!(h.error_resilient_mode);
+    assert_eq!(h.header_size_bits, b.bit_len());
+}
