@@ -566,3 +566,87 @@ fn ref_frame_sign_bias_flags_references_displayed_after_the_frame() {
 
     assert_eq!(ref_frame_sign_bias(&hints, None, 6, &seq), [false; 7]);
 }
+
+/// FNV-1a over a string, enough to pin a long `Debug` rendering to one number.
+fn fnv1a(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+/// What `parse_frame_header_full` makes of every frame header of a clip, threading
+/// `RefFrameState` like a sidecar caller does: `(headers parsed, key frames, shown-again frames,
+/// FNV-1a of every header's full `Debug` text in order)`. A header that fails to parse
+/// contributes its error text, so a parser that starts failing changes the digest too.
+fn header_summary(clip: &[u8]) -> (usize, usize, usize, u64) {
+    let (_hdr, frames) = crate::ivf::parse_ivf_frames(clip).unwrap();
+    let seq = parse_sequence_header(&find_seq_header_in(&frames).unwrap()).unwrap();
+    let mut ref_state = RefFrameState::new();
+    let (mut count, mut key, mut shown_again) = (0, 0, 0);
+    let mut rendered = String::new();
+    for frame in &frames {
+        for payload in find_frame_header_payloads(&frame.data) {
+            count += 1;
+            match parse_frame_header_full(&payload, &seq, &mut ref_state) {
+                Ok(header) => {
+                    key += usize::from(header.frame_type == FrameType::Key);
+                    shown_again += usize::from(header.show_existing_frame);
+                    rendered.push_str(&format!("{header:?}\n"));
+                }
+                Err(e) => rendered.push_str(&format!("ERR {e}\n")),
+            }
+        }
+    }
+    (count, key, shown_again, fnv1a(&rendered))
+}
+
+/// Every field of every frame header of every committed clip, pinned. The checks above only ask
+/// "did it parse" or look at a handful of fields; this one fails when ANY field of ANY header
+/// changes, which is what a refactor of `parse_frame_header_full` must not do. A failure means a
+/// header parsed differently: find out which field before changing the numbers. The values were
+/// recorded from the parser as it was before any split of `parse_frame_header_full`, not from
+/// an independent oracle, so they prove "unchanged", not "correct" (the clips' symbol-level
+/// agreement with dav1d, in `cu_parser/oracle_tests.rs`, is what vouches for correctness).
+#[test]
+fn every_frame_header_of_every_clip_is_unchanged() {
+    const CLIPS: [(&str, &[u8], (usize, usize, usize, u64)); 6] = [
+        (
+            "av1_test",
+            include_bytes!("../../../../test_data/av1_test.ivf"),
+            (274, 1, 0, 15134532416550284067),
+        ),
+        (
+            "aomenc_testsrc2",
+            include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
+            (16, 4, 3, 1950078611811718324),
+        ),
+        (
+            "aomenc_tilegroups",
+            include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf"),
+            (12, 1, 0, 6775726288374175844),
+        ),
+        (
+            "aomenc_tiles5",
+            include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf"),
+            (12, 1, 0, 13641591374052201496),
+        ),
+        (
+            "rav1e_testsrc2",
+            include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
+            (17, 6, 5, 18266385124080682679),
+        ),
+        (
+            "svtav1_testsrc2",
+            include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
+            (17, 6, 5, 10434891046080244046),
+        ),
+    ];
+    let mismatches: Vec<String> = CLIPS
+        .iter()
+        .filter_map(|&(name, clip, expected)| {
+            let got = header_summary(clip);
+            (got != expected).then(|| format!("{name}: got {got:?}, expected {expected:?}"))
+        })
+        .collect();
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
