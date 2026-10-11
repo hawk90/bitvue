@@ -8,7 +8,7 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys = "0.4.13"
 bitvue-av1-codec = { path = "../crates/bitvue-av1-codec" }
 bitvue-engine = { path = "../crates/bitvue-engine" }
 bitvue-decode = { path = "../crates/bitvue-decode" }
