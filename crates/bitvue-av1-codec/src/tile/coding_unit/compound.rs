@@ -6,6 +6,7 @@ use super::contexts::{compound_mode_from_symbol, wedge_ctx};
 use super::read_explicit_mv;
 use super::types::{CodingUnit, MotionVector, MvKind, PredictionMode};
 use crate::symbol::SymbolDecoder;
+use crate::tile::context::CompoundMvStackEntry;
 use crate::tile::{BlockRect, FrameCodingParams, MiRect, MvPredictorContext, TileContext};
 use bitvue_engine::Result;
 
@@ -28,9 +29,7 @@ pub(super) fn read_compound_mode_info(
         height: height_4x4,
     } = mi;
     let FrameCodingParams {
-        use_ref_frame_mvs,
-        inter_mode_flags,
-        ..
+        use_ref_frame_mvs, ..
     } = *frame;
     let rav1d_ref0 = cu.ref_frames[0] as i8 - 1;
     let rav1d_ref1 = cu.ref_frames[1] as i8 - 1;
@@ -43,18 +42,7 @@ pub(super) fn read_compound_mode_info(
     // (before this branch existed) fell through to the real-read path below even for
     // skip_mode CUs, a real desync (reading bits a real encoder never wrote).
     let comp_type = if cu.skip_mode {
-        cu.mode = PredictionMode::NearestNearestMv;
-        let (stack, _n_mvs) = tile_ctx.compound_mv_stack(
-            x4,
-            y4,
-            width_4x4,
-            height_4x4,
-            rav1d_ref0,
-            rav1d_ref1,
-            use_ref_frame_mvs,
-        );
-        cu.mv = stack[0].mv;
-        2 // AVG, matches dav1d's `b->comp_type = COMP_INTER_AVG`
+        derive_skip_mode_tail(tile_ctx, mi, frame, rav1d_ref0, rav1d_ref1, cu)
     } else {
         // compound_mode() (spec 5.11.24) -- a distinct 8-symbol alphabet from the
         // single-ref 4-way `inter_mode`, see `SymbolDecoder::read_compound_mode`'s doc.
@@ -85,39 +73,7 @@ pub(super) fn read_compound_mode_info(
         );
         let l0_kind = cu.mode.l0_mv_kind();
         let l1_kind = cu.mode.l1_mv_kind();
-        let mut drl_idx = 0usize;
-        if l0_kind == Some(MvKind::New) && l1_kind == Some(MvKind::New) {
-            if n_mvs > 1 {
-                if decoder
-                    .read_drl_bit(crate::tile::context::get_compound_drl_context(&stack, 0))?
-                {
-                    drl_idx += 1;
-                }
-                if drl_idx == 1
-                    && n_mvs > 2
-                    && decoder
-                        .read_drl_bit(crate::tile::context::get_compound_drl_context(&stack, 1))?
-                {
-                    drl_idx += 1;
-                }
-            }
-        } else if l0_kind == Some(MvKind::Near) || l1_kind == Some(MvKind::Near) {
-            drl_idx = 1;
-            if n_mvs > 2
-                && decoder
-                    .read_drl_bit(crate::tile::context::get_compound_drl_context(&stack, 1))?
-            {
-                drl_idx += 1;
-            }
-            // NEAR can still be refined to NEARISH by one more bit when the list is long enough.
-            if drl_idx == 2
-                && n_mvs > 3
-                && decoder
-                    .read_drl_bit(crate::tile::context::get_compound_drl_context(&stack, 2))?
-            {
-                drl_idx += 1;
-            }
-        }
+        let drl_idx = read_compound_drl_idx(decoder, &stack, n_mvs, l0_kind, l1_kind)?;
 
         // Per-direction value: `Nearest`/`Near` read straight from the real stack;
         // `New` uses `stack[drl_idx]` as predictor with the explicit residual added on
@@ -143,36 +99,7 @@ pub(super) fn read_compound_mode_info(
             Some(MvKind::Global) => mv_ctx.get_mv_predictor_l1(cu.mode, x, y, cu.ref_frames[1]),
             None => MotionVector::zero(),
         };
-
-        // compound_type() (spec 5.11.28: jnt_comp vs. segmentation-mask vs. wedge-mask)
-        // -- real per-context CDF + adaptation, see `SymbolDecoder::read_mask_comp`'s
-        // doc for the desync this closes (previously never read at all for ANY compound
-        // block).
-        if inter_mode_flags.enable_masked_compound
-            && decoder.read_mask_comp(tile_ctx.mask_comp_context(x4, y4))?
-        {
-            // seg/wedge branch
-            if let Some(wctx) = wedge_ctx(width_4x4, height_4x4) {
-                let is_wedge = decoder.read_wedge_comp(wctx)?;
-                if is_wedge {
-                    decoder.read_wedge_idx(wctx)?;
-                }
-                decoder.read_bool_equi()?; // mask_sign
-                if is_wedge {
-                    4
-                } else {
-                    3
-                }
-            } else {
-                decoder.read_bool_equi()?; // mask_sign
-                3 // SEG (no wedge eligible at this size)
-            }
-        } else if inter_mode_flags.enable_jnt_comp {
-            let jctx = tile_ctx.jnt_comp_context(x4, y4, rav1d_ref0, rav1d_ref1);
-            1 + u8::from(decoder.read_jnt_comp(jctx)?)
-        } else {
-            2 // AVG
-        }
+        read_compound_type(decoder, tile_ctx, mi, frame, rav1d_ref0, rav1d_ref1)?
     };
 
     tile_ctx.set_spatial_ref_block(
@@ -197,4 +124,125 @@ pub(super) fn read_compound_mode_info(
         cu.mv[1]
     );
     Ok(())
+}
+
+/// `skip_mode` tail: the whole mode info is derived with zero bits read. Returns `comp_type`.
+fn derive_skip_mode_tail(
+    tile_ctx: &mut TileContext,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    rav1d_ref0: i8,
+    rav1d_ref1: i8,
+    cu: &mut CodingUnit,
+) -> u8 {
+    let MiRect {
+        x4,
+        y4,
+        width: width_4x4,
+        height: height_4x4,
+    } = mi;
+    let FrameCodingParams {
+        use_ref_frame_mvs, ..
+    } = *frame;
+    cu.mode = PredictionMode::NearestNearestMv;
+    let (stack, _n_mvs) = tile_ctx.compound_mv_stack(
+        x4,
+        y4,
+        width_4x4,
+        height_4x4,
+        rav1d_ref0,
+        rav1d_ref1,
+        use_ref_frame_mvs,
+    );
+    cu.mv = stack[0].mv;
+    2 // AVG, matches dav1d's `b->comp_type = COMP_INTER_AVG`
+}
+
+/// Selects the DRL index of a compound block, reading up to two `drl_bit` symbols.
+fn read_compound_drl_idx(
+    decoder: &mut SymbolDecoder,
+    stack: &[CompoundMvStackEntry; 8],
+    n_mvs: usize,
+    l0_kind: Option<MvKind>,
+    l1_kind: Option<MvKind>,
+) -> Result<usize> {
+    let mut drl_idx = 0usize;
+    if l0_kind == Some(MvKind::New) && l1_kind == Some(MvKind::New) {
+        if n_mvs > 1 {
+            if decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(stack, 0))? {
+                drl_idx += 1;
+            }
+            if drl_idx == 1
+                && n_mvs > 2
+                && decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(stack, 1))?
+            {
+                drl_idx += 1;
+            }
+        }
+    } else if l0_kind == Some(MvKind::Near) || l1_kind == Some(MvKind::Near) {
+        drl_idx = 1;
+        if n_mvs > 2
+            && decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(stack, 1))?
+        {
+            drl_idx += 1;
+        }
+        // NEAR can still be refined to NEARISH by one more bit when the list is long enough.
+        if drl_idx == 2
+            && n_mvs > 3
+            && decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(stack, 2))?
+        {
+            drl_idx += 1;
+        }
+    }
+    Ok(drl_idx)
+}
+
+/// `compound_type()`: the symbols after the motion vectors. Returns `comp_type`.
+fn read_compound_type(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut TileContext,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    rav1d_ref0: i8,
+    rav1d_ref1: i8,
+) -> Result<u8> {
+    let MiRect {
+        x4,
+        y4,
+        width: width_4x4,
+        height: height_4x4,
+    } = mi;
+    let inter_mode_flags = frame.inter_mode_flags;
+
+    // compound_type() (spec 5.11.28: jnt_comp vs. segmentation-mask vs. wedge-mask)
+    // -- real per-context CDF + adaptation, see `SymbolDecoder::read_mask_comp`'s
+    // doc for the desync this closes (previously never read at all for ANY compound
+    // block).
+    Ok(
+        if inter_mode_flags.enable_masked_compound
+            && decoder.read_mask_comp(tile_ctx.mask_comp_context(x4, y4))?
+        {
+            // seg/wedge branch
+            if let Some(wctx) = wedge_ctx(width_4x4, height_4x4) {
+                let is_wedge = decoder.read_wedge_comp(wctx)?;
+                if is_wedge {
+                    decoder.read_wedge_idx(wctx)?;
+                }
+                decoder.read_bool_equi()?; // mask_sign
+                if is_wedge {
+                    4
+                } else {
+                    3
+                }
+            } else {
+                decoder.read_bool_equi()?; // mask_sign
+                3 // SEG (no wedge eligible at this size)
+            }
+        } else if inter_mode_flags.enable_jnt_comp {
+            let jctx = tile_ctx.jnt_comp_context(x4, y4, rav1d_ref0, rav1d_ref1);
+            1 + u8::from(decoder.read_jnt_comp(jctx)?)
+        } else {
+            2 // AVG
+        },
+    )
 }
