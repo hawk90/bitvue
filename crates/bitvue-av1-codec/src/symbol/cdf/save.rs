@@ -58,245 +58,55 @@ impl CdfContext {
     /// `tile_final`, when the frame updates its CDFs at the end (`disable_frame_end_update_cdf =
     /// 0`). A frame that does not keeps `self` as is.
     pub fn saved_at_frame_end(&self, tile_final: &CdfContext, frame_is_intra: bool) -> CdfContext {
-        CdfContext {
-            partition_cdfs: saved(&tile_final.partition_cdfs),
-            skip_cdf: saved(&tile_final.skip_cdf),
-            skip_mode_cdf: if frame_is_intra {
-                self.skip_mode_cdf.clone()
-            } else {
-                saved(&tile_final.skip_mode_cdf)
-            },
-            intra_cdf: if frame_is_intra {
-                self.intra_cdf.clone()
-            } else {
-                saved(&tile_final.intra_cdf)
-            },
-            y_mode_cdf: if frame_is_intra {
-                self.y_mode_cdf.clone()
-            } else {
-                saved(&tile_final.y_mode_cdf)
-            },
-            motion_mode_cdf: if frame_is_intra {
-                self.motion_mode_cdf.clone()
-            } else {
-                saved(&tile_final.motion_mode_cdf)
-            },
-            obmc_cdf: if frame_is_intra {
-                self.obmc_cdf.clone()
-            } else {
-                saved(&tile_final.obmc_cdf)
-            },
-            interintra_cdf: if frame_is_intra {
-                self.interintra_cdf.clone()
-            } else {
-                saved(&tile_final.interintra_cdf)
-            },
-            interintra_mode_cdf: if frame_is_intra {
-                self.interintra_mode_cdf.clone()
-            } else {
-                saved(&tile_final.interintra_mode_cdf)
-            },
-            interintra_wedge_cdf: if frame_is_intra {
-                self.interintra_wedge_cdf.clone()
-            } else {
-                saved(&tile_final.interintra_wedge_cdf)
-            },
-            wedge_comp_cdf: if frame_is_intra {
-                self.wedge_comp_cdf.clone()
-            } else {
-                saved(&tile_final.wedge_comp_cdf)
-            },
-            wedge_idx_cdf: if frame_is_intra {
-                self.wedge_idx_cdf.clone()
-            } else {
-                saved(&tile_final.wedge_idx_cdf)
-            },
-            mask_comp_cdf: if frame_is_intra {
-                self.mask_comp_cdf.clone()
-            } else {
-                saved(&tile_final.mask_comp_cdf)
-            },
-            jnt_comp_cdf: if frame_is_intra {
-                self.jnt_comp_cdf.clone()
-            } else {
-                saved(&tile_final.jnt_comp_cdf)
-            },
-            filter_cdf: if frame_is_intra {
-                self.filter_cdf.clone()
-            } else {
-                saved(&tile_final.filter_cdf)
-            },
-            drl_bit_cdf: if frame_is_intra {
-                self.drl_bit_cdf.clone()
-            } else {
-                saved(&tile_final.drl_bit_cdf)
-            },
-            seg_pred_cdf: if frame_is_intra {
-                self.seg_pred_cdf.clone()
-            } else {
-                saved(&tile_final.seg_pred_cdf)
-            },
-            seg_id_cdf: saved(&tile_final.seg_id_cdf),
-            pal_y_cdf: saved(&tile_final.pal_y_cdf),
-            pal_uv_cdf: saved(&tile_final.pal_uv_cdf),
-            pal_sz_cdf: saved(&tile_final.pal_sz_cdf),
-            color_map_cdf: saved(&tile_final.color_map_cdf),
-            angle_delta_cdf: saved(&tile_final.angle_delta_cdf),
-            uv_mode_cdf: saved(&tile_final.uv_mode_cdf),
-            cfl_sign_cdf: saved(&tile_final.cfl_sign_cdf),
-            cfl_alpha_cdf: saved(&tile_final.cfl_alpha_cdf),
-            use_filter_intra_cdf: saved(&tile_final.use_filter_intra_cdf),
-            filter_intra_mode_cdf: saved(&tile_final.filter_intra_mode_cdf),
-            txpart_cdf: saved(&tile_final.txpart_cdf),
-            kfym: self.kfym.clone(),
-            newmv_mode_cdf: if frame_is_intra {
-                self.newmv_mode_cdf.clone()
-            } else {
-                saved(&tile_final.newmv_mode_cdf)
-            },
-            globalmv_mode_cdf: if frame_is_intra {
-                self.globalmv_mode_cdf.clone()
-            } else {
-                saved(&tile_final.globalmv_mode_cdf)
-            },
-            refmv_mode_cdf: if frame_is_intra {
-                self.refmv_mode_cdf.clone()
-            } else {
-                saved(&tile_final.refmv_mode_cdf)
-            },
-            compound_mode_cdf: if frame_is_intra {
-                self.compound_mode_cdf.clone()
-            } else {
-                saved(&tile_final.compound_mode_cdf)
-            },
-            mv_joint_cdf: if frame_is_intra {
-                self.mv_joint_cdf.clone()
-            } else {
-                saved(&tile_final.mv_joint_cdf)
-            },
-            mv_comp: if frame_is_intra {
-                self.mv_comp.clone()
-            } else {
-                saved(&tile_final.mv_comp)
-            },
-            delta_q_cdf: saved(&tile_final.delta_q_cdf),
-            delta_lf_cdf: saved(&tile_final.delta_lf_cdf),
-            txb_skip_cdf: saved(&tile_final.txb_skip_cdf),
-            coeff_base_cdf: saved(&tile_final.coeff_base_cdf),
-            coeff_br_cdf: saved(&tile_final.coeff_br_cdf),
-            dc_sign_cdf: saved(&tile_final.dc_sign_cdf),
-            eob_bin_16_cdf: saved(&tile_final.eob_bin_16_cdf),
-            eob_bin_32_cdf: saved(&tile_final.eob_bin_32_cdf),
-            eob_bin_64_cdf: saved(&tile_final.eob_bin_64_cdf),
-            eob_bin_128_cdf: saved(&tile_final.eob_bin_128_cdf),
-            eob_bin_256_cdf: saved(&tile_final.eob_bin_256_cdf),
-            eob_bin_512_cdf: saved(&tile_final.eob_bin_512_cdf),
-            eob_bin_1024_cdf: saved(&tile_final.eob_bin_1024_cdf),
-            eob_hi_bit_cdf: saved(&tile_final.eob_hi_bit_cdf),
-            coeff_base_eob_cdf: saved(&tile_final.coeff_base_eob_cdf),
-            txb_skip_cdf_chroma: saved(&tile_final.txb_skip_cdf_chroma),
-            dc_sign_cdf_chroma: saved(&tile_final.dc_sign_cdf_chroma),
-            eob_bin_16_cdf_chroma: saved(&tile_final.eob_bin_16_cdf_chroma),
-            eob_bin_32_cdf_chroma: saved(&tile_final.eob_bin_32_cdf_chroma),
-            eob_bin_64_cdf_chroma: saved(&tile_final.eob_bin_64_cdf_chroma),
-            eob_bin_128_cdf_chroma: saved(&tile_final.eob_bin_128_cdf_chroma),
-            eob_bin_256_cdf_chroma: saved(&tile_final.eob_bin_256_cdf_chroma),
-            eob_bin_512_cdf_chroma: saved(&tile_final.eob_bin_512_cdf_chroma),
-            eob_bin_1024_cdf_chroma: saved(&tile_final.eob_bin_1024_cdf_chroma),
-            eob_hi_bit_cdf_chroma: saved(&tile_final.eob_hi_bit_cdf_chroma),
-            coeff_base_eob_cdf_chroma: saved(&tile_final.coeff_base_eob_cdf_chroma),
-            coeff_base_cdf_chroma: saved(&tile_final.coeff_base_cdf_chroma),
-            coeff_br_cdf_chroma: saved(&tile_final.coeff_br_cdf_chroma),
-            txtp_intra1_cdf: saved(&tile_final.txtp_intra1_cdf),
-            txtp_intra2_cdf: saved(&tile_final.txtp_intra2_cdf),
-            txtp_inter1_cdf: saved(&tile_final.txtp_inter1_cdf),
-            txtp_inter2_cdf: saved(&tile_final.txtp_inter2_cdf),
-            txtp_inter3_cdf: saved(&tile_final.txtp_inter3_cdf),
-            txsz_cdf: saved(&tile_final.txsz_cdf),
-            comp_mode_cdf: if frame_is_intra {
-                self.comp_mode_cdf.clone()
-            } else {
-                saved(&tile_final.comp_mode_cdf)
-            },
-            single_ref_p1_cdf: if frame_is_intra {
-                self.single_ref_p1_cdf.clone()
-            } else {
-                saved(&tile_final.single_ref_p1_cdf)
-            },
-            single_ref_p2_cdf: if frame_is_intra {
-                self.single_ref_p2_cdf.clone()
-            } else {
-                saved(&tile_final.single_ref_p2_cdf)
-            },
-            single_ref_p3_cdf: if frame_is_intra {
-                self.single_ref_p3_cdf.clone()
-            } else {
-                saved(&tile_final.single_ref_p3_cdf)
-            },
-            single_ref_p4_cdf: if frame_is_intra {
-                self.single_ref_p4_cdf.clone()
-            } else {
-                saved(&tile_final.single_ref_p4_cdf)
-            },
-            single_ref_p5_cdf: if frame_is_intra {
-                self.single_ref_p5_cdf.clone()
-            } else {
-                saved(&tile_final.single_ref_p5_cdf)
-            },
-            single_ref_p6_cdf: if frame_is_intra {
-                self.single_ref_p6_cdf.clone()
-            } else {
-                saved(&tile_final.single_ref_p6_cdf)
-            },
-            comp_ref_type_cdf: if frame_is_intra {
-                self.comp_ref_type_cdf.clone()
-            } else {
-                saved(&tile_final.comp_ref_type_cdf)
-            },
-            uni_comp_ref_cdf: if frame_is_intra {
-                self.uni_comp_ref_cdf.clone()
-            } else {
-                saved(&tile_final.uni_comp_ref_cdf)
-            },
-            uni_comp_ref_p1_cdf: if frame_is_intra {
-                self.uni_comp_ref_p1_cdf.clone()
-            } else {
-                saved(&tile_final.uni_comp_ref_p1_cdf)
-            },
-            uni_comp_ref_p2_cdf: if frame_is_intra {
-                self.uni_comp_ref_p2_cdf.clone()
-            } else {
-                saved(&tile_final.uni_comp_ref_p2_cdf)
-            },
-            comp_ref_cdf: if frame_is_intra {
-                self.comp_ref_cdf.clone()
-            } else {
-                saved(&tile_final.comp_ref_cdf)
-            },
-            comp_ref_p1_cdf: if frame_is_intra {
-                self.comp_ref_p1_cdf.clone()
-            } else {
-                saved(&tile_final.comp_ref_p1_cdf)
-            },
-            comp_ref_p2_cdf: if frame_is_intra {
-                self.comp_ref_p2_cdf.clone()
-            } else {
-                saved(&tile_final.comp_ref_p2_cdf)
-            },
-            comp_bwdref_cdf: if frame_is_intra {
-                self.comp_bwdref_cdf.clone()
-            } else {
-                saved(&tile_final.comp_bwdref_cdf)
-            },
-            comp_bwdref_p1_cdf: if frame_is_intra {
-                self.comp_bwdref_p1_cdf.clone()
-            } else {
-                saved(&tile_final.comp_bwdref_p1_cdf)
-            },
-            use_intrabc_cdf: self.use_intrabc_cdf.clone(),
-            restore_switchable_cdf: saved(&tile_final.restore_switchable_cdf),
-            restore_wiener_cdf: saved(&tile_final.restore_wiener_cdf),
-            restore_sgrproj_cdf: saved(&tile_final.restore_sgrproj_cdf),
+        // Which group each field of `CdfContext` belongs to. The struct literal below has no
+        // `..`, so a field missing from every list does not compile.
+        macro_rules! saved_context {
+            (
+                always: [$($always:ident),* $(,)?],
+                inter_only: [$($inter_only:ident),* $(,)?],
+                from_start: [$($from_start:ident),* $(,)?] $(,)?
+            ) => {
+                CdfContext {
+                    $($always: saved(&tile_final.$always),)*
+                    $($inter_only: if frame_is_intra {
+                        self.$inter_only.clone()
+                    } else {
+                        saved(&tile_final.$inter_only)
+                    },)*
+                    $($from_start: self.$from_start.clone(),)*
+                }
+            };
+        }
+        saved_context! {
+            always: [
+                partition_cdfs, skip_cdf, seg_id_cdf, pal_y_cdf, pal_uv_cdf, pal_sz_cdf,
+                color_map_cdf, angle_delta_cdf, uv_mode_cdf, cfl_sign_cdf,
+                cfl_alpha_cdf, use_filter_intra_cdf, filter_intra_mode_cdf, txpart_cdf,
+                delta_q_cdf, delta_lf_cdf, txb_skip_cdf, coeff_base_cdf, coeff_br_cdf,
+                dc_sign_cdf, eob_bin_16_cdf, eob_bin_32_cdf, eob_bin_64_cdf,
+                eob_bin_128_cdf, eob_bin_256_cdf, eob_bin_512_cdf, eob_bin_1024_cdf,
+                eob_hi_bit_cdf, coeff_base_eob_cdf, txb_skip_cdf_chroma,
+                dc_sign_cdf_chroma, eob_bin_16_cdf_chroma, eob_bin_32_cdf_chroma,
+                eob_bin_64_cdf_chroma, eob_bin_128_cdf_chroma, eob_bin_256_cdf_chroma,
+                eob_bin_512_cdf_chroma, eob_bin_1024_cdf_chroma, eob_hi_bit_cdf_chroma,
+                coeff_base_eob_cdf_chroma, coeff_base_cdf_chroma, coeff_br_cdf_chroma,
+                txtp_intra1_cdf, txtp_intra2_cdf, txtp_inter1_cdf, txtp_inter2_cdf,
+                txtp_inter3_cdf, txsz_cdf, restore_switchable_cdf, restore_wiener_cdf,
+                restore_sgrproj_cdf,
+            ],
+            inter_only: [
+                skip_mode_cdf, intra_cdf, y_mode_cdf, motion_mode_cdf, obmc_cdf,
+                interintra_cdf, interintra_mode_cdf, interintra_wedge_cdf,
+                wedge_comp_cdf, wedge_idx_cdf, mask_comp_cdf, jnt_comp_cdf, filter_cdf,
+                drl_bit_cdf, seg_pred_cdf, newmv_mode_cdf, globalmv_mode_cdf,
+                refmv_mode_cdf, compound_mode_cdf, mv_joint_cdf, mv_comp, comp_mode_cdf,
+                single_ref_p1_cdf, single_ref_p2_cdf, single_ref_p3_cdf,
+                single_ref_p4_cdf, single_ref_p5_cdf, single_ref_p6_cdf,
+                comp_ref_type_cdf, uni_comp_ref_cdf, uni_comp_ref_p1_cdf,
+                uni_comp_ref_p2_cdf, comp_ref_cdf, comp_ref_p1_cdf, comp_ref_p2_cdf,
+                comp_bwdref_cdf, comp_bwdref_p1_cdf,
+            ],
+            from_start: [kfym, use_intrabc_cdf],
         }
     }
 }
