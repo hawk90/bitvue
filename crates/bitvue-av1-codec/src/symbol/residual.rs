@@ -143,34 +143,7 @@ impl<'a> SymbolDecoder<'a> {
         let capped_height = height_px.min(32);
         let capped_class = tx_class.min(3);
 
-        let eob_bin_cdf = if chroma {
-            self.cdf_context
-                .get_eob_bin_cdf_chroma_mut(capped_width, capped_height, is_1d)
-        } else {
-            self.cdf_context
-                .get_eob_bin_cdf_mut(capped_width, capped_height, is_1d)
-        };
-        let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
-
-        let eob: u32 = if eob_bin > 1 {
-            let eob_hi_bit_cdf = if chroma {
-                self.cdf_context
-                    .get_eob_hi_bit_cdf_chroma_mut(tx_class, eob_bin as u8)
-            } else {
-                self.cdf_context
-                    .get_eob_hi_bit_cdf_mut(tx_class, eob_bin as u8)
-            };
-            let eob_hi_bit = self.decoder.read_symbol_adaptive(eob_hi_bit_cdf)? as u32;
-            let num_extra_bits = eob_bin - 2;
-            let mut extra = 0u32;
-            for _ in 0..num_extra_bits {
-                let bit = self.decoder.read_bool(16384)? as u32;
-                extra = (extra << 1) | bit;
-            }
-            ((eob_hi_bit | 2) << (eob_bin - 2)) | extra
-        } else {
-            eob_bin
-        };
+        let eob = self.read_eob(chroma, tx_class, capped_width, capped_height, is_1d)?;
 
         let mut stats = ResidualBlockStats {
             all_zero: false,
@@ -188,65 +161,9 @@ impl<'a> SymbolDecoder<'a> {
         for c in (0..=eob).rev() {
             let (x, y) =
                 scan::coeff_position(capped_width, capped_height, is_1d, class.is_vertical(), c);
-            let is_eob_pos = c == eob;
-
-            // `br_ctx`: `coeff_br`'s context if this position's token turns out to need
-            // extending (`base_level > 2`) -- computed alongside `base_level` since both draw
-            // from the same neighbor lookup (`lo_ctx`'s `hi_mag` output), matching dav1d's
-            // `get_lo_ctx` call site producing both values together.
-            let (base_level, br_ctx) = if is_eob_pos {
-                let ctx = coeff_base_eob_context(eob, width_px, height_px);
-                let cdf = if chroma {
-                    self.cdf_context
-                        .get_coeff_base_eob_cdf_chroma_mut(tx_class, ctx)
-                } else {
-                    self.cdf_context.get_coeff_base_eob_cdf_mut(tx_class, ctx)
-                };
-                let level = self.decoder.read_symbol_adaptive(cdf)? as u32 + 1;
-                let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
-                // dav1d's dc-only branch (`eob == 0`) decodes its high token with `hi_cdf[0]`.
-                let br_ctx = if eob == 0 {
-                    0
-                } else if pos_band {
-                    14
-                } else {
-                    7
-                };
-                (level, br_ctx)
-            } else if c == 0 {
-                // DC position: 2D's `coeff_base` context is hardcoded to `0`, but `coeff_br`'s
-                // magnitude still comes from the same 3-neighbor sum `lo_ctx` would produce --
-                // call it regardless of `is_1d` and only override the `coeff_base` context choice,
-                // matching dav1d's manual-recompute-for-2D special case.
-                let (lo_ctx_val, hi_mag) = scan::lo_ctx(&levels, 0, 0, is_1d, width_px, height_px);
-                let base_ctx = if is_1d { lo_ctx_val } else { 0 };
-                let cdf = if chroma {
-                    self.cdf_context
-                        .get_coeff_base_cdf_chroma_mut(tx_class, base_ctx)
-                } else {
-                    self.cdf_context.get_coeff_base_cdf_mut(tx_class, base_ctx)
-                };
-                let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
-                let mag = hi_mag & 63;
-                // DC's `coeff_br` context has no position-band offset (the lowest band).
-                (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
-            } else {
-                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, is_1d, width_px, height_px);
-                let cdf = if chroma {
-                    self.cdf_context
-                        .get_coeff_base_cdf_chroma_mut(tx_class, ctx)
-                } else {
-                    self.cdf_context.get_coeff_base_cdf_mut(tx_class, ctx)
-                };
-                let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
-                let mag = hi_mag & 63;
-                let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
-                let band = if pos_band { 14 } else { 7 };
-                (
-                    level,
-                    band + (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8,
-                )
-            };
+            let (base_level, br_ctx) = self.read_base_level(
+                chroma, c, eob, x, y, tx_class, is_1d, &levels, width_px, height_px,
+            )?;
 
             let mut level = base_level;
             let extended = level > 2;
@@ -299,6 +216,122 @@ impl<'a> SymbolDecoder<'a> {
         }
 
         Ok(stats)
+    }
+
+    /// `eob_bin`, its high bit and the raw extra bits: the last scan index of the block.
+    fn read_eob(
+        &mut self,
+        chroma: bool,
+        tx_class: usize,
+        capped_width: u32,
+        capped_height: u32,
+        is_1d: bool,
+    ) -> Result<u32> {
+        let eob_bin_cdf = if chroma {
+            self.cdf_context
+                .get_eob_bin_cdf_chroma_mut(capped_width, capped_height, is_1d)
+        } else {
+            self.cdf_context
+                .get_eob_bin_cdf_mut(capped_width, capped_height, is_1d)
+        };
+        let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
+
+        let eob: u32 = if eob_bin > 1 {
+            let eob_hi_bit_cdf = if chroma {
+                self.cdf_context
+                    .get_eob_hi_bit_cdf_chroma_mut(tx_class, eob_bin as u8)
+            } else {
+                self.cdf_context
+                    .get_eob_hi_bit_cdf_mut(tx_class, eob_bin as u8)
+            };
+            let eob_hi_bit = self.decoder.read_symbol_adaptive(eob_hi_bit_cdf)? as u32;
+            let num_extra_bits = eob_bin - 2;
+            let mut extra = 0u32;
+            for _ in 0..num_extra_bits {
+                let bit = self.decoder.read_bool(16384)? as u32;
+                extra = (extra << 1) | bit;
+            }
+            ((eob_hi_bit | 2) << (eob_bin - 2)) | extra
+        } else {
+            eob_bin
+        };
+        Ok(eob)
+    }
+
+    /// The token at scan position `c`: its base level and the `coeff_br` context for extending it.
+    #[allow(clippy::too_many_arguments)]
+    fn read_base_level(
+        &mut self,
+        chroma: bool,
+        c: u32,
+        eob: u32,
+        x: u32,
+        y: u32,
+        tx_class: usize,
+        is_1d: bool,
+        levels: &scan::LevelBuffer,
+        width_px: u32,
+        height_px: u32,
+    ) -> Result<(u32, u8)> {
+        let is_eob_pos = c == eob;
+        // `br_ctx`: `coeff_br`'s context if this position's token turns out to need
+        // extending (`base_level > 2`) -- computed alongside `base_level` since both draw
+        // from the same neighbor lookup (`lo_ctx`'s `hi_mag` output), matching dav1d's
+        // `get_lo_ctx` call site producing both values together.
+        let (base_level, br_ctx) = if is_eob_pos {
+            let ctx = coeff_base_eob_context(eob, width_px, height_px);
+            let cdf = if chroma {
+                self.cdf_context
+                    .get_coeff_base_eob_cdf_chroma_mut(tx_class, ctx)
+            } else {
+                self.cdf_context.get_coeff_base_eob_cdf_mut(tx_class, ctx)
+            };
+            let level = self.decoder.read_symbol_adaptive(cdf)? as u32 + 1;
+            let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
+            // dav1d's dc-only branch (`eob == 0`) decodes its high token with `hi_cdf[0]`.
+            let br_ctx = if eob == 0 {
+                0
+            } else if pos_band {
+                14
+            } else {
+                7
+            };
+            (level, br_ctx)
+        } else if c == 0 {
+            // DC position: 2D's `coeff_base` context is hardcoded to `0`, but `coeff_br`'s
+            // magnitude still comes from the same 3-neighbor sum `lo_ctx` would produce --
+            // call it regardless of `is_1d` and only override the `coeff_base` context choice,
+            // matching dav1d's manual-recompute-for-2D special case.
+            let (lo_ctx_val, hi_mag) = scan::lo_ctx(levels, 0, 0, is_1d, width_px, height_px);
+            let base_ctx = if is_1d { lo_ctx_val } else { 0 };
+            let cdf = if chroma {
+                self.cdf_context
+                    .get_coeff_base_cdf_chroma_mut(tx_class, base_ctx)
+            } else {
+                self.cdf_context.get_coeff_base_cdf_mut(tx_class, base_ctx)
+            };
+            let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
+            let mag = hi_mag & 63;
+            // DC's `coeff_br` context has no position-band offset (the lowest band).
+            (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
+        } else {
+            let (ctx, hi_mag) = scan::lo_ctx(levels, x, y, is_1d, width_px, height_px);
+            let cdf = if chroma {
+                self.cdf_context
+                    .get_coeff_base_cdf_chroma_mut(tx_class, ctx)
+            } else {
+                self.cdf_context.get_coeff_base_cdf_mut(tx_class, ctx)
+            };
+            let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
+            let mag = hi_mag & 63;
+            let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
+            let band = if pos_band { 14 } else { 7 };
+            (
+                level,
+                band + (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8,
+            )
+        };
+        Ok((base_level, br_ctx))
     }
 
     /// A coefficient token of 15 is followed by an Exp-Golomb tail (dav1d `read_golomb`): count
