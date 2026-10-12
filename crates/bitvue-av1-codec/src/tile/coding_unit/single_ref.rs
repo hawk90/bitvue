@@ -43,47 +43,8 @@ pub(super) fn read_single_ref_mode_info(
     let mode_symbol = decoder.read_inter_mode(ctx)?;
     cu.mode = inter_mode_from_symbol(mode_symbol)?;
 
-    // DRL (spec 7.10.2.10's real `drl_idx` selection, single-ref only) -- real per-context
-    // CDF + adaptation, see `SymbolDecoder::read_drl_bit`'s doc for the desync this closes
-    // (this crate previously never read any DRL bits at all, always implicitly using
-    // index 0 -- `MvPredictorContext::predict_nearest_mv`'s single-neighbor heuristic).
-    // Not read for GLOBALMV (real spec: no DRL for that mode at all).
     if cu.mode == PredictionMode::NewMv {
-        let (stack, n_mvs) = tile_ctx.single_ref_mv_stack(
-            x4,
-            y4,
-            width_4x4,
-            height_4x4,
-            rav1d_ref0,
-            use_ref_frame_mvs,
-        );
-        let mut drl_idx = 0usize;
-        if n_mvs > 1 {
-            if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 0))? {
-                drl_idx += 1;
-            }
-            if drl_idx == 1
-                && n_mvs > 2
-                && decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 1))?
-            {
-                drl_idx += 1;
-            }
-        }
-        // The difference is read after the DRL bits (dav1d: `Post-intermode` precedes
-        // `Post-residualmv`).
-        let explicit_mv = read_explicit_mv(decoder, inter_mode_flags.mv_precision())?;
-        let predictor = stack[drl_idx].mv;
-        cu.mv[0] = MotionVector::new(explicit_mv.x + predictor.x, explicit_mv.y + predictor.y);
-        cu.mv[1] = MotionVector::zero();
-
-        tracing::debug!(
-            "NEWMV at ({}, {}): explicit=({:?}), predictor=({:?}), final=({:?})",
-            x,
-            y,
-            explicit_mv,
-            predictor,
-            cu.mv[0]
-        );
+        read_new_mv(decoder, tile_ctx, rect, mi, frame, rav1d_ref0, cu)?;
     } else if cu.mode == PredictionMode::GlobalMv {
         let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
         cu.mv = [predictor, MotionVector::zero()];
@@ -96,41 +57,7 @@ pub(super) fn read_single_ref_mode_info(
             cu.mv[0]
         );
     } else {
-        // NEARESTMV / NEARMV
-        let (stack, n_mvs) = tile_ctx.single_ref_mv_stack(
-            x4,
-            y4,
-            width_4x4,
-            height_4x4,
-            rav1d_ref0,
-            use_ref_frame_mvs,
-        );
-        let mut drl_idx = if cu.mode == PredictionMode::NearMv {
-            1usize
-        } else {
-            0
-        };
-        if cu.mode == PredictionMode::NearMv && n_mvs > 2 {
-            if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 1))? {
-                drl_idx += 1;
-            }
-            if drl_idx == 2
-                && n_mvs > 3
-                && decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 2))?
-            {
-                drl_idx += 1;
-            }
-        }
-        cu.mv = [stack[drl_idx].mv, MotionVector::zero()];
-
-        tracing::debug!(
-            "Mode {:?} at ({}, {}): drl_idx={} mv={:?}",
-            cu.mode,
-            x,
-            y,
-            drl_idx,
-            cu.mv[0]
-        );
+        read_near_mv(decoder, tile_ctx, rect, mi, frame, rav1d_ref0, cu)?;
     }
 
     // interintra (spec 5.11.29) -- real per-context CDF + adaptation, see
@@ -164,6 +91,138 @@ pub(super) fn read_single_ref_mode_info(
         }
     }
 
+    read_motion_mode_info(decoder, tile_ctx, mi, frame, rav1d_ref0, cu, is_interintra)
+}
+
+/// `NEWMV`: DRL bits, then the explicit difference added to the chosen stack entry.
+fn read_new_mv(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut TileContext,
+    rect: BlockRect,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    rav1d_ref0: i8,
+    cu: &mut CodingUnit,
+) -> Result<()> {
+    let BlockRect { x, y, .. } = rect;
+    let MiRect {
+        x4,
+        y4,
+        width: width_4x4,
+        height: height_4x4,
+    } = mi;
+    let FrameCodingParams {
+        use_ref_frame_mvs,
+        inter_mode_flags,
+        ..
+    } = *frame;
+    // DRL (spec 7.10.2.10's real `drl_idx` selection, single-ref only) -- real per-context
+    // CDF + adaptation, see `SymbolDecoder::read_drl_bit`'s doc for the desync this closes
+    // (this crate previously never read any DRL bits at all, always implicitly using
+    // index 0 -- `MvPredictorContext::predict_nearest_mv`'s single-neighbor heuristic).
+    // Not read for GLOBALMV (real spec: no DRL for that mode at all).
+    let (stack, n_mvs) =
+        tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0, use_ref_frame_mvs);
+    let mut drl_idx = 0usize;
+    if n_mvs > 1 {
+        if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 0))? {
+            drl_idx += 1;
+        }
+        if drl_idx == 1
+            && n_mvs > 2
+            && decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 1))?
+        {
+            drl_idx += 1;
+        }
+    }
+    // The difference is read after the DRL bits (dav1d: `Post-intermode` precedes
+    // `Post-residualmv`).
+    let explicit_mv = read_explicit_mv(decoder, inter_mode_flags.mv_precision())?;
+    let predictor = stack[drl_idx].mv;
+    cu.mv[0] = MotionVector::new(explicit_mv.x + predictor.x, explicit_mv.y + predictor.y);
+    cu.mv[1] = MotionVector::zero();
+
+    tracing::debug!(
+        "NEWMV at ({}, {}): explicit=({:?}), predictor=({:?}), final=({:?})",
+        x,
+        y,
+        explicit_mv,
+        predictor,
+        cu.mv[0]
+    );
+    Ok(())
+}
+
+/// `NEARESTMV` / `NEARMV`: the stack entry named by the mode and its DRL bits.
+fn read_near_mv(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut TileContext,
+    rect: BlockRect,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    rav1d_ref0: i8,
+    cu: &mut CodingUnit,
+) -> Result<()> {
+    let BlockRect { x, y, .. } = rect;
+    let MiRect {
+        x4,
+        y4,
+        width: width_4x4,
+        height: height_4x4,
+    } = mi;
+    let FrameCodingParams {
+        use_ref_frame_mvs, ..
+    } = *frame;
+    let (stack, n_mvs) =
+        tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0, use_ref_frame_mvs);
+    let mut drl_idx = if cu.mode == PredictionMode::NearMv {
+        1usize
+    } else {
+        0
+    };
+    if cu.mode == PredictionMode::NearMv && n_mvs > 2 {
+        if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 1))? {
+            drl_idx += 1;
+        }
+        if drl_idx == 2
+            && n_mvs > 3
+            && decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 2))?
+        {
+            drl_idx += 1;
+        }
+    }
+    cu.mv = [stack[drl_idx].mv, MotionVector::zero()];
+
+    tracing::debug!(
+        "Mode {:?} at ({}, {}): drl_idx={} mv={:?}",
+        cu.mode,
+        x,
+        y,
+        drl_idx,
+        cu.mv[0]
+    );
+    Ok(())
+}
+
+/// `motion_mode` / OBMC symbols of a single-ref block. Returns whether the block is `WARPED_CAUSAL`.
+fn read_motion_mode_info(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut TileContext,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    rav1d_ref0: i8,
+    cu: &CodingUnit,
+    is_interintra: bool,
+) -> Result<bool> {
+    let MiRect {
+        x4,
+        y4,
+        width: width_4x4,
+        height: height_4x4,
+    } = mi;
+    let FrameCodingParams {
+        inter_mode_flags, ..
+    } = *frame;
     // motion_mode (spec 5.11.27) -- real per-exact-block-size CDF + adaptation, see
     // `SymbolDecoder::read_motion_mode`'s doc for the desync this closes (previously
     // never read at all). Real spec gate: switchable, not interintra, both dims >= 8px,
