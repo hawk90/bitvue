@@ -242,6 +242,19 @@ impl BlockSize {
     /// Get sub-block size after partition
     pub fn sub_block_size(&self, partition: PartitionType) -> Vec<BlockSize> {
         match partition {
+            PartitionType::None
+            | PartitionType::Horz
+            | PartitionType::Vert
+            | PartitionType::Split => self.even_sub_blocks(partition),
+            PartitionType::HorzB | PartitionType::HorzA => self.horz_ab_sub_blocks(partition),
+            PartitionType::VertB | PartitionType::VertA => self.vert_ab_sub_blocks(partition),
+            PartitionType::Horz4 | PartitionType::Vert4 => self.strip_sub_blocks(partition),
+        }
+    }
+
+    /// `None`, `Horz`, `Vert` and `Split`: the equal-sized sub-blocks.
+    fn even_sub_blocks(&self, partition: PartitionType) -> Vec<BlockSize> {
+        match partition {
             PartitionType::None => vec![*self],
             PartitionType::Horz => {
                 // Split horizontally
@@ -276,6 +289,13 @@ impl BlockSize {
                     _ => vec![*self], // Fallback
                 }
             }
+            _ => unreachable!("`sub_block_size` only passes the equal-split partitions"),
+        }
+    }
+
+    /// `HorzB` and `HorzA`: one full-width block plus two half-width blocks.
+    fn horz_ab_sub_blocks(&self, partition: PartitionType) -> Vec<BlockSize> {
+        match partition {
             PartitionType::HorzB => {
                 // Top row: full-width block at half height
                 // Bottom row: left half + right half, each at half height
@@ -332,6 +352,13 @@ impl BlockSize {
                     _ => vec![*self],
                 }
             }
+            _ => unreachable!("`sub_block_size` only passes `HorzA` or `HorzB`"),
+        }
+    }
+
+    /// `VertB` and `VertA`: one full-height block plus two half-height blocks.
+    fn vert_ab_sub_blocks(&self, partition: PartitionType) -> Vec<BlockSize> {
+        match partition {
             PartitionType::VertB => {
                 // Left column: full-height block at half width
                 // Right column: top half + bottom half, each at half width
@@ -388,6 +415,13 @@ impl BlockSize {
                     _ => vec![*self],
                 }
             }
+            _ => unreachable!("`sub_block_size` only passes `VertA` or `VertB`"),
+        }
+    }
+
+    /// `Horz4` and `Vert4`: four equal strips.
+    fn strip_sub_blocks(&self, partition: PartitionType) -> Vec<BlockSize> {
+        match partition {
             PartitionType::Horz4 => {
                 // Four equal horizontal strips, each at 1/4 height -- only legal (`is_allowed`)
                 // for the square 16x16/32x32/64x64 sizes, so those are the only real arms; the
@@ -409,6 +443,7 @@ impl BlockSize {
                     _ => vec![*self],
                 }
             }
+            _ => unreachable!("`sub_block_size` only passes `Horz4` or `Vert4`"),
         }
     }
 }
