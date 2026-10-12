@@ -40,60 +40,18 @@ pub(super) fn parse_film_grain_params(
         reader.read_bits(8)?; // point_y_value
         reader.read_bits(8)?; // point_y_scaling
     }
-    let chroma_scaling_from_luma = if seq.color_config.mono_chrome {
-        false
-    } else {
-        reader.read_bit()?
-    };
-    let (num_cb_points, num_cr_points) = if seq.color_config.mono_chrome
-        || chroma_scaling_from_luma
-        || (seq.color_config.subsampling_x && seq.color_config.subsampling_y && num_y_points == 0)
-    {
-        (0, 0)
-    } else {
-        let cb = reader.read_bits(4)?;
-        for _ in 0..cb {
-            reader.read_bits(8)?;
-            reader.read_bits(8)?;
-        }
-        let cr = reader.read_bits(4)?;
-        for _ in 0..cr {
-            reader.read_bits(8)?;
-            reader.read_bits(8)?;
-        }
-        (cb, cr)
-    };
+    let (chroma_scaling_from_luma, num_cb_points, num_cr_points) =
+        read_chroma_scaling_points(reader, seq, num_y_points)?;
     let grain_scaling_shift = (reader.read_bits(2)? + 8) as u8;
     let ar_coeff_lag = reader.read_bits(2)? as u8;
-    let num_pos_luma = 2 * ar_coeff_lag as u32 * (ar_coeff_lag as u32 + 1);
-    let num_pos_chroma = if num_y_points > 0 {
-        num_pos_luma + 1
-    } else {
-        num_pos_luma
-    };
-    let mut ar_coeffs_y = Vec::new();
-    if num_y_points > 0 {
-        ar_coeffs_y.reserve(num_pos_luma as usize);
-        for _ in 0..num_pos_luma {
-            let raw = reader.read_bits(8)?;
-            ar_coeffs_y.push((raw as i32 - 128) as i8);
-        }
-    }
-    let mut ar_coeffs_uv = Vec::new();
-    if chroma_scaling_from_luma || num_cb_points > 0 {
-        for _ in 0..num_pos_chroma {
-            let raw = reader.read_bits(8)?;
-            ar_coeffs_uv.push((raw as i32 - 128) as i8);
-        }
-    }
-    if chroma_scaling_from_luma || num_cr_points > 0 {
-        for _ in 0..num_pos_chroma {
-            reader.read_bits(8)?; // ar_coeffs_cr -- appended separately from ar_coeffs_uv's Cb
-                                  // values in the spec; FilmGrainInfo has one combined
-                                  // ar_coeffs_uv field, so Cr values aren't separately kept
-                                  // (matches the existing FilmGrainInfo shape, not a new gap).
-        }
-    }
+    let (ar_coeffs_y, ar_coeffs_uv) = read_ar_coeffs(
+        reader,
+        ar_coeff_lag,
+        num_y_points,
+        chroma_scaling_from_luma,
+        num_cb_points,
+        num_cr_points,
+    )?;
     let ar_coeff_shift = (reader.read_bits(2)? + 6) as u8;
     let grain_scale_shift = reader.read_bits(2)? as u8;
     if num_cb_points > 0 {
@@ -125,4 +83,79 @@ pub(super) fn parse_film_grain_params(
         overlap,
         clip_to_restricted_range,
     })
+}
+
+/// `chroma_scaling_from_luma` and the Cb / Cr scaling points. Returns
+/// `(chroma_scaling_from_luma, num_cb_points, num_cr_points)`.
+fn read_chroma_scaling_points(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+    num_y_points: u32,
+) -> Result<(bool, u32, u32)> {
+    let chroma_scaling_from_luma = if seq.color_config.mono_chrome {
+        false
+    } else {
+        reader.read_bit()?
+    };
+    let (num_cb_points, num_cr_points) = if seq.color_config.mono_chrome
+        || chroma_scaling_from_luma
+        || (seq.color_config.subsampling_x && seq.color_config.subsampling_y && num_y_points == 0)
+    {
+        (0, 0)
+    } else {
+        let cb = reader.read_bits(4)?;
+        for _ in 0..cb {
+            reader.read_bits(8)?;
+            reader.read_bits(8)?;
+        }
+        let cr = reader.read_bits(4)?;
+        for _ in 0..cr {
+            reader.read_bits(8)?;
+            reader.read_bits(8)?;
+        }
+        (cb, cr)
+    };
+    Ok((chroma_scaling_from_luma, num_cb_points, num_cr_points))
+}
+
+/// The auto-regressive coefficients. Returns `(ar_coeffs_y, ar_coeffs_uv)`; the Cr values are read
+/// but not kept.
+fn read_ar_coeffs(
+    reader: &mut BitReader,
+    ar_coeff_lag: u8,
+    num_y_points: u32,
+    chroma_scaling_from_luma: bool,
+    num_cb_points: u32,
+    num_cr_points: u32,
+) -> Result<(Vec<i8>, Vec<i8>)> {
+    let num_pos_luma = 2 * ar_coeff_lag as u32 * (ar_coeff_lag as u32 + 1);
+    let num_pos_chroma = if num_y_points > 0 {
+        num_pos_luma + 1
+    } else {
+        num_pos_luma
+    };
+    let mut ar_coeffs_y = Vec::new();
+    if num_y_points > 0 {
+        ar_coeffs_y.reserve(num_pos_luma as usize);
+        for _ in 0..num_pos_luma {
+            let raw = reader.read_bits(8)?;
+            ar_coeffs_y.push((raw as i32 - 128) as i8);
+        }
+    }
+    let mut ar_coeffs_uv = Vec::new();
+    if chroma_scaling_from_luma || num_cb_points > 0 {
+        for _ in 0..num_pos_chroma {
+            let raw = reader.read_bits(8)?;
+            ar_coeffs_uv.push((raw as i32 - 128) as i8);
+        }
+    }
+    if chroma_scaling_from_luma || num_cr_points > 0 {
+        for _ in 0..num_pos_chroma {
+            reader.read_bits(8)?; // ar_coeffs_cr -- appended separately from ar_coeffs_uv's Cb
+                                  // values in the spec; FilmGrainInfo has one combined
+                                  // ar_coeffs_uv field, so Cr values aren't separately kept
+                                  // (matches the existing FilmGrainInfo shape, not a new gap).
+        }
+    }
+    Ok((ar_coeffs_y, ar_coeffs_uv))
 }
