@@ -642,6 +642,111 @@ fn skip_skip_mode_params(
     Ok(())
 }
 
+/// Reads the reference-frame indices of an inter frame: `None` when short signaling was used (the
+/// slots are then derived by `set_frame_refs()`, which this parser does not run) or when the
+/// payload ends early. `reader` is positioned at `frame_refs_short_signaling`.
+fn read_ref_frame_idx(reader: &mut BitReader) -> Option<[u8; 7]> {
+    let mut ref_frame_idx: Option<[u8; 7]> = None;
+    // frame_refs_short_signaling  f(1)
+    // Only present when enable_order_hint is true in sequence header.
+    // We conservatively assume false (not present) since we lack seq context.
+    // Most bitstreams use enable_order_hint=true, so this bit IS typically
+    // present. Reading it as 0 means we treat it as "not short-signaling",
+    // which requires reading all 7 ref indices.
+    let frame_refs_short = reader.read_bit().unwrap_or(false);
+    if frame_refs_short {
+        // Short signaling: last_frame_idx u(3) + gold_frame_idx u(3)
+        // then set_frame_refs() fills in the remaining 5 slots implicitly
+        reader.read_bits(3).ok(); // last_frame_idx
+        reader.read_bits(3).ok(); // gold_frame_idx
+                                  // No explicit ref_frame_idx bits to read; slots are derived.
+                                  // We cannot recover the index values without running set_frame_refs().
+    } else {
+        // Long signaling: read all 7 ref_frame_idx u(3) entries
+        let mut idx = [0u8; 7];
+        let ok = (0..7).all(|i| {
+            reader
+                .read_bits(3)
+                .map(|v| {
+                    idx[i] = v as u8;
+                })
+                .is_ok()
+        });
+        if ok {
+            ref_frame_idx = Some(idx);
+        }
+    }
+    ref_frame_idx
+}
+
+/// A [`FrameHeader`] with every field the basic parser does not read (and the show_existing_frame
+/// case never reads) at its default. Callers set what they did read with `..unparsed_header()`.
+fn unparsed_header() -> FrameHeader {
+    FrameHeader {
+        frame_type: FrameType::Key,
+        show_frame: true,
+        show_existing_frame: false,
+        frame_to_show_map_idx: None,
+        error_resilient_mode: false,
+        base_q_idx: None,
+        y_dc_delta_q: None,
+        uv_dc_delta_q: None,
+        delta_q_present: false,
+        delta_q_residue: None,
+        header_size_bytes: 0,
+        header_size_bits: 0,
+        tiles: None,
+        refresh_frame_flags: None,
+        ref_frame_idx: None,
+        order_hint: 0,
+        width: 0,
+        height: 0,
+        upscaled_width: 0,
+        upscaled_height: 0,
+        reference_select: false,
+        allow_intrabc: false,
+        allow_screen_content_tools: false,
+        delta_lf_present: false,
+        delta_lf_multi: false,
+        skip_mode_present: false,
+        skip_mode_refs: [0, 0],
+        subpel_filter_switchable: false,
+        switchable_motion_mode: false,
+        allow_warped_motion: false,
+        force_integer_mv: false,
+        allow_high_precision_mv: false,
+        gm_type: [0u8; 8],
+        reduced_tx_set: false,
+        txfm_mode: TxfmMode::Largest,
+        use_ref_frame_mvs: false,
+        primary_ref_frame: 7,
+        disable_frame_end_update_cdf: true,
+        segmentation: crate::frame_header_full::SegmentationInfo::default(),
+        loop_filter: LoopFilterInfo::default(),
+        cdef_damping: CdefInfo::default(),
+        cdef_y_primary_strength: 0,
+        cdef_y_secondary_strength: 0,
+        cdef_uv_primary_strength: 0,
+        cdef_uv_secondary_strength: 0,
+        loop_restoration: LoopRestorationInfo::default(),
+        film_grain: FilmGrainInfo::default(),
+        super_resolution: SuperResolutionInfo::default(),
+    }
+}
+
+/// The header of a `show_existing_frame = 1` frame: a shown key frame with every other field at
+/// its default. `reader` is positioned right after the slot index.
+fn show_existing_frame_header(reader: &BitReader, frame_to_show_map_idx: u8) -> FrameHeader {
+    FrameHeader {
+        show_existing_frame: true,
+        frame_to_show_map_idx: Some(frame_to_show_map_idx),
+        header_size_bytes: reader.byte_position()
+            + usize::from(!reader.position().is_multiple_of(8)),
+        header_size_bits: reader.position(),
+        ..unparsed_header()
+    }
+}
+
 /// Parse frame header from payload
 ///
 /// Implements AV1 spec Section 5.9.2 (uncompressed_header).
@@ -663,61 +768,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
 
     if show_existing_frame {
         let frame_to_show_map_idx = reader.read_bits(3)? as u8;
-
-        let header_size_bytes =
-            reader.byte_position() + usize::from(!reader.position().is_multiple_of(8));
-        let header_size_bits = reader.position();
-
-        return Ok(FrameHeader {
-            frame_type: FrameType::Key,
-            show_frame: true,
-            show_existing_frame: true,
-            frame_to_show_map_idx: Some(frame_to_show_map_idx),
-            error_resilient_mode: false,
-            base_q_idx: None,
-            y_dc_delta_q: None,
-            uv_dc_delta_q: None,
-            delta_q_present: false,
-            delta_q_residue: None,
-            header_size_bytes,
-            header_size_bits,
-            tiles: None,
-            refresh_frame_flags: None,
-            ref_frame_idx: None,
-            order_hint: 0,
-            width: 0,
-            height: 0,
-            upscaled_width: 0,
-            upscaled_height: 0,
-            reference_select: false,
-            allow_intrabc: false,
-            allow_screen_content_tools: false,
-            delta_lf_present: false,
-            delta_lf_multi: false,
-            skip_mode_present: false,
-            skip_mode_refs: [0, 0],
-            subpel_filter_switchable: false,
-            switchable_motion_mode: false,
-            allow_warped_motion: false,
-            force_integer_mv: false,
-            allow_high_precision_mv: false,
-            gm_type: [0u8; 8],
-            reduced_tx_set: false,
-            txfm_mode: TxfmMode::Largest,
-            use_ref_frame_mvs: false,
-            primary_ref_frame: 7,
-            disable_frame_end_update_cdf: true,
-            segmentation: crate::frame_header_full::SegmentationInfo::default(),
-            loop_filter: LoopFilterInfo::default(),
-            cdef_damping: CdefInfo::default(),
-            cdef_y_primary_strength: 0,
-            cdef_y_secondary_strength: 0,
-            cdef_uv_primary_strength: 0,
-            cdef_uv_secondary_strength: 0,
-            loop_restoration: LoopRestorationInfo::default(),
-            film_grain: FilmGrainInfo::default(),
-            super_resolution: SuperResolutionInfo::default(),
-        });
+        return Ok(show_existing_frame_header(&reader, frame_to_show_map_idx));
     }
 
     // frame_type (2 bits) – AV1 Spec 5.9.2
@@ -792,38 +843,11 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     // For INTRA_ONLY frames: read ref_order_hint for each refreshed buffer
     // (we skip the actual values since we don't use them for extraction)
     // For INTER frames: read reference frame info
-    let mut ref_frame_idx: Option<[u8; 7]> = None;
-    if !is_intra {
-        // frame_refs_short_signaling  f(1)
-        // Only present when enable_order_hint is true in sequence header.
-        // We conservatively assume false (not present) since we lack seq context.
-        // Most bitstreams use enable_order_hint=true, so this bit IS typically
-        // present. Reading it as 0 means we treat it as "not short-signaling",
-        // which requires reading all 7 ref indices.
-        let frame_refs_short = reader.read_bit().unwrap_or(false);
-        if frame_refs_short {
-            // Short signaling: last_frame_idx u(3) + gold_frame_idx u(3)
-            // then set_frame_refs() fills in the remaining 5 slots implicitly
-            reader.read_bits(3).ok(); // last_frame_idx
-            reader.read_bits(3).ok(); // gold_frame_idx
-                                      // No explicit ref_frame_idx bits to read; slots are derived.
-                                      // We cannot recover the index values without running set_frame_refs().
-        } else {
-            // Long signaling: read all 7 ref_frame_idx u(3) entries
-            let mut idx = [0u8; 7];
-            let ok = (0..7).all(|i| {
-                reader
-                    .read_bits(3)
-                    .map(|v| {
-                        idx[i] = v as u8;
-                    })
-                    .is_ok()
-            });
-            if ok {
-                ref_frame_idx = Some(idx);
-            }
-        }
-    }
+    let ref_frame_idx = if is_intra {
+        None
+    } else {
+        read_ref_frame_idx(&mut reader)
+    };
 
     // frame_size() – skip; without seq header we cannot know field widths
     // For frame_size_override we would need frame_width_bits/height_bits from seq header.
@@ -857,52 +881,16 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     Ok(FrameHeader {
         frame_type,
         show_frame,
-        show_existing_frame: false,
-        frame_to_show_map_idx: None,
         error_resilient_mode,
         base_q_idx: base_q_idx_opt,
         y_dc_delta_q,
         uv_dc_delta_q,
         delta_q_present,
-        delta_q_residue: None,
         header_size_bytes,
         header_size_bits,
-        tiles: None,
         refresh_frame_flags,
         ref_frame_idx,
-        order_hint: 0,
-        width: 0,
-        height: 0,
-        upscaled_width: 0,
-        upscaled_height: 0,
-        reference_select: false,
-        allow_intrabc: false,
-        allow_screen_content_tools: false,
-        delta_lf_present: false,
-        delta_lf_multi: false,
-        skip_mode_present: false,
-        skip_mode_refs: [0, 0],
-        subpel_filter_switchable: false,
-        switchable_motion_mode: false,
-        allow_warped_motion: false,
-        force_integer_mv: false,
-        allow_high_precision_mv: false,
-        gm_type: [0u8; 8],
-        reduced_tx_set: false,
-        txfm_mode: TxfmMode::Largest,
-        use_ref_frame_mvs: false,
-        primary_ref_frame: 7,
-        disable_frame_end_update_cdf: true,
-        segmentation: crate::frame_header_full::SegmentationInfo::default(),
-        loop_filter: LoopFilterInfo::default(),
-        cdef_damping: CdefInfo::default(),
-        cdef_y_primary_strength: 0,
-        cdef_y_secondary_strength: 0,
-        cdef_uv_primary_strength: 0,
-        cdef_uv_secondary_strength: 0,
-        loop_restoration: LoopRestorationInfo::default(),
-        film_grain: FilmGrainInfo::default(),
-        super_resolution: SuperResolutionInfo::default(),
+        ..unparsed_header()
     })
 }
 
