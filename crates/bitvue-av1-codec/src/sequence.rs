@@ -839,4 +839,119 @@ mod tests {
         };
         assert_eq!(config_mono.chroma_subsampling_str(), "4:0:0");
     }
+
+    /// Packs `(value, width)` pairs MSB first, as the spec's `f(n)` elements are laid out.
+    fn pack(fields: &[(u32, u8)]) -> Vec<u8> {
+        let mut bits = Vec::new();
+        for &(value, width) in fields {
+            for i in (0..width).rev() {
+                bits.push(((value >> i) & 1) as u8);
+            }
+        }
+        let mut out = vec![0u8; bits.len().div_ceil(8)];
+        for (i, bit) in bits.iter().enumerate() {
+            out[i / 8] |= bit << (7 - (i % 8));
+        }
+        out
+    }
+
+    /// A 16x16, 8-bit 4:2:0 sequence header with the three optional groups under test spelled
+    /// out: `initial_display_delay_present_flag` with one operating point, frame ids, and the
+    /// screen-content / integer-MV selection.
+    fn header(
+        display_delay: Option<u32>,
+        frame_ids: Option<(u32, u32)>,
+        screen_content: (u32, u32),
+        integer_mv: (u32, u32),
+    ) -> Vec<u8> {
+        let mut f: Vec<(u32, u8)> = vec![
+            (0, 3),                              // seq_profile
+            (0, 1),                              // still_picture
+            (0, 1),                              // reduced_still_picture_header
+            (0, 1),                              // timing_info_present_flag
+            (display_delay.is_some() as u32, 1), // initial_display_delay_present_flag
+            (0, 5),                              // operating_points_cnt_minus_1
+            (0, 12),                             // operating_point_idc[0]
+            (0, 5),                              // seq_level_idx[0]
+        ];
+        if let Some(delay) = display_delay {
+            f.push((1, 1)); // initial_display_delay_present_for_this_op
+            f.push((delay, 4)); // initial_display_delay_minus_1
+        }
+        f.extend([(3, 4), (3, 4), (15, 4), (15, 4)]); // frame size: 4 bits each, 16x16
+        match frame_ids {
+            Some((delta_minus_2, additional_minus_1)) => {
+                f.extend([(1, 1), (delta_minus_2, 4), (additional_minus_1, 3)])
+            }
+            None => f.push((0, 1)),
+        }
+        f.extend([(0, 1), (0, 1), (0, 1)]); // 128x128 sb, filter_intra, intra_edge_filter
+        f.extend([(0, 1), (0, 1), (0, 1), (0, 1)]); // interintra, masked, warped, dual filter
+        f.push((0, 1)); // enable_order_hint
+        f.push((screen_content.0, 1)); // seq_choose_screen_content_tools
+        if screen_content.0 == 0 {
+            f.push((screen_content.1, 1)); // seq_force_screen_content_tools
+        }
+        let force_screen = if screen_content.0 == 1 {
+            2
+        } else {
+            screen_content.1
+        };
+        if force_screen > 0 {
+            f.push((integer_mv.0, 1)); // seq_choose_integer_mv
+            if integer_mv.0 == 0 {
+                f.push((integer_mv.1, 1)); // seq_force_integer_mv
+            }
+        }
+        f.extend([(0, 1), (0, 1), (0, 1)]); // superres, cdef, restoration
+        f.extend([(0, 1), (0, 1), (0, 1), (0, 1), (0, 2), (0, 1)]); // color_config
+        f.push((0, 1)); // film_grain_params_present_flag
+        pack(&f)
+    }
+
+    #[test]
+    fn the_initial_display_delay_of_an_operating_point_is_the_coded_value_plus_one() {
+        let seq = parse_sequence_header(&header(Some(5), None, (1, 0), (1, 0))).unwrap();
+        assert_eq!(seq.operating_points[0].initial_display_delay, Some(6));
+        assert_eq!((seq.max_frame_width, seq.max_frame_height), (16, 16));
+
+        let without = parse_sequence_header(&header(None, None, (1, 0), (1, 0))).unwrap();
+        assert_eq!(without.operating_points[0].initial_display_delay, None);
+    }
+
+    #[test]
+    fn frame_id_lengths_are_read_in_4_and_3_bits() {
+        let seq = parse_sequence_header(&header(None, Some((9, 5)), (1, 0), (1, 0))).unwrap();
+        assert!(seq.frame_id_numbers_present);
+        assert_eq!(seq.delta_frame_id_length_minus_2, Some(9));
+        assert_eq!(seq.additional_frame_id_length_minus_1, Some(5));
+        // Fields after the ids still line up.
+        assert_eq!((seq.max_frame_width, seq.max_frame_height), (16, 16));
+        assert!(seq.seq_choose_screen_content_tools);
+    }
+
+    #[test]
+    fn forced_screen_content_and_integer_mv_flags_are_taken_from_the_bits() {
+        // choose = 0 reads the forced value; the integer-MV pair is only present with
+        // screen content tools on.
+        let on = parse_sequence_header(&header(None, None, (0, 1), (0, 1))).unwrap();
+        assert!(!on.seq_choose_screen_content_tools);
+        assert_eq!(on.seq_force_screen_content_tools, 1);
+        assert!(!on.seq_choose_integer_mv);
+        assert_eq!(on.seq_force_integer_mv, 1);
+
+        let integer_mv_off = parse_sequence_header(&header(None, None, (0, 1), (0, 0))).unwrap();
+        assert_eq!(integer_mv_off.seq_force_integer_mv, 0);
+
+        // Screen content tools forced off: no integer-MV bits, SELECT_INTEGER_MV (2).
+        let off = parse_sequence_header(&header(None, None, (0, 0), (1, 0))).unwrap();
+        assert_eq!(off.seq_force_screen_content_tools, 0);
+        assert_eq!(off.seq_force_integer_mv, 2);
+        assert_eq!((off.max_frame_width, off.max_frame_height), (16, 16));
+
+        // Chosen per frame: SELECT (2) for both.
+        let select = parse_sequence_header(&header(None, None, (1, 0), (1, 0))).unwrap();
+        assert_eq!(select.seq_force_screen_content_tools, 2);
+        assert_eq!(select.seq_force_integer_mv, 2);
+    }
 }
