@@ -51,12 +51,14 @@
 //! introspection, so there is no independent ground truth to diff against, unlike e.g.
 //! `decode_bridge`'s pixel-byte tests pinned against known-correct output.
 
+mod assemble;
 mod coding_tools;
 mod film_grain;
 mod frame_prelude;
 mod frame_size;
 mod global_motion;
 mod loop_filters;
+mod quantizer;
 mod segmentation;
 mod show_existing;
 mod size_and_refs;
@@ -74,18 +76,18 @@ pub(crate) use self::global_motion::{GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION};
 use self::loop_filters::parse_lr_params;
 pub use self::segmentation::SegmentationInfo;
 #[cfg(test)]
-use self::segmentation::{MAX_SEGMENTS, SEG_LVL_MAX};
+use self::segmentation::{parse_segmentation_params, MAX_SEGMENTS, SEG_LVL_MAX};
 pub(crate) use self::segmentation::{SEG_LVL_GLOBALMV, SEG_LVL_REF_FRAME, SEG_LVL_SKIP};
 pub use self::skip_mode::relative_dist;
 use self::{
-    coding_tools::{read_coding_tools, CodingTools, CodingToolsInput},
-    frame_prelude::{read_frame_prelude, FramePrelude},
-    frame_size::FrameSize,
+    assemble::{assemble_frame_header, refresh_ref_slots, HeaderSections},
+    coding_tools::{read_coding_tools, CodingToolsInput},
+    frame_prelude::read_frame_prelude,
     global_motion::parse_global_motion_params,
-    loop_filters::parse_delta_lf_params,
-    segmentation::{parse_segmentation_params, SegmentationFeatures},
+    quantizer::{read_quantizer_section, QuantizerInput},
+    segmentation::SegmentationFeatures,
     show_existing::parse_show_existing_frame,
-    size_and_refs::{read_size_and_refs, SizeAndRefs, SizeAndRefsInput},
+    size_and_refs::{read_size_and_refs, SizeAndRefsInput},
     skip_mode::read_skip_mode_params,
     tile_info::read_tile_info,
 };
@@ -308,208 +310,76 @@ pub fn parse_frame_header_full(
         return parse_show_existing_frame(&mut reader, ref_state);
     }
 
-    let FramePrelude {
-        frame_type,
-        frame_is_intra,
-        show_frame,
-        showable_frame,
-        error_resilient_mode,
-        disable_cdf_update,
-        allow_screen_content_tools,
-        force_integer_mv,
-        frame_size_override_flag,
-        order_hint,
-        primary_ref_frame,
-        refresh_frame_flags,
-    } = read_frame_prelude(&mut reader, seq)?;
-
-    let SizeAndRefs {
-        size,
-        allow_intrabc,
-        ref_frame_idx,
-        allow_high_precision_mv,
-        subpel_filter_switchable,
-        switchable_motion_mode,
-        use_ref_frame_mvs,
-    } = read_size_and_refs(
+    let prelude = read_frame_prelude(&mut reader, seq)?;
+    let refs = read_size_and_refs(
         &mut reader,
         seq,
         &SizeAndRefsInput {
-            frame_is_intra,
-            frame_size_override_flag,
-            allow_screen_content_tools,
-            force_integer_mv,
-            error_resilient_mode,
+            frame_is_intra: prelude.frame_is_intra,
+            frame_size_override_flag: prelude.frame_size_override_flag,
+            allow_screen_content_tools: prelude.allow_screen_content_tools,
+            force_integer_mv: prelude.force_integer_mv,
+            error_resilient_mode: prelude.error_resilient_mode,
         },
     )?;
-    let FrameSize {
-        width,
-        height,
-        upscaled_width,
-        upscaled_height,
-        use_superres,
-        superres_denom,
-    } = size;
 
-    let disable_frame_end_update_cdf = if seq.reduced_still_picture_header || disable_cdf_update {
-        true
-    } else {
-        reader.read_bit()?
-    };
+    let disable_frame_end_update_cdf =
+        if seq.reduced_still_picture_header || prelude.disable_cdf_update {
+            true
+        } else {
+            reader.read_bit()?
+        };
 
-    let tiles = read_tile_info(&mut reader, seq, width, height)?;
+    let tiles = read_tile_info(&mut reader, seq, refs.size.width, refs.size.height)?;
 
-    let quant = crate::frame_header::parse_quantization_params(
+    let quantizer = read_quantizer_section(
         &mut reader,
-        seq.color_config.num_planes,
-        seq.color_config.separate_uv_delta_q,
+        seq,
+        ref_state,
+        &QuantizerInput {
+            primary_ref_frame: prelude.primary_ref_frame,
+            ref_frame_idx: &refs.ref_frame_idx,
+            allow_intrabc: refs.allow_intrabc,
+        },
     )?;
-    let base_q_idx = quant.base_q_idx;
-    let (y_dc_delta_q, uv_dc_delta_q) = (Some(quant.y_dc), Some(quant.u_dc));
+    let all_lossless = quantizer.coded_lossless && refs.size.width == refs.size.upscaled_width;
 
-    // `load_previous()`: a frame with a primary reference starts from that slot's segmentation
-    // features (and none otherwise, `setup_past_independence`).
-    let previous_segmentation = if primary_ref_frame == PRIMARY_REF_NONE {
-        SegmentationFeatures::default()
-    } else {
-        ref_state.segmentation[ref_frame_idx[primary_ref_frame as usize] as usize % NUM_REF_FRAMES]
-    };
-    let segmentation =
-        parse_segmentation_params(&mut reader, primary_ref_frame, &previous_segmentation)?;
-
-    let delta_q_present = if base_q_idx > 0 {
-        reader.read_bit()?
-    } else {
-        false
-    };
-    if delta_q_present {
-        reader.read_bits(2)?; // delta_q_res
-    }
-    let (delta_lf_present, delta_lf_multi) =
-        parse_delta_lf_params(&mut reader, delta_q_present, allow_intrabc)?;
-
-    // CodedLossless: real spec needs every segment's per-segment qindex (base_q_idx adjusted by
-    // segmentation's SEG_LVL_ALT_Q feature, which `SegmentationInfo` now retains but this
-    // computation doesn't yet consult -- see below) AND every real delta-Q term
-    // (DeltaQYDc/DeltaQUDc/DeltaQUAc/DeltaQVDc/DeltaQVAc). `uv_ac_delta_q` (`DeltaQUAc`, and its
-    // implicit V mirror when `!separate_uv_delta_q`) is now real -- previously omitted entirely,
-    // which wasn't just an "under-detects" approximation (this function's original doc claimed):
-    // a real encoder using `base_q_idx=0` + zero Y/UV-DC deltas but a *nonzero* `DeltaQUAc` is
-    // NOT lossless, and this crate would have wrongly said `coded_lossless=true`, causing it to
-    // skip real `loop_filter_params`/`cdef_params`/`lr_params` bits the encoder actually wrote --
-    // a genuine desync, not a benign approximation, for that (unusual but spec-legal) case. Two
-    // narrower gaps remain, still approximated: (1) segmentation's SEG_LVL_ALT_Q isn't folded in
-    // (matches this crate's `Qp`-grid extraction's own "no per-segment override" scope; only
-    // under-detects, since a segment-specific override can only ever make a *subset* of segments
-    // lossless, never all of them when the frame-wide check already says false) -- affects only
-    // whether loop_filter/cdef/lr sections get skipped, not their VALUES when they don't; (2)
-    // `separate_uv_delta_q`'s separate V deltas aren't retained (`parse_quantization_params`'s
-    // doc), so a frame using that rarer path with V deltas differing from U's could still be
-    // mis-classified either direction.
-    let coded_lossless = base_q_idx == 0 && quant.all_deltas_zero();
-    let all_lossless = coded_lossless && width == upscaled_width;
-
-    let CodingTools {
-        loop_filter,
-        cdef,
-        loop_restoration,
-        txfm_mode,
-        reference_select,
-        skip_mode_present,
-        skip_mode_refs,
-        allow_warped_motion,
-        reduced_tx_set,
-        gm_type,
-        film_grain,
-    } = read_coding_tools(
+    let tools = read_coding_tools(
         &mut reader,
         seq,
         ref_state,
         &CodingToolsInput {
-            frame_type,
-            frame_is_intra,
-            show_frame,
-            showable_frame,
-            error_resilient_mode,
-            allow_intrabc,
-            allow_high_precision_mv,
-            order_hint,
-            ref_frame_idx: &ref_frame_idx,
-            coded_lossless,
+            frame_type: prelude.frame_type,
+            frame_is_intra: prelude.frame_is_intra,
+            show_frame: prelude.show_frame,
+            showable_frame: prelude.showable_frame,
+            error_resilient_mode: prelude.error_resilient_mode,
+            allow_intrabc: refs.allow_intrabc,
+            allow_high_precision_mv: refs.allow_high_precision_mv,
+            order_hint: prelude.order_hint,
+            ref_frame_idx: &refs.ref_frame_idx,
+            coded_lossless: quantizer.coded_lossless,
             all_lossless,
         },
     )?;
 
-    // Update reference-slot order-hint state for whichever frames get refreshed, so a later
-    // parse_frame_header_full call (a later frame in the same sequential scan) sees this frame's
-    // order hint when computing skip_mode_params. Must happen after every early-return path above
-    // (show_existing_frame handled separately; none of the Err(...) short-circuits reach here).
-    for i in 0..NUM_REF_FRAMES {
-        if (refresh_frame_flags >> i) & 1 == 1 {
-            ref_state.ref_order_hint[i] = order_hint;
-            ref_state.segmentation[i] = SegmentationFeatures::from(&segmentation);
-        }
-    }
+    refresh_ref_slots(
+        ref_state,
+        prelude.refresh_frame_flags,
+        prelude.order_hint,
+        &quantizer.segmentation,
+    );
 
-    let super_resolution = SuperResolutionInfo {
-        enabled: use_superres,
-        scale_denominator: superres_denom as u8,
-    };
-
-    Ok(FrameHeader {
-        frame_type,
-        show_frame,
-        show_existing_frame: false,
-        frame_to_show_map_idx: None,
-        error_resilient_mode,
-        base_q_idx: Some(base_q_idx),
-        y_dc_delta_q,
-        uv_dc_delta_q,
-        delta_q_present,
-        delta_q_residue: None,
+    Ok(assemble_frame_header(HeaderSections {
+        prelude,
+        refs,
+        disable_frame_end_update_cdf,
+        tiles,
+        quantizer,
+        tools,
+        header_size_bits: reader.position(),
         header_size_bytes: reader
             .byte_position()
             .saturating_add(usize::from(!reader.position().is_multiple_of(8))),
-        header_size_bits: reader.position(),
-        tiles: Some(tiles),
-        refresh_frame_flags: Some(refresh_frame_flags as u8),
-        ref_frame_idx: if frame_is_intra {
-            None
-        } else {
-            Some(std::array::from_fn(|i| ref_frame_idx[i] as u8))
-        },
-        order_hint,
-        width,
-        height,
-        upscaled_width,
-        upscaled_height,
-        reference_select,
-        allow_intrabc,
-        allow_screen_content_tools,
-        delta_lf_present,
-        delta_lf_multi,
-        skip_mode_present,
-        skip_mode_refs,
-        subpel_filter_switchable,
-        switchable_motion_mode,
-        allow_warped_motion,
-        force_integer_mv,
-        allow_high_precision_mv,
-        gm_type,
-        reduced_tx_set,
-        txfm_mode,
-        use_ref_frame_mvs,
-        primary_ref_frame,
-        disable_frame_end_update_cdf,
-        segmentation,
-        loop_filter,
-        cdef_damping: cdef.clone(),
-        cdef_y_primary_strength: cdef.y_primary_strength,
-        cdef_y_secondary_strength: cdef.y_secondary_strength,
-        cdef_uv_primary_strength: cdef.uv_primary_strength,
-        cdef_uv_secondary_strength: cdef.uv_secondary_strength,
-        loop_restoration,
-        film_grain,
-        super_resolution,
-    })
+    }))
 }
