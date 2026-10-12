@@ -57,21 +57,8 @@ pub(super) fn read_frame_prelude(
     };
 
     let disable_cdf_update = reader.read_bit()?;
-    let allow_screen_content_tools =
-        if seq.seq_force_screen_content_tools == SELECT_SCREEN_CONTENT_TOOLS as u8 {
-            reader.read_bit()?
-        } else {
-            seq.seq_force_screen_content_tools != 0
-        };
-    let force_integer_mv = if allow_screen_content_tools {
-        if seq.seq_force_integer_mv == SELECT_INTEGER_MV as u8 {
-            reader.read_bit()?
-        } else {
-            seq.seq_force_integer_mv != 0
-        }
-    } else {
-        false
-    } || frame_is_intra;
+    let (allow_screen_content_tools, force_integer_mv) =
+        read_screen_content_flags(reader, seq, frame_is_intra)?;
 
     if seq.frame_id_numbers_present {
         let id_len = seq.additional_frame_id_length_minus_1.unwrap_or(0) as u32
@@ -141,4 +128,28 @@ pub(super) fn read_frame_prelude(
         primary_ref_frame,
         refresh_frame_flags,
     })
+}
+
+/// `allow_screen_content_tools` and `force_integer_mv`.
+fn read_screen_content_flags(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+    frame_is_intra: bool,
+) -> Result<(bool, bool)> {
+    let allow_screen_content_tools =
+        if seq.seq_force_screen_content_tools == SELECT_SCREEN_CONTENT_TOOLS as u8 {
+            reader.read_bit()?
+        } else {
+            seq.seq_force_screen_content_tools != 0
+        };
+    let force_integer_mv = if allow_screen_content_tools {
+        if seq.seq_force_integer_mv == SELECT_INTEGER_MV as u8 {
+            reader.read_bit()?
+        } else {
+            seq.seq_force_integer_mv != 0
+        }
+    } else {
+        false
+    } || frame_is_intra;
+    Ok((allow_screen_content_tools, force_integer_mv))
 }
