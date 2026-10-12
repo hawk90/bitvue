@@ -2,6 +2,10 @@
 
 use super::*;
 
+/// Pushes one neighbour cell's matching reference pair onto the stack with the given weight.
+type AddCandidate<'a> =
+    dyn Fn(&mut [CompoundMvStackEntry; 8], &mut usize, &SpatialRefCell, i32) + 'a;
+
 impl SpatialRefContext {
     /// Real weighted compound candidate stack: a port of the compound branch of dav1d's
     /// `refmvs_find` with the same structure as [`Self::single_ref_mv_stack`] -- nearest group
@@ -84,7 +88,71 @@ impl SpatialRefContext {
             cand.weight += 640;
         }
 
-        // Temporal pairs: one cell projected against both references.
+        self.add_temporal_pairs(
+            &mut stack,
+            &mut cnt,
+            x4,
+            y4,
+            bw4,
+            bh4,
+            w4,
+            h4,
+            ref0,
+            ref1,
+            use_ref_frame_mvs,
+        );
+
+        // Top-left, then the secondary rows/columns -- only where both edges exist.
+        if n_rows != u32::MAX && n_cols != u32::MAX {
+            if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
+                add(&mut stack, &mut cnt, cell, 4);
+            }
+        }
+        (n_rows, n_cols) = self.scan_secondary(
+            &mut stack, &mut cnt, &add, x4, y4, bw4, bh4, w4, h4, max_rows, max_cols, n_rows,
+            n_cols,
+        );
+
+        // Sort the nearest group, then the rest (stable, descending).
+        stack[..nearest_cnt].sort_by_key(|c| -c.weight);
+        stack[nearest_cnt..cnt].sort_by_key(|c| -c.weight);
+
+        if cnt < 2 {
+            self.fill_compound_extended_candidates(
+                x4,
+                y4,
+                w4,
+                h4,
+                n_rows != u32::MAX,
+                n_cols != u32::MAX,
+                ref0,
+                ref1,
+                &mut stack,
+                &mut cnt,
+            );
+        }
+
+        self.clamp_compound_stack_to_frame(&mut stack, cnt, x4, y4, bw4, bh4);
+
+        (stack, cnt)
+    }
+
+    /// Temporal pairs: one cell projected against both references.
+    #[allow(clippy::too_many_arguments)]
+    fn add_temporal_pairs(
+        &self,
+        stack: &mut [CompoundMvStackEntry; 8],
+        cnt: &mut usize,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        w4: u32,
+        h4: u32,
+        ref0: i8,
+        ref1: i8,
+        use_ref_frame_mvs: bool,
+    ) {
         if use_ref_frame_mvs && ref0 >= 0 && ref1 >= 0 {
             if let Some(temporal) = &self.temporal {
                 for [mv0, mv1] in crate::tile::motion_field::add_temporal_compound_candidates(
@@ -110,17 +178,30 @@ impl SpatialRefContext {
                             temporal.force_integer_mv,
                         )
                     };
-                    Self::push_compound_mv_candidate(&mut stack, &mut cnt, 2, [fix(mv0), fix(mv1)]);
+                    Self::push_compound_mv_candidate(stack, cnt, 2, [fix(mv0), fix(mv1)]);
                 }
             }
         }
+    }
 
-        // Top-left, then the secondary rows/columns -- only where both edges exist.
-        if n_rows != u32::MAX && n_cols != u32::MAX {
-            if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
-                add(&mut stack, &mut cnt, cell, 4);
-            }
-        }
+    /// The secondary rows/columns 3 and 5 units back, skipped where an earlier scan already covered them.
+    #[allow(clippy::too_many_arguments)]
+    fn scan_secondary(
+        &self,
+        stack: &mut [CompoundMvStackEntry; 8],
+        cnt: &mut usize,
+        add: &AddCandidate<'_>,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        w4: u32,
+        h4: u32,
+        max_rows: i32,
+        max_cols: i32,
+        mut n_rows: u32,
+        mut n_cols: u32,
+    ) -> (u32, u32) {
         for n in 2..=3u32 {
             if n > n_rows && n as i32 <= max_rows {
                 n_rows += self.walk_row(
@@ -130,7 +211,7 @@ impl SpatialRefContext {
                     w4,
                     1 + max_rows - n as i32,
                     if bw4 >= 16 { 4 } else { 2 },
-                    &mut |cell, weight| add(&mut stack, &mut cnt, cell, weight),
+                    &mut |cell, weight| add(stack, cnt, cell, weight),
                 );
             }
             if n > n_cols && n as i32 <= max_cols {
@@ -141,31 +222,23 @@ impl SpatialRefContext {
                     h4,
                     1 + max_cols - n as i32,
                     if bh4 >= 16 { 4 } else { 2 },
-                    &mut |cell, weight| add(&mut stack, &mut cnt, cell, weight),
+                    &mut |cell, weight| add(stack, cnt, cell, weight),
                 );
             }
         }
+        (n_rows, n_cols)
+    }
 
-        // Sort the nearest group, then the rest (stable, descending).
-        stack[..nearest_cnt].sort_by_key(|c| -c.weight);
-        stack[nearest_cnt..cnt].sort_by_key(|c| -c.weight);
-
-        if cnt < 2 {
-            self.fill_compound_extended_candidates(
-                x4,
-                y4,
-                w4,
-                h4,
-                n_rows != u32::MAX,
-                n_cols != u32::MAX,
-                ref0,
-                ref1,
-                &mut stack,
-                &mut cnt,
-            );
-        }
-
-        // Clamp to the frame (1/8-sample units).
+    /// Clamps every candidate to the frame.
+    fn clamp_compound_stack_to_frame(
+        &self,
+        stack: &mut [CompoundMvStackEntry; 8],
+        cnt: usize,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+    ) {
         let left = -((x4 + bw4 + 4) as i32) * 32;
         let right = (self.iw4 as i32 - x4 as i32 + 4) * 32;
         let top = -((y4 + bh4 + 4) as i32) * 32;
@@ -176,8 +249,6 @@ impl SpatialRefContext {
                 mv.y = mv.y.clamp(top, bottom);
             }
         }
-
-        (stack, cnt)
     }
 
     /// The `cnt < 2` fallback of dav1d's `refmvs_find` for a compound query: neighbours on the top
