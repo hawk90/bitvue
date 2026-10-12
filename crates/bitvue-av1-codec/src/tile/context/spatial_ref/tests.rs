@@ -297,6 +297,42 @@ fn test_single_ref_stack_secondary_rows_use_the_odd_row_of_each_8x8_pair() {
     assert_eq!(stack[0].weight, 4);
 }
 
+/// How many rows a secondary scan covers is `1 + max_rows - n`, and it bounds the weight a tall
+/// neighbour can earn (`min(height, 2 * rows)`): at `y4 = 5` (`max_rows = 3`) the n = 2 scan
+/// covers 2 rows, so a 4-high neighbour weighs 4 per unit of its overlap (2) = 8, not 2 * 2 = 4.
+#[test]
+fn test_single_ref_stack_secondary_row_weight_is_bounded_by_the_rows_it_covers() {
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let c = mv_x(16);
+    // Rows 0..=3, so row 3 (the n = 2 row) is inside it; the primary row 4 is empty.
+    ctx.set_block(4, 0, 4, 4, 0, -1, false, c, MotionVector::zero());
+    // A different block takes over row 1, the n = 3 row. The n = 2 scan covers 2 rows, which
+    // reaches row 3 - 2 + 1 and so skips the n = 3 scan; a scan that covered only 1 row would
+    // leave n = 3 to run, find this block and add a second candidate.
+    ctx.set_block(4, 1, 4, 1, 0, -1, false, mv_x(40), MotionVector::zero());
+    let (stack, cnt) = ctx.single_ref_mv_stack(4, 5, 2, 2, 0, false);
+    assert_eq!(cnt, 1);
+    assert_eq!(stack[0].mv, c);
+    assert_eq!(stack[0].weight, 8);
+}
+
+/// The same for a secondary column (`1 + max_cols - n`).
+#[test]
+fn test_single_ref_stack_secondary_column_weight_is_bounded_by_the_columns_it_covers() {
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let c = mv_x(16);
+    // Columns 0..=3 at rows 4..=7, so column 3 (the n = 2 column) is inside it; column 4 is empty.
+    ctx.set_block(0, 4, 4, 4, 0, -1, false, c, MotionVector::zero());
+    // A different block takes over column 1, the n = 3 column (see the row test above).
+    ctx.set_block(1, 4, 1, 4, 0, -1, false, mv_x(40), MotionVector::zero());
+    let (stack, cnt) = ctx.single_ref_mv_stack(5, 4, 2, 2, 0, false);
+    assert_eq!(cnt, 1);
+    assert_eq!(stack[0].mv, c);
+    assert_eq!(stack[0].weight, 8);
+}
+
 /// A secondary row is only scanned when the rows scanned so far (`n_rows`) do not already
 /// reach it: a 4-high neighbour above covers rows 1..=4, so n = 2 is skipped and only n = 3
 /// (weight 2 * 2) adds to it, on top of 8 (primary row) + 4 (top-right) + 640.
@@ -310,6 +346,38 @@ fn test_single_ref_stack_secondary_rows_are_gated_by_rows_already_covered() {
     assert_eq!(cnt, 1);
     assert_eq!(stack[0].mv, c);
     assert_eq!(stack[0].weight, 8 + 4 + 640 + 4);
+}
+
+/// The "other reference" fallback walks the neighbours by their recorded size (dav1d skips a
+/// whole 4-unit-wide block at once, even where a later smaller block was written over part of
+/// it): the block that overwrote cell 9 is never looked at, so only the wide block's vector
+/// is a candidate.
+#[test]
+fn test_single_ref_stack_extended_row_walk_skips_a_neighbour_by_its_recorded_width() {
+    let mut ctx = SpatialRefContext::new(32, 32);
+    ctx.set_frame_extent(128, 128);
+    let (wide, narrow) = (mv_x(16), mv_x(40));
+    ctx.set_block(8, 7, 4, 1, 0, -1, false, wide, MotionVector::zero());
+    ctx.set_block(9, 7, 1, 1, 0, -1, false, narrow, MotionVector::zero());
+    // Reference 3 matches neither block, so the stack comes from the fallback only.
+    let (stack, cnt) = ctx.single_ref_mv_stack(8, 8, 4, 4, 3, false);
+    assert_eq!(cnt, 1);
+    assert_eq!(stack[0].mv, wide);
+    assert_eq!(stack[0].weight, 2);
+}
+
+/// The same for the left column, walked by the recorded height.
+#[test]
+fn test_single_ref_stack_extended_column_walk_skips_a_neighbour_by_its_recorded_height() {
+    let mut ctx = SpatialRefContext::new(32, 32);
+    ctx.set_frame_extent(128, 128);
+    let (tall, short) = (mv_x(16), mv_x(40));
+    ctx.set_block(7, 8, 1, 4, 0, -1, false, tall, MotionVector::zero());
+    ctx.set_block(7, 9, 1, 1, 0, -1, false, short, MotionVector::zero());
+    let (stack, cnt) = ctx.single_ref_mv_stack(8, 8, 4, 4, 3, false);
+    assert_eq!(cnt, 1);
+    assert_eq!(stack[0].mv, tall);
+    assert_eq!(stack[0].weight, 2);
 }
 
 /// An intra block of an inter frame keeps its size in the reference map: a 4-high intra
