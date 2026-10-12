@@ -290,6 +290,28 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn loop_restoration_type_maps_the_two_bit_code_and_ignores_higher_bits() {
+        assert_eq!(LoopRestorationType::from_bits(0), LoopRestorationType::None);
+        assert_eq!(
+            LoopRestorationType::from_bits(1),
+            LoopRestorationType::Wiener
+        );
+        assert_eq!(
+            LoopRestorationType::from_bits(2),
+            LoopRestorationType::SgrProj
+        );
+        assert_eq!(
+            LoopRestorationType::from_bits(3),
+            LoopRestorationType::Switchable
+        );
+        assert_eq!(LoopRestorationType::from_bits(4), LoopRestorationType::None);
+        assert_eq!(
+            LoopRestorationType::from_bits(5),
+            LoopRestorationType::Wiener
+        );
+    }
     use super::*;
 
     fn bits_writer() -> (Vec<u8>, impl FnMut(&mut Vec<u8>, u32, u8)) {
