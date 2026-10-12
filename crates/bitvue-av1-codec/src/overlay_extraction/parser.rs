@@ -384,6 +384,30 @@ impl ParsedFrame {
         }
     }
 
+    /// Takes the dimensions, chroma format and tool switches from the sequence header.
+    fn apply_sequence_header(&mut self, seq_hdr: &crate::SequenceHeader) {
+        self.dimensions = FrameDimensions {
+            width: seq_hdr.max_frame_width,
+            height: seq_hdr.max_frame_height,
+            sb_size: if seq_hdr.use_128x128_superblock {
+                128
+            } else {
+                64
+            },
+            sb_cols: 0,
+            sb_rows: 0,
+        };
+        self.mono_chrome = seq_hdr.color_config.mono_chrome;
+        self.subsampling_x = seq_hdr.color_config.subsampling_x;
+        self.subsampling_y = seq_hdr.color_config.subsampling_y;
+        self.enable_filter_intra = seq_hdr.enable_filter_intra;
+        self.enable_interintra_compound = seq_hdr.enable_interintra_compound;
+        self.enable_dual_filter = seq_hdr.enable_dual_filter;
+        self.enable_masked_compound = seq_hdr.enable_masked_compound;
+        self.enable_jnt_comp = seq_hdr.enable_jnt_comp;
+        self.enable_warped_motion = seq_hdr.enable_warped_motion;
+    }
+
     /// Takes the three values the approximate [`parse_frame_header_basic`] supplies (intra flag,
     /// base QP, delta-q flag). They stand until [`ParsedFrame::apply_full_header`] replaces them,
     /// and are the only ones there are while no sequence header has been seen.
@@ -489,24 +513,7 @@ impl ParsedFrame {
             return Ok(Self::scaffold(obu_data));
         }
 
-        // Use resilient parsing: collect whatever OBUs parse successfully and
-        // log (but do not propagate) any individual OBU parse errors.
-        // This allows overlay extraction to work on truncated or minimal test
-        // data without failing the whole operation.
-        let obus_vec = match parse_all_obus(&obu_data) {
-            Ok(obus) => obus,
-            Err(e) => {
-                tracing::warn!(
-                    "parse_all_obus failed ({}), falling back to resilient OBU iteration",
-                    e
-                );
-                // Collect successfully-parsed OBUs, silently dropping errors
-                use crate::ObuIterator;
-                ObuIterator::new(&obu_data)
-                    .filter_map(|result| result.ok())
-                    .collect::<Vec<_>>()
-            }
-        };
+        let obus_vec = collect_obus_resilient(&obu_data);
 
         // Build lightweight OBU references
         let mut frame = Self::scaffold(Arc::clone(&obu_data));
@@ -532,26 +539,7 @@ impl ParsedFrame {
             match obu.header.obu_type {
                 ObuType::SequenceHeader => {
                     if let Ok(seq_hdr) = crate::parse_sequence_header(&obu.payload) {
-                        frame.dimensions = FrameDimensions {
-                            width: seq_hdr.max_frame_width,
-                            height: seq_hdr.max_frame_height,
-                            sb_size: if seq_hdr.use_128x128_superblock {
-                                128
-                            } else {
-                                64
-                            },
-                            sb_cols: 0,
-                            sb_rows: 0,
-                        };
-                        frame.mono_chrome = seq_hdr.color_config.mono_chrome;
-                        frame.subsampling_x = seq_hdr.color_config.subsampling_x;
-                        frame.subsampling_y = seq_hdr.color_config.subsampling_y;
-                        frame.enable_filter_intra = seq_hdr.enable_filter_intra;
-                        frame.enable_interintra_compound = seq_hdr.enable_interintra_compound;
-                        frame.enable_dual_filter = seq_hdr.enable_dual_filter;
-                        frame.enable_masked_compound = seq_hdr.enable_masked_compound;
-                        frame.enable_jnt_comp = seq_hdr.enable_jnt_comp;
-                        frame.enable_warped_motion = seq_hdr.enable_warped_motion;
+                        frame.apply_sequence_header(&seq_hdr);
                         seq_header = Some(seq_hdr);
                     }
                 }
@@ -690,6 +678,28 @@ impl ParsedFrame {
     #[inline]
     pub fn is_intra_only(&self) -> bool {
         self.frame_type.is_intra_only
+    }
+}
+
+/// Every OBU of `obu_data` that parses; a failing one is logged, not propagated.
+fn collect_obus_resilient(obu_data: &[u8]) -> Vec<crate::Obu> {
+    // Use resilient parsing: collect whatever OBUs parse successfully and
+    // log (but do not propagate) any individual OBU parse errors.
+    // This allows overlay extraction to work on truncated or minimal test
+    // data without failing the whole operation.
+    match parse_all_obus(obu_data) {
+        Ok(obus) => obus,
+        Err(e) => {
+            tracing::warn!(
+                "parse_all_obus failed ({}), falling back to resilient OBU iteration",
+                e
+            );
+            // Collect successfully-parsed OBUs, silently dropping errors
+            use crate::ObuIterator;
+            ObuIterator::new(obu_data)
+                .filter_map(|result| result.ok())
+                .collect::<Vec<_>>()
+        }
     }
 }
 
