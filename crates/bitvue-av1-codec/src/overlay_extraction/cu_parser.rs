@@ -113,7 +113,6 @@ pub(crate) fn decode_frame(
     inputs: FrameDecodeInputs<'_>,
 ) -> Result<FrameDecode, BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-    let sb_size = parsed.dimensions.sb_size;
     let sb_cols = parsed.dimensions.sb_cols;
     let sb_rows = parsed.dimensions.sb_rows;
     let frame_params = parsed.coding_params();
@@ -158,73 +157,32 @@ pub(crate) fn decode_frame(
             None => (0..sb_cols, 0..sb_rows),
         };
 
-        let decoder = crate::SymbolDecoder::with_cdf_context(bytes, initial_cdf.clone())?;
-        let mut tile_ctx = tile_context_for(parsed);
-        let sb_4x4 = sb_size / 4;
-        tile_ctx.set_tile_extent(
-            col_sbs.start * sb_4x4,
-            col_sbs.end * sb_4x4,
-            row_sbs.start * sb_4x4,
-            row_sbs.end * sb_4x4,
-        );
-        if let Some((projected, pocdiff)) = inputs.temporal {
-            tile_ctx.set_temporal_context(projected.clone(), pocdiff);
-            tile_ctx.set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
-        }
-        let mut state = crate::tile::TileState {
-            decoder,
-            mv_ctx: crate::tile::MvPredictorContext::new(sb_cols, sb_rows),
-            tile_ctx,
-        };
-        #[cfg(test)]
-        {
-            state.decoder.decoder.range_trace = Some(Vec::new());
-        }
+        let mut state = start_tile_state(
+            parsed,
+            bytes,
+            &initial_cdf,
+            &col_sbs,
+            &row_sbs,
+            inputs.temporal,
+        )?;
 
-        // Track running QP value across superblocks
-        let mut current_qp = base_qp;
+        // (running QP is tracked across superblocks inside `decode_superblock_rows`)
         #[cfg(test)]
         let tile_pos = layout.map_or((0, 0), |_| (tile_num / cols, tile_num % cols));
-        'tile: for sb_y in row_sbs.clone() {
+        decode_superblock_rows(
+            &mut state,
+            &row_sbs,
+            &col_sbs,
+            parsed,
+            &frame_params,
+            base_qp,
+            &mut all_cus,
+            &mut superblocks_decoded,
             #[cfg(test)]
-            {
-                let done = state.decoder.decoder.range_trace.take().unwrap_or_default();
-                if let Some(last) = trace_segments.last_mut() {
-                    last.1.extend(done);
-                }
-                trace_segments.push(((tile_pos.0, sb_y, tile_pos.1), Vec::new()));
-                state.decoder.decoder.range_trace = Some(Vec::new());
-            }
-            state.tile_ctx.start_superblock_row();
-            for sb_x in col_sbs.clone() {
-                let sb_pixel_x = sb_x * sb_size;
-                let sb_pixel_y = sb_y * sb_size;
-
-                match crate::parse_superblock(
-                    &mut state,
-                    sb_pixel_x,
-                    sb_pixel_y,
-                    sb_size,
-                    &frame_params,
-                    current_qp,
-                ) {
-                    Ok((sb, new_qp)) => {
-                        all_cus.extend(sb.coding_units);
-                        current_qp = new_qp;
-                        superblocks_decoded += 1;
-                    }
-                    Err(e) => {
-                        tracing::debug!(
-                            "Failed to parse superblock ({}, {}): {}, stopping",
-                            sb_pixel_x,
-                            sb_pixel_y,
-                            e
-                        );
-                        break 'tile;
-                    }
-                }
-            }
-        }
+            tile_pos,
+            #[cfg(test)]
+            &mut trace_segments,
+        );
         padding_conformant &= state.decoder.padding_is_conformant();
         #[cfg(test)]
         if let Some(last) = trace_segments.last_mut() {
@@ -265,6 +223,103 @@ type TileRowKey = (u32, u32, u32);
 /// The `(rng, cnt, dif)` trace of one superblock row of one tile.
 #[cfg(test)]
 type TraceSegment = (TileRowKey, Vec<(u32, i32, usize)>);
+
+/// The symbol decoder and prediction contexts for one tile, positioned at its first superblock.
+fn start_tile_state<'a>(
+    parsed: &ParsedFrame,
+    bytes: &'a [u8],
+    initial_cdf: &crate::symbol::CdfContext,
+    col_sbs: &std::ops::Range<u32>,
+    row_sbs: &std::ops::Range<u32>,
+    temporal: Option<(&crate::tile::ProjectedMotionField, [i32; 7])>,
+) -> Result<crate::tile::TileState<'a>, BitvueError> {
+    let sb_size = parsed.dimensions.sb_size;
+    let sb_cols = parsed.dimensions.sb_cols;
+    let sb_rows = parsed.dimensions.sb_rows;
+    let decoder = crate::SymbolDecoder::with_cdf_context(bytes, initial_cdf.clone())?;
+    let mut tile_ctx = tile_context_for(parsed);
+    let sb_4x4 = sb_size / 4;
+    tile_ctx.set_tile_extent(
+        col_sbs.start * sb_4x4,
+        col_sbs.end * sb_4x4,
+        row_sbs.start * sb_4x4,
+        row_sbs.end * sb_4x4,
+    );
+    if let Some((projected, pocdiff)) = temporal {
+        tile_ctx.set_temporal_context(projected.clone(), pocdiff);
+        tile_ctx.set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
+    }
+    #[cfg_attr(not(test), allow(unused_mut))]
+    let mut state = crate::tile::TileState {
+        decoder,
+        mv_ctx: crate::tile::MvPredictorContext::new(sb_cols, sb_rows),
+        tile_ctx,
+    };
+    #[cfg(test)]
+    {
+        state.decoder.decoder.range_trace = Some(Vec::new());
+    }
+    Ok(state)
+}
+
+/// Decodes the superblocks of one tile in raster order, stopping at the first one that fails.
+#[allow(clippy::too_many_arguments)]
+fn decode_superblock_rows(
+    state: &mut crate::tile::TileState<'_>,
+    row_sbs: &std::ops::Range<u32>,
+    col_sbs: &std::ops::Range<u32>,
+    parsed: &ParsedFrame,
+    frame_params: &crate::tile::FrameCodingParams,
+    base_qp: i16,
+    all_cus: &mut Vec<crate::tile::CodingUnit>,
+    superblocks_decoded: &mut u32,
+    #[cfg(test)] tile_pos: (u32, u32),
+    #[cfg(test)] trace_segments: &mut Vec<TraceSegment>,
+) {
+    let sb_size = parsed.dimensions.sb_size;
+    // Track running QP value across superblocks
+    let mut current_qp = base_qp;
+    'tile: for sb_y in row_sbs.clone() {
+        #[cfg(test)]
+        {
+            let done = state.decoder.decoder.range_trace.take().unwrap_or_default();
+            if let Some(last) = trace_segments.last_mut() {
+                last.1.extend(done);
+            }
+            trace_segments.push(((tile_pos.0, sb_y, tile_pos.1), Vec::new()));
+            state.decoder.decoder.range_trace = Some(Vec::new());
+        }
+        state.tile_ctx.start_superblock_row();
+        for sb_x in col_sbs.clone() {
+            let sb_pixel_x = sb_x * sb_size;
+            let sb_pixel_y = sb_y * sb_size;
+
+            match crate::parse_superblock(
+                state,
+                sb_pixel_x,
+                sb_pixel_y,
+                sb_size,
+                frame_params,
+                current_qp,
+            ) {
+                Ok((sb, new_qp)) => {
+                    all_cus.extend(sb.coding_units);
+                    current_qp = new_qp;
+                    *superblocks_decoded += 1;
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "Failed to parse superblock ({}, {}): {}, stopping",
+                        sb_pixel_x,
+                        sb_pixel_y,
+                        e
+                    );
+                    break 'tile;
+                }
+            }
+        }
+    }
+}
 
 /// The tiles of the frame as `(tile number, bytes)`, in decode order. A frame without a known
 /// layout, or with a single tile, is all of `tile_data`; otherwise every tile group is split
