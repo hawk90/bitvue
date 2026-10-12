@@ -303,4 +303,45 @@ mod tests {
         ctx.set_ref_frames(5, 0, 4, 4, false, true, 0, 4);
         assert_eq!(ctx.jnt_comp_context(5, 5, 0, 4), 4);
     }
+
+    /// `mask_comp`'s context: a neighbour that is masked-compound (`comp_type` 3 = SEG, 4 =
+    /// WEDGE) adds one, an ALTREF neighbour (`ref0 == 6`) adds three, a plain or averaged
+    /// neighbour adds nothing; the sum is capped at 5.
+    #[test]
+    fn mask_comp_context_counts_masked_neighbours_and_altref() {
+        let mut ctx = TileContext::new(16, 16);
+        assert_eq!(ctx.mask_comp_context(5, 5), 0, "nothing decoded yet");
+
+        // Above neighbour (x4 = 5): an averaged compound block, comp_type 2 -- still not masked.
+        ctx.set_comp_type(5, 0, 4, 4, 2);
+        assert_eq!(ctx.mask_comp_context(5, 5), 0);
+
+        // SEG and WEDGE both count as masked.
+        ctx.set_comp_type(5, 0, 4, 4, 3);
+        assert_eq!(ctx.mask_comp_context(5, 5), 1, "SEG above");
+        ctx.set_comp_type(5, 0, 4, 4, 4);
+        assert_eq!(ctx.mask_comp_context(5, 5), 1, "WEDGE above");
+
+        // Left neighbour (y4 = 5) masked too: both contribute.
+        ctx.set_comp_type(0, 5, 4, 4, 4);
+        assert_eq!(ctx.mask_comp_context(5, 5), 2);
+    }
+
+    #[test]
+    fn mask_comp_context_adds_three_for_an_altref_neighbour_and_caps_at_five() {
+        let mut ctx = TileContext::new(16, 16);
+        // ALTREF (ref0 = 6) above, single reference: 3.
+        ctx.set_ref_frames(5, 0, 4, 4, false, true, 6, -1);
+        assert_eq!(ctx.mask_comp_context(5, 5), 3);
+
+        // ALTREF on both sides: 3 + 3 = 6, capped at 5.
+        ctx.set_ref_frames(0, 5, 4, 4, false, true, 6, -1);
+        assert_eq!(ctx.mask_comp_context(5, 5), 5);
+
+        // A masked neighbour outranks the ALTREF test on the same side: 1, not 1 + 3.
+        let mut masked = TileContext::new(16, 16);
+        masked.set_ref_frames(5, 0, 4, 4, false, true, 6, -1);
+        masked.set_comp_type(5, 0, 4, 4, 3);
+        assert_eq!(masked.mask_comp_context(5, 5), 1);
+    }
 }
