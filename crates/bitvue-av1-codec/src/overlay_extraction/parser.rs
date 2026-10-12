@@ -833,6 +833,96 @@ mod tests {
     }
 
     #[test]
+    fn apply_sequence_header_copies_size_chroma_format_and_tool_switches() {
+        let (mut seq, _payload) = first_frame();
+        // Alternate the values so that a copied-wrong or inverted field cannot match by chance.
+        seq.max_frame_width = 200;
+        seq.max_frame_height = 100;
+        seq.use_128x128_superblock = true;
+        seq.color_config.mono_chrome = true;
+        seq.color_config.subsampling_x = true;
+        seq.color_config.subsampling_y = false;
+        seq.enable_filter_intra = true;
+        seq.enable_interintra_compound = false;
+        seq.enable_dual_filter = true;
+        seq.enable_masked_compound = false;
+        seq.enable_jnt_comp = true;
+        seq.enable_warped_motion = false;
+        let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+
+        frame.apply_sequence_header(&seq);
+
+        assert_eq!(
+            (frame.dimensions.width, frame.dimensions.height),
+            (200, 100)
+        );
+        assert_eq!(frame.dimensions.sb_size, 128);
+        assert!(frame.mono_chrome);
+        assert_eq!((frame.subsampling_x, frame.subsampling_y), (true, false));
+        assert_eq!(
+            (
+                frame.enable_filter_intra,
+                frame.enable_interintra_compound,
+                frame.enable_dual_filter,
+                frame.enable_masked_compound,
+                frame.enable_jnt_comp,
+                frame.enable_warped_motion,
+            ),
+            (true, false, true, false, true, false)
+        );
+
+        seq.use_128x128_superblock = false;
+        seq.color_config.mono_chrome = false;
+        seq.color_config.subsampling_x = false;
+        seq.color_config.subsampling_y = true;
+        seq.enable_filter_intra = false;
+        seq.enable_interintra_compound = true;
+        seq.enable_dual_filter = false;
+        seq.enable_masked_compound = true;
+        seq.enable_jnt_comp = false;
+        seq.enable_warped_motion = true;
+
+        frame.apply_sequence_header(&seq);
+
+        assert_eq!(frame.dimensions.sb_size, 64);
+        assert!(!frame.mono_chrome);
+        assert_eq!((frame.subsampling_x, frame.subsampling_y), (false, true));
+        assert_eq!(
+            (
+                frame.enable_filter_intra,
+                frame.enable_interintra_compound,
+                frame.enable_dual_filter,
+                frame.enable_masked_compound,
+                frame.enable_jnt_comp,
+                frame.enable_warped_motion,
+            ),
+            (false, true, false, true, false, true)
+        );
+    }
+
+    #[test]
+    fn collect_obus_resilient_keeps_the_obus_before_a_truncated_one() {
+        // Two temporal delimiters (type 2, size 0), then an OBU that claims 20 payload bytes but
+        // has one: `parse_all_obus` fails on the whole packet, the fallback keeps the first two.
+        let packet = [0x12, 0x00, 0x12, 0x00, 0x0A, 0x14, 0x00];
+        assert!(parse_all_obus(&packet).is_err());
+
+        let obus = collect_obus_resilient(&packet);
+
+        assert_eq!(obus.len(), 2);
+        assert!(obus
+            .iter()
+            .all(|o| o.header.obu_type == ObuType::TemporalDelimiter));
+    }
+
+    #[test]
+    fn collect_obus_resilient_returns_every_obu_of_a_well_formed_packet() {
+        let packet = [0x12, 0x00, 0x12, 0x00, 0x12, 0x00];
+
+        assert_eq!(collect_obus_resilient(&packet).len(), 3);
+    }
+
+    #[test]
     fn apply_basic_header_counts_a_key_frame_as_intra() {
         let (_seq, payload) = first_frame();
         let header = parse_frame_header_basic(&payload).unwrap();
