@@ -339,6 +339,110 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
     // reduced_still_picture_header (1 bit)
     let reduced_still_picture_header = reader.read_bit()?;
 
+    let OperatingSection {
+        timing_info,
+        decoder_model_info,
+        operating_points,
+    } = read_operating_section(&mut reader, reduced_still_picture_header)?;
+
+    // frame_width_bits_minus_1 (4 bits)
+    let frame_width_bits_minus_1 = reader.read_bits(4)? as u8;
+    // frame_height_bits_minus_1 (4 bits)
+    let frame_height_bits_minus_1 = reader.read_bits(4)? as u8;
+
+    // max_frame_width_minus_1 (n+1 bits)
+    let max_frame_width = reader.read_bits(frame_width_bits_minus_1 + 1)? + 1;
+    // max_frame_height_minus_1 (n+1 bits)
+    let max_frame_height = reader.read_bits(frame_height_bits_minus_1 + 1)? + 1;
+    let FrameIdSection {
+        frame_id_numbers_present,
+        delta_frame_id_length_minus_2,
+        additional_frame_id_length_minus_1,
+    } = read_frame_id_section(&mut reader, reduced_still_picture_header)?;
+
+    // use_128x128_superblock (1 bit)
+    let use_128x128_superblock = reader.read_bit()?;
+    // enable_filter_intra (1 bit)
+    let enable_filter_intra = reader.read_bit()?;
+    // enable_intra_edge_filter (1 bit)
+    let enable_intra_edge_filter = reader.read_bit()?;
+
+    let CodingToolFlags {
+        enable_interintra_compound,
+        enable_masked_compound,
+        enable_warped_motion,
+        enable_dual_filter,
+        enable_order_hint,
+        enable_jnt_comp,
+        enable_ref_frame_mvs,
+        seq_choose_screen_content_tools,
+        seq_force_screen_content_tools,
+        seq_choose_integer_mv,
+        seq_force_integer_mv,
+        order_hint_bits_minus_1,
+    } = read_coding_tool_flags(&mut reader, reduced_still_picture_header)?;
+
+    // enable_superres (1 bit)
+    let enable_superres = reader.read_bit()?;
+    // enable_cdef (1 bit)
+    let enable_cdef = reader.read_bit()?;
+    // enable_restoration (1 bit)
+    let enable_restoration = reader.read_bit()?;
+
+    // color_config
+    let color_config = parse_color_config(&mut reader, &profile)?;
+
+    // film_grain_params_present (1 bit)
+    let film_grain_params_present = reader.read_bit()?;
+
+    Ok(SequenceHeader {
+        profile,
+        still_picture,
+        reduced_still_picture_header,
+        timing_info,
+        decoder_model_info,
+        operating_points,
+        frame_width_bits_minus_1,
+        frame_height_bits_minus_1,
+        max_frame_width,
+        max_frame_height,
+        frame_id_numbers_present,
+        delta_frame_id_length_minus_2,
+        additional_frame_id_length_minus_1,
+        use_128x128_superblock,
+        enable_filter_intra,
+        enable_intra_edge_filter,
+        enable_interintra_compound,
+        enable_masked_compound,
+        enable_warped_motion,
+        enable_dual_filter,
+        enable_order_hint,
+        enable_jnt_comp,
+        enable_ref_frame_mvs,
+        seq_choose_screen_content_tools,
+        seq_force_screen_content_tools,
+        seq_choose_integer_mv,
+        seq_force_integer_mv,
+        order_hint_bits_minus_1,
+        enable_superres,
+        enable_cdef,
+        enable_restoration,
+        color_config,
+        film_grain_params_present,
+    })
+}
+
+/// The timing, decoder-model and operating-point part of the sequence header.
+struct OperatingSection {
+    timing_info: Option<TimingInfo>,
+    decoder_model_info: Option<DecoderModelInfo>,
+    operating_points: Vec<OperatingPoint>,
+}
+
+fn read_operating_section(
+    reader: &mut BitReader,
+    reduced_still_picture_header: bool,
+) -> Result<OperatingSection> {
     let mut timing_info = None;
     let mut decoder_model_info = None;
     let mut operating_points = Vec::new();
@@ -358,12 +462,12 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
         let timing_info_present = reader.read_bit()?;
 
         if timing_info_present {
-            timing_info = Some(parse_timing_info(&mut reader)?);
+            timing_info = Some(parse_timing_info(reader)?);
 
             // decoder_model_info_present_flag (1 bit)
             let decoder_model_info_present = reader.read_bit()?;
             if decoder_model_info_present {
-                decoder_model_info = Some(parse_decoder_model_info(&mut reader)?);
+                decoder_model_info = Some(parse_decoder_model_info(reader)?);
             }
         }
 
@@ -419,17 +523,24 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
             });
         }
     }
+    Ok(OperatingSection {
+        timing_info,
+        decoder_model_info,
+        operating_points,
+    })
+}
 
-    // frame_width_bits_minus_1 (4 bits)
-    let frame_width_bits_minus_1 = reader.read_bits(4)? as u8;
-    // frame_height_bits_minus_1 (4 bits)
-    let frame_height_bits_minus_1 = reader.read_bits(4)? as u8;
+/// `frame_id_numbers_present_flag` and the id lengths that follow it.
+struct FrameIdSection {
+    frame_id_numbers_present: bool,
+    delta_frame_id_length_minus_2: Option<u8>,
+    additional_frame_id_length_minus_1: Option<u8>,
+}
 
-    // max_frame_width_minus_1 (n+1 bits)
-    let max_frame_width = reader.read_bits(frame_width_bits_minus_1 + 1)? + 1;
-    // max_frame_height_minus_1 (n+1 bits)
-    let max_frame_height = reader.read_bits(frame_height_bits_minus_1 + 1)? + 1;
-
+fn read_frame_id_section(
+    reader: &mut BitReader,
+    reduced_still_picture_header: bool,
+) -> Result<FrameIdSection> {
     let mut frame_id_numbers_present = false;
     let mut delta_frame_id_length_minus_2 = None;
     let mut additional_frame_id_length_minus_1 = None;
@@ -445,14 +556,33 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
             additional_frame_id_length_minus_1 = Some(reader.read_bits(3)? as u8);
         }
     }
+    Ok(FrameIdSection {
+        frame_id_numbers_present,
+        delta_frame_id_length_minus_2,
+        additional_frame_id_length_minus_1,
+    })
+}
 
-    // use_128x128_superblock (1 bit)
-    let use_128x128_superblock = reader.read_bit()?;
-    // enable_filter_intra (1 bit)
-    let enable_filter_intra = reader.read_bit()?;
-    // enable_intra_edge_filter (1 bit)
-    let enable_intra_edge_filter = reader.read_bit()?;
+/// The block-level coding tool switches (`enable_interintra_compound` .. `order_hint_bits_minus_1`).
+struct CodingToolFlags {
+    enable_interintra_compound: bool,
+    enable_masked_compound: bool,
+    enable_warped_motion: bool,
+    enable_dual_filter: bool,
+    enable_order_hint: bool,
+    enable_jnt_comp: bool,
+    enable_ref_frame_mvs: bool,
+    seq_choose_screen_content_tools: bool,
+    seq_force_screen_content_tools: u8,
+    seq_choose_integer_mv: bool,
+    seq_force_integer_mv: u8,
+    order_hint_bits_minus_1: Option<u8>,
+}
 
+fn read_coding_tool_flags(
+    reader: &mut BitReader,
+    reduced_still_picture_header: bool,
+) -> Result<CodingToolFlags> {
     let mut enable_interintra_compound = false;
     let mut enable_masked_compound = false;
     let mut enable_warped_motion = false;
@@ -512,37 +642,7 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
             order_hint_bits_minus_1 = Some(reader.read_bits(3)? as u8);
         }
     }
-
-    // enable_superres (1 bit)
-    let enable_superres = reader.read_bit()?;
-    // enable_cdef (1 bit)
-    let enable_cdef = reader.read_bit()?;
-    // enable_restoration (1 bit)
-    let enable_restoration = reader.read_bit()?;
-
-    // color_config
-    let color_config = parse_color_config(&mut reader, &profile)?;
-
-    // film_grain_params_present (1 bit)
-    let film_grain_params_present = reader.read_bit()?;
-
-    Ok(SequenceHeader {
-        profile,
-        still_picture,
-        reduced_still_picture_header,
-        timing_info,
-        decoder_model_info,
-        operating_points,
-        frame_width_bits_minus_1,
-        frame_height_bits_minus_1,
-        max_frame_width,
-        max_frame_height,
-        frame_id_numbers_present,
-        delta_frame_id_length_minus_2,
-        additional_frame_id_length_minus_1,
-        use_128x128_superblock,
-        enable_filter_intra,
-        enable_intra_edge_filter,
+    Ok(CodingToolFlags {
         enable_interintra_compound,
         enable_masked_compound,
         enable_warped_motion,
@@ -555,11 +655,6 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
         seq_choose_integer_mv,
         seq_force_integer_mv,
         order_hint_bits_minus_1,
-        enable_superres,
-        enable_cdef,
-        enable_restoration,
-        color_config,
-        film_grain_params_present,
     })
 }
 
