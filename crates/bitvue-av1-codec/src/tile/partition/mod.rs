@@ -106,6 +106,76 @@ mod tests {
         assert_eq!(PartitionType::Vert.sub_block_count(), 2);
         assert_eq!(PartitionType::Split.sub_block_count(), 4);
         assert_eq!(PartitionType::HorzA.sub_block_count(), 3);
+        assert_eq!(PartitionType::HorzB.sub_block_count(), 3);
+        assert_eq!(PartitionType::VertA.sub_block_count(), 3);
+        assert_eq!(PartitionType::VertB.sub_block_count(), 3);
+        assert_eq!(PartitionType::Horz4.sub_block_count(), 4);
+        assert_eq!(PartitionType::Vert4.sub_block_count(), 4);
+    }
+
+    #[test]
+    fn mi_units_rounds_up_to_whole_8_pixel_pairs_of_4x4_units() {
+        // 2 * ceil(pixels / 8): the frame-edge check counts 4x4 units in pairs.
+        for (pixels, units) in [(0, 0), (1, 2), (4, 2), (8, 2), (9, 4), (16, 4), (17, 6)] {
+            assert_eq!(mi_units(pixels), units, "{pixels} pixels");
+        }
+    }
+
+    #[test]
+    fn a_block_that_is_not_partitioned_starts_where_its_parent_does() {
+        assert_eq!(
+            child_position(8, 16, 0, PartitionType::None, BlockSize::Block16x16),
+            (8, 16)
+        );
+    }
+
+    #[test]
+    fn the_grid_has_one_block_per_leaf_with_its_depth_and_partition() {
+        let mut root = PartitionNode::new(0, 0, BlockSize::Block32x32, PartitionType::Split);
+        for (x, y, partition) in [
+            (0, 0, PartitionType::None),
+            (16, 0, PartitionType::Horz),
+            (0, 16, PartitionType::Vert),
+            (16, 16, PartitionType::None),
+        ] {
+            root.children
+                .push(PartitionNode::new(x, y, BlockSize::Block16x16, partition));
+        }
+
+        let grid = partition_tree_to_grid(&root, 32, 32, 32);
+
+        let blocks: Vec<_> = grid
+            .blocks
+            .iter()
+            .map(|b| (b.x, b.y, b.width, b.height, b.partition, b.depth))
+            .collect();
+        use bitvue_engine::partition_grid::PartitionType as Grid;
+        assert_eq!(
+            blocks,
+            vec![
+                (0, 0, 16, 16, Grid::None, 1),
+                (16, 0, 16, 16, Grid::Horz, 1),
+                (0, 16, 16, 16, Grid::Vert, 1),
+                (16, 16, 16, 16, Grid::None, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tree_that_is_a_single_leaf_is_one_block_at_depth_zero() {
+        let root = PartitionNode::new(0, 0, BlockSize::Block64x64, PartitionType::None);
+
+        let grid = partition_tree_to_grid(&root, 64, 64, 64);
+
+        assert_eq!(grid.blocks.len(), 1);
+        assert_eq!(
+            (
+                grid.blocks[0].width,
+                grid.blocks[0].height,
+                grid.blocks[0].depth
+            ),
+            (64, 64, 0)
+        );
     }
 
     #[test]
