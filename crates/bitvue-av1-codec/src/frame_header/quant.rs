@@ -102,23 +102,3 @@ pub(super) fn parse_delta_q_params(
 
     Ok(delta_q_present)
 }
-
-/// Parse delta_lf_params() per AV1 spec Section 5.9.18.
-#[allow(dead_code)]
-pub(super) fn parse_delta_lf_params(
-    reader: &mut BitReader,
-    delta_q_present: bool,
-    allow_intrabc: bool,
-) -> Result<(), BitvueError> {
-    if delta_q_present && !allow_intrabc {
-        // delta_lf_present  f(1)
-        let delta_lf_present = reader.read_bit()?;
-        if delta_lf_present {
-            // delta_lf_res  u(2)
-            reader.read_bits(2)?;
-            // delta_lf_multi  f(1)
-            reader.read_bit()?;
-        }
-    }
-    Ok(())
-}
