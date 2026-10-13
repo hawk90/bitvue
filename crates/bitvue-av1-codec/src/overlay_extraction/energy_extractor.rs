@@ -14,7 +14,7 @@
 use super::cu_parser::parse_all_coding_units;
 use super::cu_spatial_index::CuSpatialIndex;
 use super::parser::ParsedFrame;
-use crate::ivf::OVERLAY_BLOCK_SIZE;
+use super::OVERLAY_BLOCK_SIZE;
 use bitvue_engine::BitvueError;
 
 /// Dense grid of per-block residual-energy values, same cell layout as `QPGrid`

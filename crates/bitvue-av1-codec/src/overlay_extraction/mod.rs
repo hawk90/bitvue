@@ -41,6 +41,9 @@ mod qp_extractor;
 mod stream_analyzer;
 mod stream_state;
 
+/// Default block size for QP/MV overlay grids
+pub const OVERLAY_BLOCK_SIZE: u32 = 64;
+
 // Re-export public API
 pub use cache::ParsedCodingUnits;
 pub use cu_parser::{parse_all_coding_units, parse_coding_units_checked};

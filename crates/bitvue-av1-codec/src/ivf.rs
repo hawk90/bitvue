@@ -21,9 +21,6 @@ pub const IVF_MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
 /// Maximum number of frames to prevent DoS through millions of tiny frames
 pub const IVF_MAX_FRAME_COUNT: usize = 1_000_000;
 
-/// Default block size for QP/MV overlay grids
-pub const OVERLAY_BLOCK_SIZE: u32 = 64;
-
 /// IVF file header (32 bytes)
 #[derive(Debug, Clone)]
 pub struct IvfHeader {
