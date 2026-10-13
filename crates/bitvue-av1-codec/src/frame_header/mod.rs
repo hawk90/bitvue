@@ -28,7 +28,6 @@ use bitvue_engine::BitvueError;
 pub use bitvue_engine::FrameType;
 
 mod quant;
-mod skip;
 mod types;
 
 pub use types::*;
