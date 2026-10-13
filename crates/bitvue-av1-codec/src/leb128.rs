@@ -75,16 +75,6 @@ pub fn decode_uleb128(data: &[u8]) -> Result<(u64, usize)> {
     })
 }
 
-/// Decodes an unsigned LEB128 from a byte slice at a given offset
-///
-/// Returns the decoded value, the number of bytes consumed, and updates the offset.
-pub fn decode_uleb128_at(data: &[u8], offset: usize) -> Result<(u64, usize)> {
-    if offset >= data.len() {
-        return Err(BitvueError::UnexpectedEof(offset as u64));
-    }
-    decode_uleb128(&data[offset..])
-}
-
 /// Encodes a value as unsigned LEB128
 ///
 /// Returns a vector of bytes representing the encoded value.

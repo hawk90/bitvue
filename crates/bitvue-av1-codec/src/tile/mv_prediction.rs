@@ -243,11 +243,6 @@ impl MvPredictorContext {
             None => MotionVector::zero(),
         }
     }
-
-    /// Check if a position has been parsed
-    pub fn is_position_parsed(&self, x: u32, y: u32) -> bool {
-        self.parsed_cus.iter().any(|cu| cu.x == x && cu.y == y)
-    }
 }
 
 /// Apply MV predictor to explicit MV
@@ -264,21 +259,6 @@ impl MvPredictorContext {
 /// The final motion vector (explicit + predictor, both in quarter-pel units)
 pub fn apply_mv_predictor(mv: MotionVector, predictor: MotionVector) -> MotionVector {
     mv.add(predictor)
-}
-
-/// Parse MV with predictor
-///
-/// Reads the explicit MV from bitstream and adds the predictor
-pub fn parse_mv_with_predictor(
-    explicit_mv: MotionVector,
-    mode: PredictionMode,
-    x: u32,
-    y: u32,
-    ref_frame: RefFrame,
-    ctx: &MvPredictorContext,
-) -> MotionVector {
-    let predictor = ctx.get_mv_predictor(mode, x, y, ref_frame);
-    apply_mv_predictor(explicit_mv, predictor)
 }
 
 #[cfg(test)]

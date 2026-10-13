@@ -288,23 +288,6 @@ impl ParsedFrame {
         }
     }
 
-    /// Get OBU payload by reference
-    #[inline]
-    pub fn get_payload(&self, obu_ref: &ObuRef) -> Option<&[u8]> {
-        let start = obu_ref.payload_start;
-        let end = obu_ref.payload_end;
-        if start < end && end <= self.obu_data.len() {
-            Some(&self.obu_data[start..end])
-        } else {
-            None
-        }
-    }
-
-    /// Find OBUs of a specific type
-    pub fn find_obus_of_type(&self, obu_type: ObuType) -> impl Iterator<Item = &ObuRef> {
-        self.obus.iter().filter(move |o| o.obu_type == obu_type)
-    }
-
     /// Check if this frame has tile data
     #[inline]
     pub fn has_tile_data(&self) -> bool {

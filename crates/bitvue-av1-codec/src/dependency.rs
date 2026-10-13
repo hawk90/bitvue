@@ -23,23 +23,17 @@ pub struct FrameNode {
 pub struct DependencyGraph {
     /// All frames in the bitstream
     pub frames: Vec<FrameNode>,
-    /// Mapping from OBU index to frame index
-    obu_to_frame: Vec<Option<usize>>,
 }
 
 impl DependencyGraph {
     /// Build dependency graph from OBUs
     pub fn build(obus: &[Obu]) -> Self {
         let mut frames = Vec::new();
-        let mut obu_to_frame = vec![None; obus.len()];
 
         for (obu_idx, obu) in obus.iter().enumerate() {
             match obu.header.obu_type {
                 ObuType::Frame | ObuType::FrameHeader => {
                     let frame_type = obu.frame_type.unwrap_or(FrameType::Key);
-
-                    let frame_idx = frames.len();
-                    obu_to_frame[obu_idx] = Some(frame_idx);
 
                     frames.push(FrameNode {
                         obu_index: obu_idx,
@@ -51,15 +45,7 @@ impl DependencyGraph {
             }
         }
 
-        Self {
-            frames,
-            obu_to_frame,
-        }
-    }
-
-    /// Get frame index for an OBU index
-    pub fn get_frame_index(&self, obu_index: usize) -> Option<usize> {
-        self.obu_to_frame.get(obu_index).copied().flatten()
+        Self { frames }
     }
 
     /// Find the nearest prior key frame
