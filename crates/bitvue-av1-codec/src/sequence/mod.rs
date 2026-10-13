@@ -347,4 +347,151 @@ mod tests {
         };
         assert_eq!(config.chroma_subsampling_str(), "4:2:2");
     }
+
+    /// A 16x16, 8-bit 4:2:0 sequence header whose operating section (everything between
+    /// `reduced_still_picture_header` and the frame size) is spelled out by the caller.
+    fn header_with_operating_section(operating_section: &[(u32, u8)]) -> Vec<u8> {
+        let mut f: Vec<(u32, u8)> = vec![(0, 3), (0, 1), (0, 1)]; // profile, still, reduced
+        f.extend_from_slice(operating_section);
+        f.extend([(3, 4), (3, 4), (15, 4), (15, 4)]); // frame size: 4 bits each, 16x16
+        f.push((0, 1)); // frame_id_numbers_present_flag
+        f.extend([(0, 1), (0, 1), (0, 1)]); // 128x128 sb, filter_intra, intra_edge_filter
+        f.extend([(0, 1), (0, 1), (0, 1), (0, 1)]); // interintra, masked, warped, dual filter
+        f.push((0, 1)); // enable_order_hint
+        f.extend([(1, 1), (1, 1)]); // seq_choose_screen_content_tools, seq_choose_integer_mv
+        f.extend([(0, 1), (0, 1), (0, 1)]); // superres, cdef, restoration
+        f.extend([(0, 1), (0, 1), (0, 1), (0, 1), (0, 2), (0, 1)]); // color_config
+        f.push((1, 1)); // film_grain_params_present_flag
+        pack(&f)
+    }
+
+    /// The fields after the operating section, as `parse_sequence_header` reports them: if the
+    /// operating section consumed the wrong number of bits these come out wrong.
+    fn assert_tail_is_intact(seq: &SequenceHeader) {
+        assert_eq!((seq.max_frame_width, seq.max_frame_height), (16, 16));
+        assert!(seq.film_grain_params_present);
+    }
+
+    #[test]
+    fn timing_info_without_an_equal_picture_interval_has_no_tick_count() {
+        let seq = parse_sequence_header(&header_with_operating_section(&[
+            (1, 1),      // timing_info_present_flag
+            (1001, 32),  // num_units_in_display_tick
+            (30000, 32), // time_scale
+            (0, 1),      // equal_picture_interval
+            (0, 1),      // decoder_model_info_present_flag
+            (0, 1),      // initial_display_delay_present_flag
+            (0, 5),      // operating_points_cnt_minus_1
+            (0, 12),     // operating_point_idc[0]
+            (4, 5),      // seq_level_idx[0]
+                         // no decoder_model_present_for_this_op: there is no decoder model info
+        ]))
+        .unwrap();
+
+        let timing = seq.timing_info.as_ref().expect("timing info");
+        assert_eq!(timing.num_units_in_display_tick, 1001);
+        assert_eq!(timing.time_scale, 30000);
+        assert!(!timing.equal_picture_interval);
+        assert_eq!(timing.num_ticks_per_picture, None);
+        assert!(seq.decoder_model_info.is_none());
+        assert_eq!(seq.operating_points[0].seq_level_idx, 4);
+        assert_tail_is_intact(&seq);
+    }
+
+    #[test]
+    fn an_equal_picture_interval_reads_its_tick_count_as_uvlc_plus_one() {
+        // uvlc(4): 5 = 0b101 -> two leading zeros, the 1, then the two low bits "01" = 00101.
+        // uvlc(0): a single 1 bit.
+        for (uvlc_bits, uvlc_width, ticks) in [(0b00101, 5, 5), (0b1, 1, 1)] {
+            let seq = parse_sequence_header(&header_with_operating_section(&[
+                (1, 1),
+                (1, 32),
+                (25, 32),
+                (1, 1), // equal_picture_interval
+                (uvlc_bits, uvlc_width),
+                (0, 1), // decoder_model_info_present_flag
+                (0, 1),
+                (0, 5),
+                (0, 12),
+                (0, 5),
+            ]))
+            .unwrap();
+            let timing = seq.timing_info.as_ref().unwrap();
+            assert!(timing.equal_picture_interval);
+            assert_eq!(timing.num_ticks_per_picture, Some(ticks));
+            assert_tail_is_intact(&seq);
+        }
+    }
+
+    #[test]
+    fn decoder_model_info_sets_the_delay_width_of_each_operating_point_that_uses_it() {
+        // buffer_delay_length_minus_1 = 7 -> 8-bit decoder / encoder buffer delays. The second
+        // operating point has no decoder model, and a level above 7 (so it has a tier bit).
+        let seq = parse_sequence_header(&header_with_operating_section(&[
+            (1, 1),      // timing_info_present_flag
+            (1, 32),     // num_units_in_display_tick
+            (60, 32),    // time_scale
+            (0, 1),      // equal_picture_interval
+            (1, 1),      // decoder_model_info_present_flag
+            (7, 5),      // buffer_delay_length_minus_1
+            (12345, 32), // num_units_in_decoding_tick
+            (9, 5),      // buffer_removal_time_length_minus_1
+            (11, 5),     // frame_presentation_time_length_minus_1
+            (0, 1),      // initial_display_delay_present_flag
+            (1, 5),      // operating_points_cnt_minus_1: two operating points
+            // operating point 0
+            (0x0F, 12), // operating_point_idc
+            (3, 5),     // seq_level_idx
+            (1, 1),     // decoder_model_present_for_this_op
+            (0xAA, 8),  // decoder_buffer_delay
+            (0x55, 8),  // encoder_buffer_delay
+            (1, 1),     // low_delay_mode_flag
+            // operating point 1
+            (0x103, 12), // operating_point_idc
+            (9, 5),      // seq_level_idx (> 7)
+            (1, 1),      // seq_tier
+            (0, 1),      // decoder_model_present_for_this_op
+        ]))
+        .unwrap();
+
+        let model = seq.decoder_model_info.as_ref().expect("decoder model info");
+        assert_eq!(model.buffer_delay_length_minus_1, 7);
+        assert_eq!(model.num_units_in_decoding_tick, 12345);
+        assert_eq!(model.buffer_removal_time_length_minus_1, 9);
+        assert_eq!(model.frame_presentation_time_length_minus_1, 11);
+
+        let [op0, op1] = &seq.operating_points[..] else {
+            panic!("two operating points");
+        };
+        assert_eq!((op0.idc, op0.seq_level_idx, op0.seq_tier), (0x0F, 3, false));
+        assert!(op0.decoder_model_present);
+        assert_eq!((op1.idc, op1.seq_level_idx, op1.seq_tier), (0x103, 9, true));
+        assert!(!op1.decoder_model_present);
+        assert_tail_is_intact(&seq);
+    }
+
+    #[test]
+    fn the_tier_bit_is_present_from_level_index_8_and_not_at_7() {
+        let seq = parse_sequence_header(&header_with_operating_section(&[
+            (0, 1), // timing_info_present_flag
+            (0, 1), // initial_display_delay_present_flag
+            (2, 5), // operating_points_cnt_minus_1: three operating points
+            (0x001, 12),
+            (7, 5), // seq_level_idx 7: no tier bit
+            (0x002, 12),
+            (8, 5), // seq_level_idx 8: tier bit follows
+            (1, 1),
+            (0x004, 12),
+            (0, 5), // seq_level_idx 0
+        ]))
+        .unwrap();
+
+        let ops: Vec<_> = seq
+            .operating_points
+            .iter()
+            .map(|op| (op.idc, op.seq_level_idx, op.seq_tier))
+            .collect();
+        assert_eq!(ops, [(1, 7, false), (2, 8, true), (4, 0, false)]);
+        assert_tail_is_intact(&seq);
+    }
 }
