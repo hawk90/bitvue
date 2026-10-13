@@ -7,12 +7,12 @@
 //! real difference is which CDF/context `y_mode` draws from (see
 //! `SymbolDecoder::read_intra_mode_inter_frame`).
 
-use super::contexts::{block_size_for_dimensions, intra_mode_from_symbol, y_mode_size_context};
+use super::contexts::y_mode_size_context;
 use super::palette::{read_palette_mode_info, read_palette_tokens};
-use super::types::CodingUnit;
+use super::types::{CodingUnit, PredictionMode};
 use crate::symbol::SymbolDecoder;
 use crate::tile::{BlockRect, FrameCodingParams, MiRect, TileContext};
-use bitvue_engine::Result;
+use bitvue_engine::{BitvueError, Result};
 
 /// Fills `cu.mode`, `cu.palette` and `cu.tx_size`. Returns the intra mode that
 /// `read_transform_type_is_1d` needs later as its `y_mode_raw`: the raw `y_mode` symbol
@@ -153,4 +153,62 @@ pub(super) fn read_intra_mode_info(
 
     super::tx_size::read_intra_tx_size(decoder, tile_ctx, rect, mi, frame, cu)?;
     Ok(tx_type_mode)
+}
+
+/// Convert INTRA mode symbol to PredictionMode
+fn intra_mode_from_symbol(symbol: u8) -> Result<PredictionMode> {
+    match symbol {
+        0 => Ok(PredictionMode::DcPred),
+        1 => Ok(PredictionMode::VPred),
+        2 => Ok(PredictionMode::HPred),
+        3 => Ok(PredictionMode::D45Pred),
+        4 => Ok(PredictionMode::D135Pred),
+        5 => Ok(PredictionMode::D113Pred),
+        6 => Ok(PredictionMode::D157Pred),
+        7 => Ok(PredictionMode::D203Pred),
+        8 => Ok(PredictionMode::D67Pred),
+        9 => Ok(PredictionMode::SmoothPred),
+        10 => Ok(PredictionMode::SmoothVPred),
+        11 => Ok(PredictionMode::SmoothHPred),
+        12 => Ok(PredictionMode::PaethPred),
+        _ => Err(BitvueError::InvalidData(format!(
+            "Invalid INTRA mode symbol: {}",
+            symbol
+        ))),
+    }
+}
+
+/// Map a CU's real pixel dimensions to this crate's `BlockSize` enum -- used only by
+/// `read_use_filter_intra`'s CDF lookup (the real spec table is indexed by exact block size, not
+/// by the coarser `bsize_ctx`/`tx_size` classes used elsewhere). Every block size the partition
+/// tree can produce is covered; the fallback exists only for defensive safety.
+fn block_size_for_dimensions(width: u32, height: u32) -> crate::tile::BlockSize {
+    use crate::tile::BlockSize::*;
+    match (width, height) {
+        (4, 4) => Block4x4,
+        (4, 8) => Block4x8,
+        (8, 4) => Block8x4,
+        (8, 8) => Block8x8,
+        (8, 16) => Block8x16,
+        (16, 8) => Block16x8,
+        (16, 16) => Block16x16,
+        (16, 32) => Block16x32,
+        (32, 16) => Block32x16,
+        (32, 32) => Block32x32,
+        (32, 64) => Block32x64,
+        (64, 32) => Block64x32,
+        (64, 64) => Block64x64,
+        (64, 128) => Block64x128,
+        (128, 64) => Block128x64,
+        (128, 128) => Block128x128,
+        (16, 4) => Block16x4,
+        (4, 16) => Block4x16,
+        (32, 8) => Block32x8,
+        (64, 16) => Block64x16,
+        (128, 32) => Block128x32,
+        (8, 32) => Block8x32,
+        (16, 64) => Block16x64,
+        (32, 128) => Block32x128,
+        _ => Block4x4,
+    }
 }

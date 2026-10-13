@@ -2,13 +2,13 @@
 //! L0/L1 DRL search, per-direction motion vectors, and `compound_type()` (spec 5.11.24-5.11.28).
 //! A `skip_mode` block reads none of it -- the whole tail is derived with zero bits.
 
-use super::contexts::{compound_mode_from_symbol, wedge_ctx};
+use super::contexts::wedge_ctx;
 use super::read_explicit_mv;
 use super::types::{CodingUnit, MotionVector, MvKind, PredictionMode};
 use crate::symbol::SymbolDecoder;
 use crate::tile::context::CompoundMvStackEntry;
 use crate::tile::{BlockRect, FrameCodingParams, MiRect, MvPredictorContext, TileContext};
-use bitvue_engine::Result;
+use bitvue_engine::{BitvueError, Result};
 
 /// Fills `cu.mode` and `cu.mv[0..2]`, reads the compound-type symbols, and records the block in
 /// the spatial reference context. `cu.ref_frames` must already hold the compound pair.
@@ -245,4 +245,46 @@ fn read_compound_type(
             2 // AVG
         },
     )
+}
+
+/// Convert compound_mode() symbol (spec 5.11.24) to PredictionMode. Symbol ordering matches
+/// libaom's `COMPOUND_TYPES`/`compound_mode` enum (`NEAREST_NEARESTMV`=0 .. `NEW_NEWMV`=7).
+fn compound_mode_from_symbol(symbol: u8) -> Result<PredictionMode> {
+    match symbol {
+        0 => Ok(PredictionMode::NearestNearestMv),
+        1 => Ok(PredictionMode::NearNearMv),
+        2 => Ok(PredictionMode::NearestNewMv),
+        3 => Ok(PredictionMode::NewNearestMv),
+        4 => Ok(PredictionMode::NearNewMv),
+        5 => Ok(PredictionMode::NewNearMv),
+        6 => Ok(PredictionMode::GlobalGlobalMv),
+        7 => Ok(PredictionMode::NewNewMv),
+        _ => Err(BitvueError::InvalidData(format!(
+            "Invalid compound mode symbol: {}",
+            symbol
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compound_mode_from_symbol_round_trips_all_8() {
+        let expected = [
+            PredictionMode::NearestNearestMv,
+            PredictionMode::NearNearMv,
+            PredictionMode::NearestNewMv,
+            PredictionMode::NewNearestMv,
+            PredictionMode::NearNewMv,
+            PredictionMode::NewNearMv,
+            PredictionMode::GlobalGlobalMv,
+            PredictionMode::NewNewMv,
+        ];
+        for (symbol, mode) in expected.iter().enumerate() {
+            assert_eq!(compound_mode_from_symbol(symbol as u8).unwrap(), *mode);
+        }
+        assert!(compound_mode_from_symbol(8).is_err());
+    }
 }

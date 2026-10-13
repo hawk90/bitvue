@@ -1,7 +1,6 @@
 //! `interp_filter` (spec 5.11.30): the subpel interpolation filter, one symbol per axis.
 
-use super::contexts::needs_interp_filter;
-use super::types::{CodingUnit, RefFrame};
+use super::types::{CodingUnit, PredictionMode, RefFrame};
 use crate::symbol::SymbolDecoder;
 use crate::tile::{FrameCodingParams, MiRect, TileContext};
 use bitvue_engine::Result;
@@ -77,6 +76,32 @@ pub(super) fn read_interp_filter(
     Ok(())
 }
 
+/// `needs_interp_filter()` (spec 5.11.30) -- verified against dav1d's `decode.c`
+/// `has_subpel_filter` computation (source-only re-clone, no build), which the `filter` read's
+/// call site doc explains. `true` unconditionally for every mode except GLOBALMV/GLOBAL_GLOBALMV,
+/// where it's `true` only for a minimal-size block (`min(width_4x4, height_4x4) == 1`) or when
+/// the relevant ref's `gm_type` is exactly TRANSLATION -- IDENTITY/ROTZOOM/AFFINE all suppress the
+/// read (real spec forces `EIGHTTAP_REGULAR` in that case, not a bit read).
+fn needs_interp_filter(
+    mode: PredictionMode,
+    width_4x4: u32,
+    height_4x4: u32,
+    gm_type: &[u8; 8],
+    ref0: RefFrame,
+    ref1: RefFrame,
+) -> bool {
+    let is_minimal = width_4x4.min(height_4x4) == 1;
+    let is_translation =
+        |r: RefFrame| gm_type[r as usize] == crate::frame_header_full::GM_TYPE_TRANSLATION;
+    match mode {
+        PredictionMode::GlobalMv => is_minimal || is_translation(ref0),
+        PredictionMode::GlobalGlobalMv => {
+            is_minimal || is_translation(ref0) || is_translation(ref1)
+        }
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,5 +136,87 @@ mod tests {
     fn one_filter_symbol_without_dual_filter_two_with_it() {
         assert_eq!(symbols_read(false), 1);
         assert_eq!(symbols_read(true), 2);
+    }
+
+    #[test]
+    fn needs_interp_filter_matches_dav1d_has_subpel_filter() {
+        use crate::frame_header_full::{GM_TYPE_IDENTITY, GM_TYPE_ROTZOOM, GM_TYPE_TRANSLATION};
+        let translation: [u8; 8] = [GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION, 0, 0, 0, 0, 0, 0];
+        let identity: [u8; 8] = [GM_TYPE_IDENTITY; 8];
+        let rotzoom_ref2: [u8; 8] = [
+            GM_TYPE_IDENTITY,
+            GM_TYPE_IDENTITY,
+            GM_TYPE_ROTZOOM,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ];
+
+        // Non-global modes always need the filter read, regardless of size/GmType.
+        assert!(needs_interp_filter(
+            PredictionMode::NewMv,
+            16,
+            16,
+            &identity,
+            RefFrame::Last,
+            RefFrame::Intra
+        ));
+        assert!(needs_interp_filter(
+            PredictionMode::NearestNearestMv,
+            16,
+            16,
+            &identity,
+            RefFrame::Last,
+            RefFrame::Last2
+        ));
+
+        // GLOBALMV, large block, GmType==TRANSLATION => read.
+        assert!(needs_interp_filter(
+            PredictionMode::GlobalMv,
+            16,
+            16,
+            &translation,
+            RefFrame::Last,
+            RefFrame::Intra
+        ));
+        // GLOBALMV, large block, GmType==IDENTITY => suppressed (forced EIGHTTAP).
+        assert!(!needs_interp_filter(
+            PredictionMode::GlobalMv,
+            16,
+            16,
+            &identity,
+            RefFrame::Last,
+            RefFrame::Intra
+        ));
+        // GLOBALMV, minimal-size block (min dim == 1, i.e. 4px) => always read regardless of GmType.
+        assert!(needs_interp_filter(
+            PredictionMode::GlobalMv,
+            1,
+            16,
+            &identity,
+            RefFrame::Last,
+            RefFrame::Intra
+        ));
+
+        // GLOBAL_GLOBALMV: either ref being TRANSLATION is enough.
+        assert!(needs_interp_filter(
+            PredictionMode::GlobalGlobalMv,
+            16,
+            16,
+            &translation,
+            RefFrame::Last2,
+            RefFrame::Last
+        ));
+        // GLOBAL_GLOBALMV: neither ref TRANSLATION => suppressed.
+        assert!(!needs_interp_filter(
+            PredictionMode::GlobalGlobalMv,
+            16,
+            16,
+            &rotzoom_ref2,
+            RefFrame::Last,
+            RefFrame::Golden
+        ));
     }
 }
