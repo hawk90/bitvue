@@ -543,4 +543,89 @@ mod tests {
         assert_eq!(coeff_base_eob_context(0, 16, 16), 0);
         assert_eq!(coeff_base_eob_context(0, 32, 32), 0);
     }
+
+    /// A tile whose equiprobable bools are all `false` up to `zeros` times, then `true`: `data`
+    /// is all-zero bytes with one byte set; found by decoding (the arithmetic decoder does not
+    /// map bytes to bools one to one).
+    fn stream_with_first_one_at(byte: usize, value: u8) -> Vec<u8> {
+        let mut data = vec![0u8; 32];
+        data[byte] = value;
+        data
+    }
+
+    fn bools(data: &[u8], n: usize) -> Vec<bool> {
+        let mut d = SymbolDecoder::new(data).unwrap();
+        (0..n)
+            .map(|_| d.decoder.read_bool(16384).unwrap())
+            .collect()
+    }
+
+    /// The Exp-Golomb tail (dav1d `read_golomb`): count equiprobable zero bits up to a one, but
+    /// at most 32, then read that many more bits `b`; the value is `(1 << len | b) - 1` in `u32`
+    /// arithmetic (a 32-bit tail shifts the leading one out), plus the 15 of the escape token.
+    /// Computed here from the plain bool sequence, not from `read_golomb_tail`'s loop.
+    fn expected_tail(bits: &[bool]) -> (u32, usize) {
+        let zeros = bits.iter().take_while(|b| !**b).count();
+        // The loop reads the terminating bit as well, or the 33rd zero when it hits the limit.
+        let (len, consumed) = if zeros >= 32 {
+            (32, 33)
+        } else {
+            (zeros, zeros + 1)
+        };
+        let mut val = 1u32;
+        for k in 0..len {
+            val = (val << 1).wrapping_add(u32::from(bits[consumed + k]));
+        }
+        (val.wrapping_sub(1).wrapping_add(15), consumed + len)
+    }
+
+    /// With no one among the first 33 bits the zero count stops at 32: 33 bits are read for the
+    /// count (the last one is dropped, not counted) and 32 more for the value. Streams whose
+    /// first one sits at bit 33, 36 and 48 tell a limit of 32 from 31 and from 33.
+    #[test]
+    fn golomb_tail_stops_counting_zero_bits_at_32() {
+        for (byte, value) in [(4usize, 0x80u8), (4, 0x10), (5, 0x01)] {
+            let data = stream_with_first_one_at(byte, value);
+            let bits = bools(&data, 120);
+            let first_one = bits.iter().position(|b| *b).unwrap();
+            assert!(first_one >= 33, "stream must have 33 leading zero bits");
+            let (want, consumed) = expected_tail(&bits);
+
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            assert_eq!(
+                d.read_golomb_tail(15).unwrap(),
+                want,
+                "value, one at {first_one}"
+            );
+            // The next bits come from where the tail stopped reading.
+            let next: Vec<bool> = (0..8)
+                .map(|_| d.decoder.read_bool(16384).unwrap())
+                .collect();
+            assert_eq!(
+                next,
+                bits[consumed..consumed + 8],
+                "position, one at {first_one}"
+            );
+        }
+    }
+
+    /// An all-zero tile reaches the limit as well; the 32-bit value then loses its leading one.
+    #[test]
+    fn golomb_tail_of_32_zero_bits_and_a_zero_tail_wraps_to_14() {
+        let data = vec![0u8; 32];
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        assert_eq!(d.read_golomb_tail(15).unwrap(), 14);
+    }
+
+    /// A token below 15 is its own level and reads nothing.
+    #[test]
+    fn golomb_tail_below_15_reads_no_bits() {
+        let data = stream_with_first_one_at(4, 0x80);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        assert_eq!(d.read_golomb_tail(14).unwrap(), 14);
+        let next: Vec<bool> = (0..8)
+            .map(|_| d.decoder.read_bool(16384).unwrap())
+            .collect();
+        assert_eq!(next, bools(&data, 8));
+    }
 }
