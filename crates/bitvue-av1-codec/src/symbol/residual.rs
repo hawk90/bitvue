@@ -493,6 +493,16 @@ impl ResidualBlockStats {
     }
 }
 
+/// Spec `txSzCtx` (dav1d `TxfmInfo.ctx`) of a transform: `(Tx_Size_Sqr + Tx_Size_Sqr_Up + 1) >> 1`,
+/// i.e. the average of the smaller and the larger side's size class (log2 of px / 4), rounded up.
+/// It selects the coefficient CDF family. Equal to the larger side's class for square and 2:1
+/// transforms and one lower for 4:1 ones.
+pub(crate) fn tx_size_ctx(tx_width_px: u32, tx_height_px: u32) -> usize {
+    let a = cdf::tx_size_class(tx_width_px);
+    let b = cdf::tx_size_class(tx_height_px);
+    (a.min(b) + a.max(b) + 1) >> 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
