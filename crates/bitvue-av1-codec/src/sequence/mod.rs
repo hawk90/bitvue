@@ -670,4 +670,183 @@ mod tests {
         assert_eq!(select.seq_force_screen_content_tools, 2);
         assert_eq!(select.seq_force_integer_mv, 2);
     }
+
+    fn color_config(profile: Av1Profile, fields: &[(u32, u8)]) -> ColorConfig {
+        let bytes = pack(fields);
+        parse_color_config(&mut BitReader::new(&bytes), &profile).unwrap()
+    }
+
+    #[test]
+    fn a_main_profile_high_bit_depth_stream_is_10_bit_420_with_its_colour_description() {
+        let config = color_config(
+            Av1Profile::Main,
+            &[
+                (1, 1),  // high_bitdepth
+                (0, 1),  // mono_chrome
+                (1, 1),  // color_description_present_flag
+                (9, 8),  // color_primaries: BT.2020
+                (16, 8), // transfer_characteristics: SMPTE ST 2084
+                (9, 8),  // matrix_coefficients: BT.2020 non-constant
+                (1, 1),  // color_range
+                (2, 2),  // chroma_sample_position: colocated
+                (1, 1),  // separate_uv_delta_q
+            ],
+        );
+        assert_eq!(config.bit_depth, 10);
+        assert_eq!(config.num_planes, 3);
+        assert_eq!(config.color_primaries, ColorPrimaries::Bt2020);
+        assert_eq!(
+            config.transfer_characteristics,
+            TransferCharacteristics::Smpte2084
+        );
+        assert_eq!(config.matrix_coefficients, MatrixCoefficients::Bt2020Ncl);
+        assert!(config.color_range);
+        assert_eq!(config.chroma_subsampling_str(), "4:2:0");
+        assert_eq!(
+            config.chroma_sample_position,
+            ChromaSamplePosition::Colocated
+        );
+        assert!(config.separate_uv_delta_q);
+    }
+
+    #[test]
+    fn a_main_profile_8_bit_stream_without_a_colour_description_is_unspecified() {
+        let config = color_config(
+            Av1Profile::Main,
+            &[(0, 1), (0, 1), (0, 1), (0, 1), (1, 2), (0, 1)],
+        );
+        assert_eq!(config.bit_depth, 8);
+        assert_eq!(config.color_primaries, ColorPrimaries::Unspecified);
+        assert_eq!(
+            config.transfer_characteristics,
+            TransferCharacteristics::Unspecified
+        );
+        assert_eq!(config.matrix_coefficients, MatrixCoefficients::Unspecified);
+        assert!(!config.color_range);
+        assert_eq!(
+            config.chroma_sample_position,
+            ChromaSamplePosition::Vertical
+        );
+        assert!(!config.separate_uv_delta_q);
+    }
+
+    #[test]
+    fn the_high_profile_has_no_mono_bit_and_is_444() {
+        // high_bitdepth, (no mono_chrome bit), no colour description, color_range, separate_uv.
+        let config = color_config(Av1Profile::High, &[(0, 1), (0, 1), (1, 1), (1, 1)]);
+        assert!(!config.mono_chrome);
+        assert_eq!(config.chroma_subsampling_str(), "4:4:4");
+        assert!(config.color_range);
+        assert!(config.separate_uv_delta_q);
+        assert_eq!(config.chroma_sample_position, ChromaSamplePosition::Unknown);
+    }
+
+    #[test]
+    fn the_professional_profile_reads_its_depth_and_subsampling_bits() {
+        // 12-bit 4:2:2: high_bitdepth, twelve_bit, mono, desc, range, subsampling_x = 1, _y = 0.
+        let c422 = color_config(
+            Av1Profile::Professional,
+            &[
+                (1, 1),
+                (1, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (1, 1),
+                (0, 1),
+                (0, 1),
+            ],
+        );
+        assert_eq!(c422.bit_depth, 12);
+        assert_eq!(c422.chroma_subsampling_str(), "4:2:2");
+        assert_eq!(c422.chroma_sample_position, ChromaSamplePosition::Unknown);
+
+        // 12-bit 4:2:0 reads chroma_sample_position, 12-bit 4:4:4 reads neither y bit.
+        let c420 = color_config(
+            Av1Profile::Professional,
+            &[
+                (1, 1),
+                (1, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (1, 1),
+                (1, 1),
+                (1, 2),
+                (0, 1),
+            ],
+        );
+        assert_eq!(c420.chroma_subsampling_str(), "4:2:0");
+        assert_eq!(c420.chroma_sample_position, ChromaSamplePosition::Vertical);
+        let c444 = color_config(
+            Av1Profile::Professional,
+            &[(1, 1), (1, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1)],
+        );
+        assert_eq!(c444.chroma_subsampling_str(), "4:4:4");
+
+        // 10-bit professional streams are 4:2:2 without any subsampling bits; twelve_bit = 0
+        // also means 10-bit.
+        let ten = color_config(
+            Av1Profile::Professional,
+            &[(0, 1), (0, 1), (0, 1), (0, 1), (0, 1)],
+        );
+        assert_eq!(ten.bit_depth, 10);
+        assert_eq!(ten.chroma_subsampling_str(), "4:2:2");
+        let ten_high = color_config(
+            Av1Profile::Professional,
+            &[
+                (1, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (1, 1),
+                (0, 1),
+                (0, 1),
+            ],
+        );
+        assert_eq!(ten_high.bit_depth, 10);
+    }
+
+    #[test]
+    fn a_monochrome_stream_reads_only_the_color_range() {
+        let config = color_config(Av1Profile::Main, &[(0, 1), (1, 1), (0, 1), (1, 1)]);
+        assert!(config.mono_chrome);
+        assert_eq!(config.num_planes, 1);
+        assert!(config.color_range);
+        assert_eq!(config.chroma_subsampling_str(), "4:0:0");
+        // The spec fixes a monochrome stream's subsampling at 1 in both directions.
+        assert!(config.subsampling_x && config.subsampling_y);
+        assert_eq!(config.chroma_sample_position, ChromaSamplePosition::Unknown);
+        assert!(!config.separate_uv_delta_q);
+    }
+
+    #[test]
+    fn bt709_srgb_identity_is_full_range_444_without_range_and_subsampling_bits() {
+        let config = color_config(
+            Av1Profile::Main,
+            &[
+                (0, 1),  // high_bitdepth
+                (0, 1),  // mono_chrome
+                (1, 1),  // color_description_present_flag
+                (1, 8),  // BT.709
+                (13, 8), // sRGB
+                (0, 8),  // identity
+                (1, 1),  // separate_uv_delta_q (no color_range / subsampling bits before it)
+            ],
+        );
+        assert!(config.color_range);
+        assert_eq!(config.chroma_subsampling_str(), "4:4:4");
+        assert!(config.separate_uv_delta_q);
+    }
+
+    #[test]
+    fn chroma_subsampling_str_names_422() {
+        let config = ColorConfig {
+            subsampling_x: true,
+            subsampling_y: false,
+            ..color_config(Av1Profile::High, &[(0, 1), (0, 1), (0, 1), (0, 1)])
+        };
+        assert_eq!(config.chroma_subsampling_str(), "4:2:2");
+    }
 }
