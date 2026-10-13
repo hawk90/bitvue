@@ -496,7 +496,7 @@ fn parse_color_config_simplified(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitvue_engine::types::BitRange;
+    use bitvue_engine::types::{BitRange, SyntaxModel};
 
     #[test]
     fn test_reduced_still_picture_header() {
@@ -546,5 +546,447 @@ mod tests {
             .get_node("obu[0].sequence_header.seq_level_idx")
             .unwrap();
         assert_eq!(level.bit_range, BitRange::new(5, 10));
+    }
+
+    // --- helpers for the tests below ---------------------------------------
+
+    /// MSB-first bit writer with the trailing-one tail of an OBU payload.
+    struct Bits(Vec<bool>);
+
+    impl Bits {
+        fn new() -> Self {
+            Bits(Vec::new())
+        }
+        fn put(&mut self, value: u64, width: u32) -> &mut Self {
+            for i in (0..width).rev() {
+                self.0.push((value >> i) & 1 == 1);
+            }
+            self
+        }
+        fn len(&self) -> usize {
+            self.0.len()
+        }
+        fn bytes(&self) -> Vec<u8> {
+            let mut bits = self.0.clone();
+            bits.push(true);
+            while !bits.len().is_multiple_of(8) {
+                bits.push(false);
+            }
+            bits.chunks(8)
+                .map(|c| c.iter().fold(0u8, |a, &b| (a << 1) | b as u8))
+                .collect()
+        }
+    }
+
+    /// Everything after the operating points of a non-reduced, profile 0 header:
+    /// 8-bit width/height fields, no frame ids, order hint off, plain colour config.
+    fn tail_after_operating_points(w: &mut Bits) {
+        w.put(7, 4).put(7, 4); // frame_width_bits_minus_1, frame_height_bits_minus_1
+        w.put(0xAB, 8).put(0xCD, 8); // max_frame_width/height_minus_1
+        w.put(0, 1); // frame_id_numbers_present_flag
+        w.put(0b101, 3); // use_128x128, filter_intra, intra_edge
+        w.put(0, 4); // interintra, masked, warped, dual_filter
+        w.put(0, 1); // enable_order_hint
+        w.put(0, 1).put(0, 1); // choose_sct = 0, force_sct = 0
+        w.put(0b011, 3); // superres, cdef, restoration
+        w.put(0, 1).put(0, 1).put(0, 1); // high_bitdepth, mono_chrome, colour description
+        w.put(1, 1); // color_range
+        w.put(0b10, 2); // chroma_sample_position
+        w.put(1, 1); // separate_uv_delta_q
+        w.put(1, 1); // film_grain_params_present
+    }
+
+    fn parse(data: &[u8]) -> (Result<()>, SyntaxModel) {
+        let mut reader = TrackedBitReader::new(data, 0);
+        let mut builder = SyntaxBuilder::new("o".to_string(), "o".to_string());
+        let result = parse_sequence_header_syntax(&mut reader, &mut builder);
+        (result, builder.build())
+    }
+
+    fn value(model: &SyntaxModel, path: &str) -> Option<String> {
+        model
+            .get_node(&format!("o.sequence_header.{path}"))
+            .and_then(|n| n.value.clone())
+    }
+
+    fn range(model: &SyntaxModel, path: &str) -> BitRange {
+        model
+            .get_node(&format!("o.sequence_header.{path}"))
+            .unwrap_or_else(|| panic!("missing node {path}"))
+            .bit_range
+    }
+
+    // --- tests ---------------------------------------------------------------
+
+    #[test]
+    fn a_plain_header_reports_every_field_with_its_bit_range() {
+        let mut w = Bits::new();
+        w.put(0, 3).put(0, 1).put(0, 1); // profile 0, still 0, reduced 0
+        w.put(0, 1); // timing_info_present_flag
+        w.put(0, 1); // initial_display_delay_present_flag
+        w.put(0, 5); // operating_points_cnt_minus_1
+        w.put(0x123, 12).put(5, 5); // idc, seq_level_idx
+        tail_after_operating_points(&mut w);
+        let (result, m) = parse(&w.bytes());
+        result.unwrap();
+
+        assert_eq!(
+            range(&m, "operating_points[0].operating_point_idc"),
+            BitRange::new(12, 24)
+        );
+        assert_eq!(
+            value(&m, "operating_points[0].operating_point_idc").unwrap(),
+            "0x123"
+        );
+        assert_eq!(value(&m, "operating_points[0].seq_level_idx").unwrap(), "5");
+        // level 5 <= 7: no tier bit
+        assert!(m
+            .get_node("o.sequence_header.operating_points[0].seq_tier")
+            .is_none());
+        assert_eq!(value(&m, "max_frame_width_minus_1").unwrap(), "171"); // 0xAB
+        assert_eq!(value(&m, "max_frame_height_minus_1").unwrap(), "205"); // 0xCD
+        assert_eq!(
+            range(&m, "max_frame_width_minus_1").end_bit
+                - range(&m, "max_frame_width_minus_1").start_bit,
+            8
+        );
+        assert_eq!(value(&m, "use_128x128_superblock").unwrap(), "1");
+        assert_eq!(value(&m, "enable_filter_intra").unwrap(), "0");
+        assert_eq!(value(&m, "enable_intra_edge_filter").unwrap(), "1");
+        assert_eq!(value(&m, "enable_superres").unwrap(), "0");
+        assert_eq!(value(&m, "enable_cdef").unwrap(), "1");
+        assert_eq!(value(&m, "enable_restoration").unwrap(), "1");
+        assert_eq!(value(&m, "color_config.color_range").unwrap(), "1");
+        assert_eq!(
+            value(&m, "color_config.chroma_sample_position").unwrap(),
+            "2"
+        );
+        assert_eq!(value(&m, "color_config.separate_uv_delta_q").unwrap(), "1");
+        assert_eq!(value(&m, "film_grain_params_present").unwrap(), "1");
+        // the container spans the whole header
+        let whole = range(&m, "film_grain_params_present");
+        assert_eq!(whole.end_bit, w.len() as u64);
+    }
+
+    #[test]
+    fn timing_info_reads_two_32_bit_words_and_the_uvlc_only_when_the_interval_is_equal() {
+        for (equal, uvlc_bits, expect_field) in [(false, 0u32, false), (true, 0b00101, true)] {
+            let mut w = Bits::new();
+            w.put(0, 5); // profile, still, reduced
+            w.put(1, 1); // timing_info_present_flag
+            w.put(0xDEAD_BEEF, 32).put(30_000, 32).put(equal as u64, 1);
+            if equal {
+                w.put(uvlc_bits as u64, 5); // uvlc(4): two leading zeros, 1, two bits
+            }
+            w.put(0, 1); // decoder_model_info_present_flag
+            w.put(0, 1).put(0, 5).put(0, 12).put(4, 5);
+            tail_after_operating_points(&mut w);
+            let (result, m) = parse(&w.bytes());
+            result.unwrap();
+
+            assert_eq!(
+                value(&m, "timing_info.num_units_in_display_tick").unwrap(),
+                "3735928559"
+            );
+            assert_eq!(value(&m, "timing_info.time_scale").unwrap(), "30000");
+            assert_eq!(
+                value(&m, "timing_info.equal_picture_interval").unwrap(),
+                (equal as u8).to_string()
+            );
+            assert_eq!(
+                value(&m, "timing_info.num_ticks_per_picture_minus_1").is_some(),
+                expect_field
+            );
+            if expect_field {
+                assert_eq!(
+                    value(&m, "timing_info.num_ticks_per_picture_minus_1").unwrap(),
+                    "4"
+                );
+            }
+            // the bits after the uvlc are still in step
+            assert_eq!(value(&m, "operating_points[0].seq_level_idx").unwrap(), "4");
+            assert_eq!(value(&m, "film_grain_params_present").unwrap(), "1");
+        }
+    }
+
+    #[test]
+    fn decoder_model_info_is_skipped_as_exactly_47_bits() {
+        let mut w = Bits::new();
+        w.put(0, 5).put(1, 1);
+        w.put(1, 32).put(2, 32).put(0, 1); // timing, not equal
+        w.put(1, 1); // decoder_model_info_present_flag
+        w.put(0x1F, 5)
+            .put(0xFFFF_FFFF, 32)
+            .put(0x1F, 5)
+            .put(0x1F, 5); // 47 bits of ones
+        w.put(0, 1); // initial_display_delay_present_flag
+        w.put(0, 5); // one operating point
+        w.put(0x0AA, 12).put(4, 5);
+        w.put(0, 1); // decoder_model_present_for_this_op = 0
+        tail_after_operating_points(&mut w);
+        let (result, m) = parse(&w.bytes());
+        result.unwrap();
+        assert_eq!(value(&m, "decoder_model_info_present_flag").unwrap(), "1");
+        assert_eq!(
+            value(&m, "operating_points[0].operating_point_idc").unwrap(),
+            "0x0AA"
+        );
+        assert_eq!(value(&m, "film_grain_params_present").unwrap(), "1");
+    }
+
+    #[test]
+    fn the_tier_bit_is_read_from_level_index_8_and_not_at_7() {
+        for (level, tier_present) in [(0u64, false), (7, false), (8, true), (31, true)] {
+            let mut w = Bits::new();
+            w.put(0, 5).put(0, 1).put(0, 1).put(0, 5);
+            w.put(0, 12).put(level, 5);
+            if tier_present {
+                w.put(1, 1);
+            }
+            tail_after_operating_points(&mut w);
+            let (result, m) = parse(&w.bytes());
+            result.unwrap();
+            assert_eq!(
+                value(&m, "operating_points[0].seq_tier").is_some(),
+                tier_present,
+                "level {level}"
+            );
+            assert_eq!(
+                value(&m, "film_grain_params_present").unwrap(),
+                "1",
+                "level {level}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_operating_point_gets_its_own_container_and_display_delay_bits() {
+        let mut w = Bits::new();
+        w.put(0, 5).put(0, 1);
+        w.put(1, 1); // initial_display_delay_present_flag
+        w.put(2, 5); // three operating points
+                     // op 0: no delay, op 1: delay present with 4 bits, op 2: level 9 (tier) and delay present
+        w.put(0x001, 12).put(2, 5).put(0, 1);
+        w.put(0x002, 12).put(3, 5).put(1, 1).put(0b1010, 4);
+        w.put(0x003, 12)
+            .put(9, 5)
+            .put(0, 1)
+            .put(1, 1)
+            .put(0b0111, 4);
+        tail_after_operating_points(&mut w);
+        let (result, m) = parse(&w.bytes());
+        result.unwrap();
+        assert_eq!(value(&m, "operating_points_cnt_minus_1").unwrap(), "2");
+        for (i, idc) in ["0x001", "0x002", "0x003"].iter().enumerate() {
+            assert_eq!(
+                value(&m, &format!("operating_points[{i}].operating_point_idc")).unwrap(),
+                *idc
+            );
+        }
+        assert_eq!(value(&m, "operating_points[2].seq_tier").unwrap(), "0");
+        assert_eq!(value(&m, "film_grain_params_present").unwrap(), "1");
+    }
+
+    #[test]
+    fn the_largest_operating_point_count_is_read_in_full() {
+        let mut w = Bits::new();
+        w.put(0, 5).put(0, 1).put(0, 1).put(31, 5); // 32 operating points
+        for i in 0..32u64 {
+            w.put(i, 12).put(1, 5);
+        }
+        tail_after_operating_points(&mut w);
+        let (result, m) = parse(&w.bytes());
+        result.unwrap();
+        assert_eq!(
+            value(&m, "operating_points[31].operating_point_idc").unwrap(),
+            "0x01F"
+        );
+        assert_eq!(value(&m, "film_grain_params_present").unwrap(), "1");
+    }
+
+    #[test]
+    fn frame_dimensions_use_the_declared_widths() {
+        for (wb, hb) in [(0u64, 0u64), (3, 12), (15, 15)] {
+            let mut w = Bits::new();
+            w.put(0, 5)
+                .put(0, 1)
+                .put(0, 1)
+                .put(0, 5)
+                .put(0, 12)
+                .put(1, 5);
+            w.put(wb, 4).put(hb, 4);
+            w.put((1u64 << (wb + 1)) - 1, wb as u32 + 1);
+            w.put(0, hb as u32 + 1);
+            w.put(0, 1); // frame ids
+            w.put(0, 3).put(0, 4).put(0, 1).put(0, 2).put(0, 3); // flags
+            w.put(0, 3).put(1, 1).put(0, 2).put(0, 1); // colour config
+            w.put(1, 1);
+            let (result, m) = parse(&w.bytes());
+            result.unwrap();
+            let width = range(&m, "max_frame_width_minus_1");
+            let height = range(&m, "max_frame_height_minus_1");
+            assert_eq!(width.end_bit - width.start_bit, wb + 1);
+            assert_eq!(height.end_bit - height.start_bit, hb + 1);
+            assert_eq!(
+                value(&m, "max_frame_width_minus_1").unwrap(),
+                ((1u64 << (wb + 1)) - 1).to_string()
+            );
+            assert_eq!(value(&m, "max_frame_height_minus_1").unwrap(), "0");
+            assert_eq!(value(&m, "film_grain_params_present").unwrap(), "1");
+        }
+    }
+
+    #[test]
+    fn every_proper_prefix_of_a_full_header_is_an_error() {
+        let mut w = Bits::new();
+        w.put(0, 5).put(1, 1);
+        w.put(1, 32).put(2, 32).put(1, 1).put(0b1, 1); // equal, uvlc(0)
+        w.put(1, 1).put(0, 47);
+        w.put(1, 1).put(1, 5);
+        w.put(0x010, 12)
+            .put(9, 5)
+            .put(1, 1)
+            .put(0, 1)
+            .put(1, 1)
+            .put(0, 4);
+        w.put(0x020, 12).put(2, 5).put(0, 1).put(0, 1);
+        tail_after_operating_points(&mut w);
+        let full = w.bytes();
+        let (result, _) = parse(&full);
+        result.unwrap();
+        for cut in 0..full.len() - 1 {
+            let (result, _) = parse(&full[..cut]);
+            assert!(
+                result.is_err(),
+                "a {cut}-byte prefix of {} bytes parsed",
+                full.len()
+            );
+        }
+    }
+
+    #[test]
+    fn arbitrary_bytes_never_panic() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        for len in 0..48usize {
+            for _ in 0..200 {
+                let data: Vec<u8> = (0..len)
+                    .map(|_| {
+                        state ^= state << 13;
+                        state ^= state >> 7;
+                        state ^= state << 17;
+                        (state >> 24) as u8
+                    })
+                    .collect();
+                let _ = parse(&data);
+            }
+        }
+    }
+
+    /// Header up to the end of the operating points: profile `profile`, one operating point.
+    fn head(w: &mut Bits, profile: u64) {
+        w.put(profile, 3).put(0, 1).put(0, 1);
+        w.put(0, 1).put(0, 1).put(0, 5).put(0, 12).put(4, 5);
+        w.put(7, 4).put(7, 4).put(0xAB, 8).put(0xCD, 8);
+    }
+
+    #[test]
+    fn every_optional_feature_branch_keeps_the_bits_in_step() {
+        // (frame ids, order hint, screen-content force path) in all combinations
+        for frame_ids in [false, true] {
+            for order_hint in [false, true] {
+                for force_sct in [false, true] {
+                    let mut w = Bits::new();
+                    head(&mut w, 0);
+                    w.put(frame_ids as u64, 1);
+                    if frame_ids {
+                        w.put(0b1010101, 7);
+                    }
+                    w.put(0b110, 3); // 128x128, filter_intra, intra_edge
+                    w.put(0b0000, 4);
+                    w.put(order_hint as u64, 1);
+                    if order_hint {
+                        w.put(0b11, 2); // enable_jnt_comp, enable_ref_frame_mvs
+                    }
+                    w.put(0, 1); // seq_choose_screen_content_tools = 0
+                    w.put(force_sct as u64, 1); // seq_force_screen_content_tools
+                    if force_sct {
+                        w.put(0, 1); // seq_choose_integer_mv = 0
+                        w.put(1, 1); // seq_force_integer_mv
+                    }
+                    if order_hint {
+                        w.put(0b101, 3); // order_hint_bits_minus_1
+                    }
+                    w.put(0b101, 3); // superres, cdef, restoration
+                    w.put(0, 3).put(1, 1).put(0b01, 2).put(0, 1); // colour config
+                    w.put(1, 1);
+                    let (result, m) = parse(&w.bytes());
+                    result.unwrap();
+                    let tag = format!(
+                        "frame_ids={frame_ids} order_hint={order_hint} force_sct={force_sct}"
+                    );
+                    assert_eq!(
+                        value(&m, "frame_id_numbers_present_flag").unwrap(),
+                        (frame_ids as u8).to_string(),
+                        "{tag}"
+                    );
+                    assert_eq!(
+                        value(&m, "enable_order_hint").unwrap(),
+                        (order_hint as u8).to_string(),
+                        "{tag}"
+                    );
+                    assert_eq!(value(&m, "enable_superres").unwrap(), "1", "{tag}");
+                    assert_eq!(value(&m, "enable_cdef").unwrap(), "0", "{tag}");
+                    assert_eq!(value(&m, "enable_restoration").unwrap(), "1", "{tag}");
+                    assert_eq!(
+                        value(&m, "film_grain_params_present").unwrap(),
+                        "1",
+                        "{tag}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_high_bitdepth_flag_alone_does_not_add_the_twelve_bit_bit() {
+        // profile 0 with high_bitdepth = 1: mono_chrome follows directly
+        let mut w = Bits::new();
+        head(&mut w, 0);
+        w.put(0, 1)
+            .put(0, 3)
+            .put(0, 4)
+            .put(0, 1)
+            .put(0, 2)
+            .put(0, 3);
+        w.put(1, 1).put(0, 1); // high_bitdepth = 1, mono_chrome = 0
+        w.put(0, 1).put(1, 1).put(0b11, 2).put(0, 1).put(1, 1);
+        let (result, m) = parse(&w.bytes());
+        result.unwrap();
+        assert!(m
+            .get_node("o.sequence_header.color_config.twelve_bit")
+            .is_none());
+        assert_eq!(value(&m, "color_config.high_bitdepth").unwrap(), "1");
+        assert_eq!(value(&m, "color_config.mono_chrome").unwrap(), "0");
+        assert_eq!(
+            value(&m, "color_config.chroma_sample_position").unwrap(),
+            "3"
+        );
+        assert_eq!(value(&m, "film_grain_params_present").unwrap(), "1");
+    }
+
+    #[test]
+    fn the_professional_profile_reads_twelve_bit_after_high_bitdepth() {
+        let mut w = Bits::new();
+        head(&mut w, 2);
+        w.put(0, 1)
+            .put(0, 3)
+            .put(0, 4)
+            .put(0, 1)
+            .put(0, 2)
+            .put(0, 3);
+        w.put(1, 1).put(1, 1); // high_bitdepth = 1, twelve_bit = 1
+        let (_, m) = parse(&w.bytes());
+        assert_eq!(value(&m, "color_config.twelve_bit").unwrap(), "1");
+        assert_eq!(value(&m, "seq_profile").unwrap(), "2 (Professional)");
     }
 }
