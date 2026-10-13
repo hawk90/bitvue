@@ -438,3 +438,110 @@ fn test_compound_extended_candidates_turn_vectors_around_by_sign_bias() {
     assert_eq!(stack[0].mv, [MotionVector::new(0, -32), mv]);
     assert_eq!(stack[1].mv, [MotionVector::zero(), MotionVector::zero()]);
 }
+
+/// A compound pair `(ref0, ref1)`: the references the compound stack tests below query for.
+const PAIR: (i8, i8) = (0, 4);
+
+fn pair(x0: i32, x1: i32) -> [MotionVector; 2] {
+    [mv_x(x0), mv_x(x1)]
+}
+
+/// Temporal pairs need both references: a query with `ref1 < 0` (a single-reference query on
+/// the compound path) must not read the temporal context at all -- `pocdiff[ref1]` with a
+/// negative reference would index out of bounds.
+#[test]
+fn test_compound_mv_stack_skips_temporal_pairs_when_ref1_is_negative() {
+    use crate::tile::motion_field::{project_motion_field, MotionFieldState};
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let projected = project_motion_field(&[], &MotionFieldState::new(), 8, 8);
+    ctx.set_temporal_context(projected, [1; 7]);
+    let with_temporal = ctx.compound_mv_stack(4, 4, 2, 2, PAIR.0, -1, true);
+    let without = ctx.compound_mv_stack(4, 4, 2, 2, PAIR.0, -1, false);
+    assert_eq!(with_temporal.1, without.1);
+    for i in 0..with_temporal.1 {
+        assert_eq!(with_temporal.0[i].mv, without.0[i].mv);
+        assert_eq!(with_temporal.0[i].weight, without.0[i].weight);
+    }
+}
+
+/// dav1d reads the secondary rows at `((y4 - 2n + 1) | 1)`, the odd row of each 8x8 pair: at the
+/// odd `y4 = 5` the n = 2 row is 3, not 2 (the compound counterpart of the single-reference test).
+#[test]
+fn test_compound_mv_stack_secondary_rows_use_the_odd_row_of_each_8x8_pair() {
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let (a, b) = (pair(16, 17), pair(24, 25));
+    ctx.set_block(4, 3, 4, 1, PAIR.0, PAIR.1, false, a[0], a[1]);
+    ctx.set_block(4, 2, 4, 1, PAIR.0, PAIR.1, false, b[0], b[1]);
+    let (stack, cnt) = ctx.compound_mv_stack(4, 5, 2, 2, PAIR.0, PAIR.1, false);
+    // The second entry is the padding `cnt < 2` triggers; only the scanned one is pinned.
+    assert_eq!(cnt, 2);
+    assert_eq!(stack[0].mv, a);
+    // weight = len (2) * weight (max(2, min(2 * (1 + 3 - 2), 1)) = 2)
+    assert_eq!(stack[0].weight, 4);
+}
+
+/// The same for a secondary column (`(x4 - 2n + 1) | 1`) at the odd `x4 = 5`.
+#[test]
+fn test_compound_mv_stack_secondary_columns_use_the_odd_column_of_each_8x8_pair() {
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let (a, b) = (pair(16, 17), pair(24, 25));
+    ctx.set_block(3, 4, 1, 4, PAIR.0, PAIR.1, false, a[0], a[1]);
+    ctx.set_block(2, 4, 1, 4, PAIR.0, PAIR.1, false, b[0], b[1]);
+    let (stack, cnt) = ctx.compound_mv_stack(5, 4, 2, 2, PAIR.0, PAIR.1, false);
+    assert_eq!(cnt, 2);
+    assert_eq!(stack[0].mv, a);
+    assert_eq!(stack[0].weight, 4);
+}
+
+/// How many rows a secondary scan covers is `1 + max_rows - n`, and it bounds the weight a tall
+/// neighbour earns (`min(height, 2 * rows)`): at `y4 = 5` (`max_rows = 3`) the n = 2 scan covers
+/// 2 rows, so a 4-high neighbour weighs 4 per unit of its overlap (2) = 8, not 2 * 2 = 4. A
+/// different block on the n = 3 row would be found by a scan that covered only 1 row.
+#[test]
+fn test_compound_mv_stack_secondary_row_weight_is_bounded_by_the_rows_it_covers() {
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let (a, b) = (pair(16, 17), pair(24, 25));
+    ctx.set_block(4, 0, 4, 4, PAIR.0, PAIR.1, false, a[0], a[1]);
+    ctx.set_block(4, 1, 4, 1, PAIR.0, PAIR.1, false, b[0], b[1]);
+    let (stack, cnt) = ctx.compound_mv_stack(4, 5, 2, 2, PAIR.0, PAIR.1, false);
+    assert_eq!(cnt, 2);
+    assert_eq!(stack[0].mv, a);
+    assert_eq!(stack[0].weight, 8);
+    assert_ne!(stack[1].mv, b, "the n = 3 row must not have been scanned");
+}
+
+/// The same for a secondary column (`1 + max_cols - n`).
+#[test]
+fn test_compound_mv_stack_secondary_column_weight_is_bounded_by_the_columns_it_covers() {
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let (a, b) = (pair(16, 17), pair(24, 25));
+    ctx.set_block(0, 4, 4, 4, PAIR.0, PAIR.1, false, a[0], a[1]);
+    ctx.set_block(1, 4, 1, 4, PAIR.0, PAIR.1, false, b[0], b[1]);
+    let (stack, cnt) = ctx.compound_mv_stack(5, 4, 2, 2, PAIR.0, PAIR.1, false);
+    assert_eq!(cnt, 2);
+    assert_eq!(stack[0].mv, a);
+    assert_eq!(stack[0].weight, 8);
+    assert_ne!(
+        stack[1].mv, b,
+        "the n = 3 column must not have been scanned"
+    );
+}
+
+/// A neighbour found by the main scan earns the exact "nearest" bump of 640 on top of its scan
+/// weight: a 2-wide block above a 2-wide query weighs 2 * 2 = 4, so 644.
+#[test]
+fn test_compound_mv_stack_nearest_candidate_weight_is_scan_weight_plus_640() {
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let a = pair(16, 17);
+    ctx.set_block(4, 3, 2, 1, PAIR.0, PAIR.1, false, a[0], a[1]);
+    let (stack, cnt) = ctx.compound_mv_stack(4, 4, 2, 2, PAIR.0, PAIR.1, false);
+    assert_eq!(cnt, 2);
+    assert_eq!(stack[0].mv, a);
+    assert_eq!(stack[0].weight, 640 + 4);
+}
