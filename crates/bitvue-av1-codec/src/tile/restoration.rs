@@ -290,4 +290,252 @@ mod tests {
         assert_eq!(r.filter_h, [3, -7, 15]);
         assert_eq!(r.sgr_weights, [-32, 31]);
     }
+
+    // ---- Wiener coefficients against the spec's own algorithm -------------------------------
+    //
+    // The production `decode_subexp` is dav1d's shortcut for `n >> k == 8` (three decision bits
+    // and a fixed-width tail). The spec (5.11.58 `decode_signed_subexp_with_ref_bool`) is built
+    // on `ns(n)` instead. Both are transcribed here from the spec and run on the same bytes as
+    // production, so the shortcut has to give the spec's answer, bit for bit.
+
+    /// Pseudo-random tile data per seed (any byte string is a decodable stream).
+    fn tile_bytes(seed: u64) -> Vec<u8> {
+        let mut s = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+        (0..256)
+            .map(|_| {
+                s ^= s >> 12;
+                s ^= s << 25;
+                s ^= s >> 27;
+                (s.wrapping_mul(0x2545_f491_4f6c_dd1d) >> 56) as u8
+            })
+            .collect()
+    }
+
+    /// Spec 4.10.10 `ns(n)`.
+    fn spec_ns(d: &mut SymbolDecoder<'_>, n: u32) -> u32 {
+        let w = 32 - n.leading_zeros(); // FloorLog2(n) + 1
+        let m = (1 << w) - n;
+        let v = d.read_bools_n(w - 1).unwrap();
+        if v < m {
+            v
+        } else {
+            let extra = d.read_bool_equi().unwrap() as u32;
+            (v << 1) - m + extra
+        }
+    }
+
+    /// Spec 5.11.58 `decode_subexp_bool`; also reports how many "more" bits were set.
+    fn spec_subexp_bool(
+        d: &mut SymbolDecoder<'_>,
+        num_syms: u32,
+        k: u32,
+        levels: &mut [usize; 3],
+    ) -> u32 {
+        let (mut i, mut mk) = (0u32, 0u32);
+        loop {
+            let b2 = if i > 0 { k + i - 1 } else { k };
+            let a = 1 << b2;
+            if num_syms <= mk + 3 * a {
+                levels[i as usize] += 1;
+                return spec_ns(d, num_syms - mk) + mk;
+            }
+            if d.read_bool_equi().unwrap() {
+                i += 1;
+                mk += a;
+            } else {
+                levels[i as usize] += 1;
+                return d.read_bools_n(b2).unwrap() + mk;
+            }
+        }
+    }
+
+    /// Spec 5.9.28 `inverse_recenter`.
+    fn spec_inverse_recenter(r: i32, v: i32) -> i32 {
+        if v > 2 * r {
+            v
+        } else if v & 1 == 1 {
+            r - ((v + 1) >> 1)
+        } else {
+            r + (v >> 1)
+        }
+    }
+
+    /// Spec `decode_signed_subexp_with_ref_bool(low, high, k, r)`.
+    fn spec_signed_subexp(
+        d: &mut SymbolDecoder<'_>,
+        (low, high): (i32, i32),
+        k: u32,
+        r: i32,
+        levels: &mut [usize; 3],
+    ) -> i32 {
+        let (mx, r) = (high - low, r - low);
+        let v = spec_subexp_bool(d, mx as u32, k, levels) as i32;
+        let x = if (r << 1) <= mx {
+            spec_inverse_recenter(r, v)
+        } else {
+            mx - 1 - spec_inverse_recenter(mx - 1 - r, v)
+        };
+        x + low
+    }
+
+    /// The Wiener coefficients of one unit as the spec reads them.
+    fn spec_wiener_unit(
+        d: &mut SymbolDecoder<'_>,
+        plane: usize,
+        reference: &RestorationRef,
+        levels: &mut [usize; 3],
+    ) -> RestorationRef {
+        // Wiener_Taps_Min / Max / K per tap.
+        const RANGE: [(i32, i32); 3] = [(-5, 10), (-23, 8), (-17, 46)];
+        const K: [u32; 3] = [1, 2, 3];
+        let mut out = *reference;
+        for (pass, taps) in [&mut out.filter_v, &mut out.filter_h]
+            .into_iter()
+            .enumerate()
+        {
+            let before = if pass == 0 {
+                reference.filter_v
+            } else {
+                reference.filter_h
+            };
+            let first = if plane > 0 { 1 } else { 0 };
+            if plane > 0 {
+                taps[0] = 0;
+            }
+            for j in first..3 {
+                let (min, max) = RANGE[j];
+                taps[j] = spec_signed_subexp(d, (min, max + 1), K[j], before[j], levels);
+            }
+        }
+        out
+    }
+
+    fn wiener_cdf(d: &SymbolDecoder<'_>) -> Vec<u16> {
+        let mut ctx = d.cdf_context.clone();
+        ctx.get_restore_wiener_cdf_mut().to_vec()
+    }
+
+    fn switchable_cdf(d: &SymbolDecoder<'_>) -> Vec<u16> {
+        let mut ctx = d.cdf_context.clone();
+        ctx.get_restore_switchable_cdf_mut().to_vec()
+    }
+
+    /// A frame four 64-pixel units wide: one unit per plane starts in each 64x64 superblock, and
+    /// each unit is coded relative to the previous one of its plane.
+    fn four_units_per_plane(types: [LoopRestorationType; 3]) -> RestorationParams {
+        RestorationParams {
+            types,
+            unit_size: [64, 32, 32],
+            frame_width: 256,
+            frame_height: 64,
+            subsampling_x: true,
+            subsampling_y: true,
+            superres: false,
+        }
+    }
+
+    #[test]
+    fn wiener_frames_read_the_spec_coefficients_for_every_plane_and_carry_the_reference() {
+        let p = four_units_per_plane([LoopRestorationType::Wiener; 3]);
+        let (mut units, mut changed, mut levels) = (0usize, 0usize, [0usize; 3]);
+        let mut mirrored = 0usize;
+        for seed in 0..300 {
+            let data = tile_bytes(seed);
+            let mut prod = SymbolDecoder::new(&data).unwrap();
+            let mut refs = [RestorationRef::default(); 3];
+
+            let mut spec = SymbolDecoder::new(&data).unwrap();
+            let mut use_wiener = wiener_cdf(&spec);
+            let mut want = [RestorationRef::default(); 3];
+
+            for x in [0, 64, 128, 192] {
+                read_superblock_restoration(&mut prod, &p, &mut refs, x, 0).unwrap();
+                for (plane, slot) in want.iter_mut().enumerate() {
+                    // `use_wiener` is symbol 1 of its two-symbol alphabet.
+                    if spec.decoder.read_symbol_adaptive(&mut use_wiener).unwrap() == 1 {
+                        units += 1;
+                        // The spec mirrors a coefficient whose reference is above the middle.
+                        for (j, (low, mx)) in
+                            [(-5, 16), (-23, 32), (-17, 64)].into_iter().enumerate()
+                        {
+                            mirrored += usize::from((slot.filter_v[j] - low) * 2 > mx);
+                        }
+                        *slot = spec_wiener_unit(&mut spec, plane, slot, &mut levels);
+                        changed += usize::from(*slot != RestorationRef::default());
+                    }
+                }
+                assert_eq!(refs, want, "seed {seed}, x {x}");
+            }
+            // Both decoders must have consumed exactly the same bits.
+            assert_eq!(
+                prod.read_bools_n(16).unwrap(),
+                spec.read_bools_n(16).unwrap(),
+                "seed {seed}: position after the units differs"
+            );
+        }
+        // The comparison only means something if it reached the interesting branches.
+        assert!(units > 500, "only {units} Wiener units");
+        assert!(changed > 400, "only {changed} units moved off the defaults");
+        assert!(
+            levels.iter().all(|&n| n > 200),
+            "decision depths seen: {levels:?}"
+        );
+        assert!(
+            mirrored > 200,
+            "only {mirrored} references above the middle"
+        );
+    }
+
+    #[test]
+    fn a_switchable_frame_reads_wiener_coefficients_only_when_the_unit_type_is_wiener() {
+        let p = four_units_per_plane([
+            LoopRestorationType::Switchable,
+            LoopRestorationType::None,
+            LoopRestorationType::None,
+        ]);
+        let (mut none, mut wiener, mut complete) = (0usize, 0usize, 0usize);
+        let mut levels = [0usize; 3];
+        for seed in 0..600 {
+            let data = tile_bytes(seed);
+            let mut prod = SymbolDecoder::new(&data).unwrap();
+            let mut refs = [RestorationRef::default(); 3];
+
+            let mut spec = SymbolDecoder::new(&data).unwrap();
+            let mut switchable = switchable_cdf(&spec);
+            let mut want = RestorationRef::default();
+
+            let mut all_units = true;
+            for x in [0, 64, 128, 192] {
+                read_superblock_restoration(&mut prod, &p, &mut refs, x, 0).unwrap();
+                // 0 = NONE (nothing follows), 1 = WIENER (coefficients follow), 2 = SGRPROJ (its
+                // weights are not compared here, so the walk stops at the first one).
+                match spec.decoder.read_symbol_adaptive(&mut switchable).unwrap() {
+                    0 => none += 1,
+                    1 => {
+                        wiener += 1;
+                        want = spec_wiener_unit(&mut spec, 0, &want, &mut levels);
+                    }
+                    _ => {
+                        all_units = false;
+                        break;
+                    }
+                }
+                assert_eq!(refs[0], want, "seed {seed}, x {x}");
+            }
+            if all_units {
+                complete += 1;
+                assert_eq!(
+                    prod.read_bools_n(16).unwrap(),
+                    spec.read_bools_n(16).unwrap(),
+                    "seed {seed}: position after the units differs"
+                );
+            }
+        }
+        assert!(none > 100, "only {none} NONE units");
+        assert!(wiener > 100, "only {wiener} WIENER units");
+        assert!(
+            complete > 60,
+            "only {complete} frames without an SGRPROJ unit"
+        );
+    }
 }
