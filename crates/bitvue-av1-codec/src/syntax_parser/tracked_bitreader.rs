@@ -60,14 +60,6 @@ impl<'a> TrackedBitReader<'a> {
         Ok((value, BitRange::new(start, end)))
     }
 
-    /// Read n bits as u64 and return value + bit range
-    pub fn read_bits_u64_tracked(&mut self, n: u8) -> Result<(u64, BitRange)> {
-        let start = self.position();
-        let value = self.reader.read_bits_u64(n)?;
-        let end = self.position();
-        Ok((value, BitRange::new(start, end)))
-    }
-
     /// Read a byte and return value + bit range
     pub fn read_byte_tracked(&mut self) -> Result<(u8, BitRange)> {
         let start = self.position();
@@ -82,20 +74,6 @@ impl<'a> TrackedBitReader<'a> {
         let value = self.reader.read_uvlc()?;
         let end = self.position();
         Ok((value, BitRange::new(start, end)))
-    }
-
-    /// Read signed value and return value + bit range
-    pub fn read_su_tracked(&mut self, n: u8) -> Result<(i32, BitRange)> {
-        let start = self.position();
-        let value = self.reader.read_su(n)?;
-        let end = self.position();
-        Ok((value, BitRange::new(start, end)))
-    }
-
-    /// Read literal value and return value + bit range
-    #[inline]
-    pub fn read_literal_tracked(&mut self, n: u8) -> Result<(u32, BitRange)> {
-        self.read_bits_tracked(n)
     }
 
     // Delegate remaining methods to inner reader (no tracking needed)
