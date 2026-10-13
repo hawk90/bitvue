@@ -8,7 +8,7 @@ use bitvue_engine::BitvueError;
 use super::cu_parser::parse_all_coding_units;
 use super::cu_spatial_index::CuSpatialIndex;
 use super::parser::ParsedFrame;
-use crate::ivf::OVERLAY_BLOCK_SIZE;
+use super::OVERLAY_BLOCK_SIZE;
 use crate::Qp;
 
 /// `QPGrid::missing`'s default: a cell no decoded block covers.
