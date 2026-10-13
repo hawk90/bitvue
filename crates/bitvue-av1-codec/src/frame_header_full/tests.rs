@@ -776,7 +776,7 @@ fn put_inter_header_through_ref_idx(
     force_integer_mv
 }
 
-fn base_seq() -> SequenceHeader {
+pub(super) fn base_seq() -> SequenceHeader {
     parse_sequence_header(&minimal_seq_header_bytes()).unwrap()
 }
 
