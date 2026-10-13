@@ -1,15 +1,12 @@
 //! Mode info of a single-reference inter block: `inter_mode`, DRL + motion vector, `interintra`,
 //! and `motion_mode`/OBMC (spec 5.11.23-5.11.29). The compound counterpart lives in `compound`.
 
-use super::contexts::{
-    global_motion_forces_simple, has_overlappable_neighbors, inter_mode_from_symbol,
-    motion_mode_size_index, wedge_ctx, y_mode_size_context,
-};
+use super::contexts::{wedge_ctx, y_mode_size_context};
 use super::read_explicit_mv;
-use super::types::{CodingUnit, MotionVector, PredictionMode};
+use super::types::{CodingUnit, MotionVector, PredictionMode, RefFrame};
 use crate::symbol::SymbolDecoder;
 use crate::tile::{BlockRect, FrameCodingParams, MiRect, MvPredictorContext, TileContext};
-use bitvue_engine::Result;
+use bitvue_engine::{BitvueError, Result};
 
 /// Fills `cu.mode` and `cu.mv`, reads the interintra/motion-mode symbols, and records the block
 /// in the spatial reference context. `cu.ref_frames[0]` must already hold the reference.
@@ -272,4 +269,153 @@ fn read_motion_mode_info(
         }
     }
     Ok(is_warp)
+}
+
+/// Convert INTER mode symbol to PredictionMode
+fn inter_mode_from_symbol(symbol: u8) -> Result<PredictionMode> {
+    match symbol {
+        0 => Ok(PredictionMode::NewMv),
+        1 => Ok(PredictionMode::NearestMv),
+        2 => Ok(PredictionMode::NearMv),
+        3 => Ok(PredictionMode::GlobalMv),
+        _ => Err(BitvueError::InvalidData(format!(
+            "Invalid INTER mode symbol: {}",
+            symbol
+        ))),
+    }
+}
+
+/// `read_motion_mode`'s real spec 5.11.27 `GmType`-dependent exclusion: `true` when a
+/// `GLOBALMV` block's global motion (`gm_type[ref0 as usize]`) is more complex than TRANSLATION,
+/// in which case real spec forces `motion_mode = SIMPLE` and reads zero bits (the whole check is
+/// itself gated on `!force_integer_mv`). `GLOBAL_GLOBALMV` never reaches this: it's compound-only,
+/// and this crate's `motion_mode` read only happens in the single-ref branch (`parse_coding_unit`'s
+/// call site doc).
+fn global_motion_forces_simple(
+    mode: PredictionMode,
+    force_integer_mv: bool,
+    gm_type: &[u8; 8],
+    ref0: RefFrame,
+) -> bool {
+    !force_integer_mv
+        && mode == PredictionMode::GlobalMv
+        && gm_type[ref0 as usize] > crate::frame_header_full::GM_TYPE_TRANSLATION
+}
+
+/// `motion_mode`/`obmc`'s exact-block-size CDF index (0..=16) -- real spec/dav1d indexing order
+/// matches `CdfContext::motion_mode_cdf`'s literal table order (`read_motion_mode`'s doc); `None`
+/// for any size real spec never reads `motion_mode` for at all (`min(bw4,bh4) < 2`, i.e. either
+/// dimension `< 8px` -- ported as a direct dimension match rather than reusing
+/// `y_mode_size_context`'s coarser 4-class grouping, since `motion_mode` needs the real per-size
+/// table, not a class).
+fn motion_mode_size_index(width_4x4: u32, height_4x4: u32) -> Option<u8> {
+    match (width_4x4, height_4x4) {
+        (2, 2) => Some(0),    // 8x8
+        (2, 4) => Some(1),    // 8x16
+        (4, 2) => Some(2),    // 16x8
+        (4, 4) => Some(3),    // 16x16
+        (4, 8) => Some(4),    // 16x32
+        (8, 4) => Some(5),    // 32x16
+        (8, 8) => Some(6),    // 32x32
+        (8, 16) => Some(7),   // 32x64
+        (16, 8) => Some(8),   // 64x32
+        (16, 16) => Some(9),  // 64x64
+        (16, 32) => Some(10), // 64x128
+        (32, 16) => Some(11), // 128x64
+        (32, 32) => Some(12), // 128x128
+        (2, 8) => Some(13),   // 8x32
+        (4, 16) => Some(14),  // 16x64
+        (8, 2) => Some(15),   // 32x8
+        (16, 4) => Some(16),  // 64x16
+        _ => None,
+    }
+}
+
+/// `motion_mode`'s real "has overlappable neighbours" eligibility gate (spec 5.11.27) -- true
+/// when at least one ODD-offset 4x4 unit along this CU's own above or left edge belongs to a
+/// real INTER neighbor (source: rav1d's `findoddzero` scanning `t->a->intra`/`t->l.intra`,
+/// `memorysafety/rav1d`, BSD-2-Clause, `src/decode.c`) -- ported using this crate's own
+/// `above_ref_intra`/`left_ref_intra` arrays directly (same per-4x4-unit granularity real dav1d's
+/// `BlockContext.intra` tracks, no approximation needed here unlike `has_matching_single_ref`).
+fn has_overlappable_neighbors(
+    tile_ctx: &crate::tile::TileContext,
+    x4: u32,
+    y4: u32,
+    width_4x4: u32,
+    height_4x4: u32,
+) -> bool {
+    if tile_ctx.has_left(x4) {
+        let len = height_4x4 / 2;
+        for n in 0..len {
+            if !tile_ctx.left_is_intra(y4 + 1 + n * 2) {
+                return true;
+            }
+        }
+    }
+    if tile_ctx.has_top(y4) {
+        let len = width_4x4 / 2;
+        for n in 0..len {
+            if !tile_ctx.above_is_intra(x4 + 1 + n * 2) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_motion_forces_simple_matches_spec_5_11_27_exclusion() {
+        use crate::frame_header_full::{GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION};
+        let rotzoom: [u8; 8] = [GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION + 1, 0, 0, 0, 0, 0, 0];
+        let translation_only: [u8; 8] = [GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION, 0, 0, 0, 0, 0, 0];
+        let identity: [u8; 8] = [GM_TYPE_IDENTITY; 8];
+
+        // GLOBALMV + GmType[ref0] > TRANSLATION + !force_integer_mv => excluded (forced SIMPLE).
+        assert!(global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            false,
+            &rotzoom,
+            RefFrame::Last
+        ));
+        // Same, but force_integer_mv=true => spec's outer gate disables the whole check.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            true,
+            &rotzoom,
+            RefFrame::Last
+        ));
+        // GmType[ref0] == TRANSLATION (not `>` TRANSLATION) => not excluded.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            false,
+            &translation_only,
+            RefFrame::Last
+        ));
+        // GmType[ref0] == IDENTITY => not excluded.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            false,
+            &identity,
+            RefFrame::Last
+        ));
+        // Any non-GLOBALMV mode => never excluded by this check, regardless of GmType.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::NewMv,
+            false,
+            &rotzoom,
+            RefFrame::Last
+        ));
+        // Indexed by the real ref0, not a fixed slot -- a ROTZOOM GmType on a *different* ref
+        // than the one this block actually uses must not trigger the exclusion.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            false,
+            &rotzoom,
+            RefFrame::Last2
+        ));
+    }
 }

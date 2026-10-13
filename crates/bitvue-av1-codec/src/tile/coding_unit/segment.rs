@@ -2,7 +2,6 @@
 //! `skip` in a block's header, so it has two entry points -- [`read_pre_skip`] and
 //! [`read_post_skip`] -- over a shared core.
 
-use super::contexts::neg_deinterleave;
 use crate::frame_header_full::SegmentationInfo;
 use crate::symbol::SymbolDecoder;
 use crate::tile::{MiRect, TileContext};
@@ -109,4 +108,70 @@ fn read_segment_id(
     };
     tile_ctx.set_segment_id(x4, y4, width_4x4, height_4x4, segment_id);
     Ok(segment_id)
+}
+
+/// Decode a `neg_deinterleave`-encoded diff back into a real value (spec 5.11.9/5.11.10's
+/// `segment_id()`, also used elsewhere in real AV1 for similarly-encoded values this crate
+/// doesn't read) -- ported index-for-index from dav1d's `neg_deinterleave` (`src/decode.c`,
+/// `memorysafety/rav1d`/`videolan/dav1d`, BSD-2-Clause), not reimplemented from a description, to
+/// avoid an off-by-one in the branch math. `ref_val`/`max` name the spec's `ref`/`max` params
+/// (`ref` avoided as a Rust keyword).
+fn neg_deinterleave(diff: i32, ref_val: i32, max: i32) -> i32 {
+    if ref_val == 0 {
+        return diff;
+    }
+    if ref_val >= max - 1 {
+        return max - diff - 1;
+    }
+    if 2 * ref_val < max {
+        if diff <= 2 * ref_val {
+            if diff & 1 != 0 {
+                ref_val + ((diff + 1) >> 1)
+            } else {
+                ref_val - (diff >> 1)
+            }
+        } else {
+            diff
+        }
+    } else if diff <= 2 * (max - ref_val - 1) {
+        if diff & 1 != 0 {
+            ref_val + ((diff + 1) >> 1)
+        } else {
+            ref_val - (diff >> 1)
+        }
+    } else {
+        max - (diff + 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_neg_deinterleave_ref_zero_returns_diff_directly() {
+        assert_eq!(neg_deinterleave(3, 0, 8), 3);
+    }
+
+    #[test]
+    fn test_neg_deinterleave_ref_at_max_boundary() {
+        // ref_val=7 >= max-1=7 -> max - diff - 1.
+        assert_eq!(neg_deinterleave(2, 7, 8), 5);
+    }
+
+    #[test]
+    fn test_neg_deinterleave_low_ref_branch() {
+        // ref_val=2, max=8 (2*ref_val=4 < max).
+        assert_eq!(neg_deinterleave(3, 2, 8), 4); // diff<=4, odd: ref + (diff+1)/2
+        assert_eq!(neg_deinterleave(4, 2, 8), 0); // diff<=4, even: ref - diff/2
+        assert_eq!(neg_deinterleave(5, 2, 8), 5); // diff>4: diff unchanged
+    }
+
+    #[test]
+    fn test_neg_deinterleave_high_ref_branch() {
+        // ref_val=5, max=8 (2*ref_val=10 >= max, ref_val=5 < max-1=7).
+        assert_eq!(neg_deinterleave(3, 5, 8), 7); // diff<=4, odd: ref + (diff+1)/2
+        assert_eq!(neg_deinterleave(4, 5, 8), 3); // diff<=4, even: ref - diff/2
+        assert_eq!(neg_deinterleave(5, 5, 8), 2); // diff>4: max - (diff+1)
+    }
 }
