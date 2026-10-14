@@ -246,4 +246,512 @@ mod tests {
         assert_eq!(info.pixel_x, 100);
         assert_eq!(info.pixel_y, 200);
     }
+
+    // ---- ParsedFrame::parse / parse_with_ref_state over real and rebuilt OBU streams ----
+
+    const CLIP: &[u8] = include_bytes!("../../../../../test_data/av1_aomenc_testsrc2.ivf");
+
+    /// One OBU with a size field, as it sits in an IVF packet.
+    fn obu(obu_type: ObuType, payload: &[u8]) -> Vec<u8> {
+        let mut out = vec![((obu_type as u8) << 3) | 0x02];
+        out.extend(crate::encode_uleb128(payload.len() as u64));
+        out.extend_from_slice(payload);
+        out
+    }
+
+    /// The pieces of one clip packet: sequence header (if present), frame payload, whole packet.
+    struct Packet {
+        seq: Option<Vec<u8>>,
+        /// The last `Frame` OBU payload (empty for a packet with only a `FrameHeader`).
+        frame: Vec<u8>,
+        /// Every `Frame` / `FrameHeader` OBU of the packet, in order.
+        frames: Vec<(ObuType, Vec<u8>)>,
+        data: Vec<u8>,
+    }
+
+    fn packets() -> Vec<Packet> {
+        let (_h, ivf) = crate::parse_ivf_frames(CLIP).unwrap();
+        ivf.iter()
+            .map(|p| {
+                let (mut seq, mut frame, mut frames) = (None, None, Vec::new());
+                for o in parse_all_obus(&p.data).unwrap() {
+                    match o.header.obu_type {
+                        ObuType::SequenceHeader => seq = Some(o.payload.to_vec()),
+                        ObuType::Frame => {
+                            frame = Some(o.payload.to_vec());
+                            frames.push((ObuType::Frame, o.payload.to_vec()));
+                        }
+                        ObuType::FrameHeader => {
+                            frames.push((ObuType::FrameHeader, o.payload.to_vec()));
+                        }
+                        _ => {}
+                    }
+                }
+                Packet {
+                    seq,
+                    frame: frame.unwrap_or_default(),
+                    frames,
+                    data: p.data.clone(),
+                }
+            })
+            .collect()
+    }
+
+    fn td() -> Vec<u8> {
+        obu(ObuType::TemporalDelimiter, &[])
+    }
+
+    fn types(frame: &ParsedFrame) -> Vec<ObuType> {
+        frame.obus.iter().map(|o| o.obu_type).collect()
+    }
+
+    /// The exact header parse of packet 0's frame, to compute expected values independently.
+    fn key_header(packets: &[Packet]) -> (crate::SequenceHeader, crate::frame_header::FrameHeader) {
+        let seq = crate::parse_sequence_header(packets[0].seq.as_ref().unwrap()).unwrap();
+        let full =
+            parse_frame_header_full(&packets[0].frame, &seq, &mut RefFrameState::new()).unwrap();
+        (seq, full)
+    }
+
+    #[test]
+    fn empty_data_parses_to_the_default_scaffold() {
+        let frame = ParsedFrame::parse(&[]).unwrap();
+        assert!(frame.obus.is_empty());
+        assert!(frame.tile_data.is_empty() && frame.tile_groups.is_empty());
+        assert_eq!(
+            (frame.dimensions.width, frame.dimensions.height),
+            (1920, 1080)
+        );
+        assert!(!frame.key_frame && !frame.frame_type.is_intra_only);
+        assert_eq!(frame.primary_ref_frame, 7);
+    }
+
+    #[test]
+    fn a_real_key_frame_packet_fills_dimensions_header_values_and_tile_data() {
+        let packets = packets();
+        let (seq, full) = key_header(&packets);
+        let frame = ParsedFrame::parse(&packets[0].data).unwrap();
+
+        assert_eq!(
+            types(&frame),
+            vec![
+                ObuType::TemporalDelimiter,
+                ObuType::SequenceHeader,
+                ObuType::Frame
+            ]
+        );
+        assert_eq!(frame.dimensions.width, seq.max_frame_width);
+        assert_eq!(frame.dimensions.height, seq.max_frame_height);
+        let sb = if seq.use_128x128_superblock { 128 } else { 64 };
+        assert_eq!(frame.dimensions.sb_size, sb);
+        // The superblock grid rounds up: 320x240 with 128-pixel superblocks is 3x2, not 2x1.
+        assert_eq!(frame.dimensions.sb_cols, seq.max_frame_width.div_ceil(sb));
+        assert_eq!(frame.dimensions.sb_rows, seq.max_frame_height.div_ceil(sb));
+        assert_ne!(
+            seq.max_frame_width % sb,
+            0,
+            "clip must exercise the rounding"
+        );
+
+        assert!(frame.key_frame && frame.frame_type.is_intra_only);
+        assert_eq!(frame.frame_type.base_qp, full.base_q_idx);
+        assert_eq!(frame.order_hint, full.order_hint);
+        assert_eq!(frame.refresh_frame_flags, full.refresh_frame_flags.unwrap());
+        assert_eq!(frame.primary_ref_frame, full.primary_ref_frame);
+        assert_eq!(frame.cdef_bits, full.cdef_damping.bits);
+
+        let tile = &packets[0].frame[full.header_size_bytes..];
+        assert_eq!(&frame.tile_data[..], tile);
+        assert_eq!(frame.tile_groups, vec![0..tile.len()]);
+    }
+
+    #[test]
+    fn parse_is_parse_with_a_fresh_reference_state() {
+        let packets = packets();
+        let a = ParsedFrame::parse(&packets[0].data).unwrap();
+        let b =
+            ParsedFrame::parse_with_ref_state(&packets[0].data, &mut RefFrameState::new()).unwrap();
+        assert_eq!(a.tile_data, b.tile_data);
+        assert_eq!(a.order_hint, b.order_hint);
+        assert_eq!(a.tile_groups, b.tile_groups);
+        assert_eq!(a.refresh_frame_flags, b.refresh_frame_flags);
+    }
+
+    #[test]
+    fn every_packet_of_the_clip_matches_an_independent_header_parse_with_threaded_state() {
+        let packets = packets();
+        let seq = crate::parse_sequence_header(packets[0].seq.as_ref().unwrap()).unwrap();
+        let mut state = RefFrameState::new();
+        let mut oracle = RefFrameState::new();
+        let mut multi_frame_packets = 0;
+        for (i, packet) in packets.iter().enumerate() {
+            // Only the first packet carries the sequence header; the callers prepend it.
+            let mut data = obu(ObuType::SequenceHeader, packets[0].seq.as_ref().unwrap());
+            data.extend_from_slice(&packet.data);
+            let parsed = ParsedFrame::parse_with_ref_state(&data, &mut state).unwrap();
+
+            // The packet's last frame is the one `parsed` describes.
+            let mut last = None;
+            for (obu_type, payload) in &packet.frames {
+                let before = *oracle.ref_order_hint();
+                let header = parse_frame_header_full(payload, &seq, &mut oracle).unwrap();
+                last = Some((*obu_type, payload, header, before));
+            }
+            let (obu_type, payload, header, before) = last.unwrap();
+            multi_frame_packets += (packet.frames.len() > 1) as usize;
+
+            assert_eq!(parsed.order_hint, header.order_hint, "packet {i}");
+            assert_eq!(parsed.ref_frame_idx, header.ref_frame_idx, "packet {i}");
+            assert_eq!(
+                parsed.show_existing_slot, header.frame_to_show_map_idx,
+                "packet {i}"
+            );
+            assert_eq!(
+                parsed.key_frame,
+                !header.show_existing_frame
+                    && header.frame_type.is_intra()
+                    && !header.frame_type.is_intra_only(),
+                "packet {i}"
+            );
+            let tile: &[u8] =
+                if obu_type == ObuType::Frame && header.header_size_bytes < payload.len() {
+                    &payload[header.header_size_bytes..]
+                } else {
+                    &[]
+                };
+            assert_eq!(&parsed.tile_data[..], tile, "packet {i} tile data");
+            assert_eq!(
+                state.ref_order_hint(),
+                oracle.ref_order_hint(),
+                "packet {i} state"
+            );
+
+            // Reference-derived values are defined against the slots as they were before the
+            // frame's own header. For the later frames of a multi-frame packet the parser uses the
+            // slots from the start of the packet instead (#233), so only single-frame packets are
+            // checked here.
+            if packet.frames.len() == 1 {
+                assert_eq!(
+                    parsed.ref_frame_sign_bias,
+                    crate::frame_header_full::ref_frame_sign_bias(
+                        &before,
+                        header.ref_frame_idx.as_ref(),
+                        header.order_hint,
+                        &seq
+                    ),
+                    "packet {i} sign bias"
+                );
+                assert_eq!(
+                    parsed.ref_order_distance,
+                    crate::frame_header_full::ref_order_distance(
+                        &before,
+                        header.ref_frame_idx.as_ref(),
+                        header.order_hint,
+                        &seq
+                    ),
+                    "packet {i} order distance"
+                );
+            }
+        }
+        assert!(
+            multi_frame_packets > 0,
+            "the clip must hold a multi-frame packet"
+        );
+    }
+
+    #[test]
+    fn the_reference_state_is_updated_by_a_key_frame() {
+        let packets = packets();
+        let mut state = RefFrameState::new();
+        let before = *state.ref_order_hint();
+        ParsedFrame::parse_with_ref_state(&packets[0].data, &mut state).unwrap();
+        let (_, full) = key_header(&packets);
+        let flags = full.refresh_frame_flags.unwrap();
+        assert_ne!(flags, 0);
+        for (slot, (&now, &was)) in state.ref_order_hint().iter().zip(&before).enumerate() {
+            if flags & (1 << slot) != 0 {
+                assert_eq!(now, full.order_hint, "slot {slot}");
+            } else {
+                assert_eq!(now, was, "slot {slot}");
+            }
+        }
+    }
+
+    #[test]
+    fn without_a_sequence_header_the_tile_bytes_come_from_the_approximate_header() {
+        let packets = packets();
+        let mut data = td();
+        data.extend(obu(ObuType::Frame, &packets[0].frame));
+        let basic = parse_frame_header_basic(&packets[0].frame).unwrap();
+        let frame = ParsedFrame::parse(&data).unwrap();
+
+        assert_eq!(
+            types(&frame),
+            vec![ObuType::TemporalDelimiter, ObuType::Frame]
+        );
+        assert_eq!(
+            &frame.tile_data[..],
+            &packets[0].frame[basic.header_size_bytes..]
+        );
+        // No exact header, so no tile group range and none of the exact-header values.
+        assert!(frame.tile_groups.is_empty());
+        assert!(!frame.key_frame);
+        assert!(frame.frame_type.is_intra_only);
+        assert_eq!(frame.frame_type.base_qp, basic.base_q_idx);
+        // Dimensions stay the default scaffold; the grid is recomputed from them.
+        assert_eq!(
+            (
+                frame.dimensions.width,
+                frame.dimensions.sb_cols,
+                frame.dimensions.sb_rows
+            ),
+            (1920, 30, 17)
+        );
+    }
+
+    #[test]
+    fn a_sequence_header_that_does_not_parse_is_ignored_like_a_missing_one() {
+        let packets = packets();
+        let truncated = &packets[0].seq.as_ref().unwrap()[..3];
+        assert!(crate::parse_sequence_header(truncated).is_err());
+        let mut data = td();
+        data.extend(obu(ObuType::SequenceHeader, truncated));
+        data.extend(obu(ObuType::Frame, &packets[0].frame));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        assert_eq!(frame.dimensions.width, 1920);
+        assert!(frame.tile_groups.is_empty());
+        assert!(!frame.key_frame);
+        assert!(!frame.tile_data.is_empty());
+    }
+
+    #[test]
+    fn a_frame_header_obu_followed_by_tile_group_obus_matches_the_combined_frame_obu() {
+        let packets = packets();
+        let (_, full) = key_header(&packets);
+        let (header, tiles) = packets[0].frame.split_at(full.header_size_bytes);
+        let combined = ParsedFrame::parse(&packets[0].data).unwrap();
+
+        let mut data = td();
+        data.extend(obu(
+            ObuType::SequenceHeader,
+            packets[0].seq.as_ref().unwrap(),
+        ));
+        data.extend(obu(ObuType::FrameHeader, header));
+        data.extend(obu(ObuType::TileGroup, tiles));
+        let split = ParsedFrame::parse(&data).unwrap();
+
+        assert_eq!(
+            types(&split),
+            vec![
+                ObuType::TemporalDelimiter,
+                ObuType::SequenceHeader,
+                ObuType::FrameHeader,
+                ObuType::TileGroup
+            ]
+        );
+        assert_eq!(split.tile_data, combined.tile_data);
+        assert_eq!(split.tile_groups, combined.tile_groups);
+        assert_eq!(split.key_frame, combined.key_frame);
+        assert_eq!(split.frame_type.base_qp, combined.frame_type.base_qp);
+        assert_eq!(split.refresh_frame_flags, combined.refresh_frame_flags);
+    }
+
+    #[test]
+    fn several_tile_group_obus_are_concatenated_with_one_range_each() {
+        let packets = packets();
+        let (_, full) = key_header(&packets);
+        let (header, tiles) = packets[0].frame.split_at(full.header_size_bytes);
+        let cut = tiles.len() / 3;
+        let (a, rest) = tiles.split_at(cut);
+        let (b, c) = rest.split_at(rest.len() / 2);
+
+        let mut data = obu(ObuType::SequenceHeader, packets[0].seq.as_ref().unwrap());
+        data.extend(obu(ObuType::FrameHeader, header));
+        for part in [a, b, c] {
+            data.extend(obu(ObuType::TileGroup, part));
+        }
+        let frame = ParsedFrame::parse(&data).unwrap();
+
+        assert_eq!(&frame.tile_data[..], tiles);
+        assert_eq!(
+            frame.tile_groups,
+            vec![
+                0..a.len(),
+                a.len()..a.len() + b.len(),
+                a.len() + b.len()..tiles.len()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_second_frame_in_the_packet_replaces_the_first_ones_tile_data() {
+        let packets = packets();
+        let (_, full) = key_header(&packets);
+        let mut data = td();
+        data.extend(obu(
+            ObuType::SequenceHeader,
+            packets[0].seq.as_ref().unwrap(),
+        ));
+        data.extend(obu(ObuType::Frame, &packets[0].frame));
+        data.extend(obu(ObuType::Frame, &packets[0].frame));
+        let frame = ParsedFrame::parse(&data).unwrap();
+
+        let tile_len = packets[0].frame.len() - full.header_size_bytes;
+        assert_eq!(frame.tile_data.len(), tile_len);
+        assert_eq!(frame.tile_groups, vec![0..tile_len]);
+    }
+
+    #[test]
+    fn a_frame_header_obu_discards_tile_groups_gathered_before_it() {
+        let packets = packets();
+        let (_, full) = key_header(&packets);
+        let header = &packets[0].frame[..full.header_size_bytes];
+        let mut data = obu(ObuType::SequenceHeader, packets[0].seq.as_ref().unwrap());
+        data.extend(obu(ObuType::TileGroup, &[1, 2, 3, 4]));
+        data.extend(obu(ObuType::FrameHeader, header));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        assert!(frame.tile_data.is_empty());
+        assert!(frame.tile_groups.is_empty());
+        assert!(frame.key_frame, "the header itself is still applied");
+    }
+
+    #[test]
+    fn a_frame_obu_holding_only_the_header_has_no_tile_data() {
+        let packets = packets();
+        let (_, full) = key_header(&packets);
+        let mut data = obu(ObuType::SequenceHeader, packets[0].seq.as_ref().unwrap());
+        data.extend(obu(
+            ObuType::Frame,
+            &packets[0].frame[..full.header_size_bytes],
+        ));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        assert!(frame.tile_data.is_empty() && frame.tile_groups.is_empty());
+        assert!(frame.key_frame);
+    }
+
+    #[test]
+    fn a_frame_obu_too_short_for_any_header_is_recorded_but_contributes_nothing() {
+        let packets = packets();
+        let mut data = obu(ObuType::SequenceHeader, packets[0].seq.as_ref().unwrap());
+        data.extend(obu(ObuType::Frame, &[0x00]));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        assert_eq!(types(&frame), vec![ObuType::SequenceHeader, ObuType::Frame]);
+        assert!(frame.tile_data.is_empty() && frame.tile_groups.is_empty());
+        assert!(!frame.key_frame);
+    }
+
+    #[test]
+    fn obus_of_other_types_are_listed_but_change_nothing() {
+        let packets = packets();
+        let plain = ParsedFrame::parse(&packets[0].data).unwrap();
+        let mut data = td();
+        data.extend(obu(ObuType::Metadata, &[1, 2, 3]));
+        data.extend(obu(
+            ObuType::SequenceHeader,
+            packets[0].seq.as_ref().unwrap(),
+        ));
+        data.extend(obu(ObuType::Padding, &[0; 5]));
+        data.extend(obu(ObuType::Frame, &packets[0].frame));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        assert_eq!(frame.obus.len(), 5);
+        assert_eq!(frame.tile_data, plain.tile_data);
+        assert_eq!(frame.tile_groups, plain.tile_groups);
+        assert_eq!(frame.dimensions.sb_cols, plain.dimensions.sb_cols);
+    }
+
+    #[test]
+    fn every_prefix_of_a_packet_parses_and_a_longer_prefix_never_has_fewer_obus() {
+        let packets = packets();
+        let data = &packets[0].data;
+        let mut previous = 0;
+        for len in 0..=data.len() {
+            let frame = ParsedFrame::parse(&data[..len]).unwrap();
+            assert!(frame.obus.len() >= previous, "prefix {len}");
+            assert!(frame.obus.len() <= 3, "prefix {len}");
+            previous = frame.obus.len();
+        }
+        assert_eq!(previous, 3);
+    }
+
+    #[test]
+    fn corrupting_bytes_of_a_packet_never_panics() {
+        let packets = packets();
+        let base = &packets[0].data;
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        for _ in 0..1500 {
+            let mut data = base.clone();
+            for _ in 0..3 {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                let pos = (state % data.len() as u64) as usize;
+                data[pos] ^= (state >> 32) as u8 | 1;
+            }
+            let _ = ParsedFrame::parse(&data);
+        }
+        // Header bytes in particular: every byte of the first 40 set to each extreme.
+        for pos in 0..40 {
+            for value in [0x00u8, 0xff] {
+                let mut data = base.clone();
+                data[pos] = value;
+                let _ = ParsedFrame::parse(&data);
+            }
+        }
+    }
+
+    #[test]
+    fn apply_full_header_copies_the_loop_filter_delta_motion_and_superres_switches() {
+        let (seq, payload) = first_frame();
+        let full = parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
+        for flip in [false, true] {
+            let mut header = full.clone();
+            header.delta_lf_present = flip;
+            header.delta_lf_multi = !flip;
+            header.super_resolution.enabled = flip;
+            header.force_integer_mv = flip;
+            header.gm_type = if flip {
+                [1, 2, 3, 4, 5, 6, 7, 8]
+            } else {
+                [0; 8]
+            };
+            let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+            frame.apply_full_header(&header, &seq, &[0; 8]);
+            assert_eq!(frame.delta_lf_present, flip);
+            assert_eq!(frame.delta_lf_multi, !flip);
+            assert_eq!(frame.superres, flip);
+            assert_eq!(frame.force_integer_mv, flip);
+            assert_eq!(frame.gm_type, header.gm_type);
+        }
+    }
+
+    #[test]
+    fn a_zero_base_index_without_coded_dc_deltas_is_lossless() {
+        let (seq, payload) = first_frame();
+        let mut header =
+            parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
+        header.base_q_idx = Some(0);
+        header.y_dc_delta_q = None;
+        header.uv_dc_delta_q = None;
+        let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+        frame.apply_full_header(&header, &seq, &[0; 8]);
+        assert!(frame.coded_lossless, "an absent delta counts as 0");
+        // A missing base index is not lossless.
+        header.base_q_idx = None;
+        frame.apply_full_header(&header, &seq, &[0; 8]);
+        assert!(!frame.coded_lossless);
+    }
+
+    #[test]
+    fn the_scaffold_holds_the_spec_fallbacks_for_values_no_header_supplied() {
+        let frame = ParsedFrame::parse(&[]).unwrap();
+        assert!(frame.disable_frame_end_update_cdf);
+        assert!(frame.mono_chrome);
+        assert!(!frame.subsampling_x && !frame.subsampling_y);
+        assert!(!frame.delta_q_enabled && !frame.reference_select && !frame.allow_intrabc);
+        assert_eq!(frame.refresh_frame_flags, 0);
+        assert_eq!(frame.ref_frame_idx, None);
+        assert_eq!(frame.ref_frame_sign_bias, [false; 7]);
+        assert_eq!(frame.gm_type, [0u8; 8]);
+        assert!(frame.tiles.is_none() && frame.decoded.is_none());
+    }
 }
