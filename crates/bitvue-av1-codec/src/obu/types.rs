@@ -167,3 +167,96 @@ impl Obu {
         "OBU"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// (code, variant, display name) for every code the 4-bit `obu_type` field can hold.
+    const ALL: [(u8, ObuType, &str); 16] = [
+        (0, ObuType::Reserved0, "RESERVED"),
+        (1, ObuType::SequenceHeader, "SEQUENCE_HEADER"),
+        (2, ObuType::TemporalDelimiter, "TEMPORAL_DELIMITER"),
+        (3, ObuType::FrameHeader, "FRAME_HEADER"),
+        (4, ObuType::TileGroup, "TILE_GROUP"),
+        (5, ObuType::Metadata, "METADATA"),
+        (6, ObuType::Frame, "FRAME"),
+        (7, ObuType::RedundantFrameHeader, "REDUNDANT_FRAME_HEADER"),
+        (8, ObuType::TileList, "TILE_LIST"),
+        (9, ObuType::Reserved9, "RESERVED"),
+        (10, ObuType::Reserved10, "RESERVED"),
+        (11, ObuType::Reserved11, "RESERVED"),
+        (12, ObuType::Reserved12, "RESERVED"),
+        (13, ObuType::Reserved13, "RESERVED"),
+        (14, ObuType::Reserved14, "RESERVED"),
+        (15, ObuType::Padding, "PADDING"),
+    ];
+
+    fn obu(obu_type: ObuType, offset: u64, total_size: u64) -> Obu {
+        Obu {
+            header: ObuHeader {
+                obu_type,
+                has_extension: false,
+                has_size: true,
+                temporal_id: 0,
+                spatial_id: 0,
+                header_size: 1,
+            },
+            payload_size: 0,
+            total_size,
+            offset,
+            payload: Arc::from(Vec::new()),
+            frame_type: None,
+            frame_header: None,
+        }
+    }
+
+    #[test]
+    fn each_of_the_16_codes_maps_to_its_variant_and_back_to_the_same_number() {
+        for (code, variant, _) in ALL {
+            assert_eq!(ObuType::from_u8(code).unwrap(), variant, "code {code}");
+            assert_eq!(variant as u8, code, "discriminant of {variant:?}");
+        }
+    }
+
+    #[test]
+    fn codes_above_15_are_rejected_with_the_offending_value() {
+        for code in 16..=255u8 {
+            match ObuType::from_u8(code) {
+                Err(BitvueError::InvalidObuType(value)) => assert_eq!(value, code),
+                other => panic!("code {code}: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn names_and_display_agree_for_every_type_and_reserved_ones_share_a_name() {
+        for (_, variant, name) in ALL {
+            assert_eq!(variant.name(), name, "{variant:?}");
+            assert_eq!(variant.to_string(), name, "{variant:?}");
+        }
+    }
+
+    #[test]
+    fn only_frame_frame_header_and_tile_group_carry_frame_data() {
+        for (code, variant, _) in ALL {
+            let expected = matches!(code, 3 | 4 | 6);
+            assert_eq!(variant.has_frame_data(), expected, "{variant:?}");
+        }
+    }
+
+    #[test]
+    #[cfg(not(feature = "debug-strings"))]
+    fn the_summary_is_a_fixed_placeholder_without_the_debug_strings_feature() {
+        assert_eq!(obu(ObuType::Frame, 10, 20).summary(), "OBU");
+    }
+
+    #[test]
+    #[cfg(feature = "debug-strings")]
+    fn the_summary_names_the_type_offset_and_total_size() {
+        assert_eq!(
+            obu(ObuType::TileGroup, 1234, 56).summary(),
+            "TILE_GROUP  offset=1234  size=56"
+        );
+    }
+}
