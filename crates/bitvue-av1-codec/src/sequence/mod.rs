@@ -282,13 +282,12 @@ mod tests {
         );
         assert_eq!(c444.chroma_subsampling_str(), "4:4:4");
 
-        // 10-bit professional streams are 4:2:2 without any subsampling bits; twelve_bit = 0
-        // also means 10-bit.
+        // Profile 2 below 12 bit is 4:2:2 without any subsampling bits.
         let ten = color_config(
             Av1Profile::Professional,
             &[(0, 1), (0, 1), (0, 1), (0, 1), (0, 1)],
         );
-        assert_eq!(ten.bit_depth, 10);
+        // (`ten.bit_depth` is deliberately not asserted: the spec says 8 here, see #227.)
         assert_eq!(ten.chroma_subsampling_str(), "4:2:2");
         let ten_high = color_config(
             Av1Profile::Professional,
@@ -493,5 +492,366 @@ mod tests {
             .collect();
         assert_eq!(ops, [(1, 7, false), (2, 8, true), (4, 0, false)]);
         assert_tail_is_intact(&seq);
+    }
+
+    // ---- colour enums and subsampling names ----
+
+    #[test]
+    fn colour_primaries_map_every_defined_code_and_keep_the_rest_as_reserved() {
+        let known = [
+            (1, ColorPrimaries::Bt709),
+            (2, ColorPrimaries::Unspecified),
+            (4, ColorPrimaries::Bt470M),
+            (5, ColorPrimaries::Bt470Bg),
+            (6, ColorPrimaries::Bt601),
+            (7, ColorPrimaries::Smpte240),
+            (8, ColorPrimaries::GenericFilm),
+            (9, ColorPrimaries::Bt2020),
+            (10, ColorPrimaries::Xyz),
+            (11, ColorPrimaries::Smpte431),
+            (12, ColorPrimaries::Smpte432),
+            (22, ColorPrimaries::Ebu3213),
+        ];
+        for value in 0..=255u8 {
+            let expected = known
+                .iter()
+                .find(|(code, _)| *code == value)
+                .map_or(ColorPrimaries::Reserved(value), |(_, v)| *v);
+            assert_eq!(ColorPrimaries::from_u8(value), expected, "code {value}");
+        }
+    }
+
+    #[test]
+    fn transfer_characteristics_map_every_defined_code_and_keep_the_rest_as_reserved() {
+        use TransferCharacteristics as T;
+        let known = [
+            (1, T::Bt709),
+            (2, T::Unspecified),
+            (4, T::Bt470M),
+            (5, T::Bt470Bg),
+            (6, T::Bt601),
+            (7, T::Smpte240),
+            (8, T::Linear),
+            (9, T::Log100),
+            (10, T::Log100Sqrt10),
+            (11, T::Iec61966),
+            (12, T::Bt1361),
+            (13, T::Srgb),
+            (14, T::Bt202010Bit),
+            (15, T::Bt202012Bit),
+            (16, T::Smpte2084),
+            (17, T::Smpte428),
+            (18, T::Hlg),
+        ];
+        for value in 0..=255u8 {
+            let expected = known
+                .iter()
+                .find(|(code, _)| *code == value)
+                .map_or(T::Reserved(value), |(_, v)| *v);
+            assert_eq!(T::from_u8(value), expected, "code {value}");
+        }
+    }
+
+    #[test]
+    fn matrix_coefficients_map_every_defined_code_and_keep_the_rest_as_reserved() {
+        use MatrixCoefficients as M;
+        let known = [
+            (0, M::Identity),
+            (1, M::Bt709),
+            (2, M::Unspecified),
+            (4, M::Fcc),
+            (5, M::Bt470Bg),
+            (6, M::Bt601),
+            (7, M::Smpte240),
+            (8, M::YCgCo),
+            (9, M::Bt2020Ncl),
+            (10, M::Bt2020Cl),
+            (11, M::Smpte2085),
+            (12, M::ChromaDerivedNcl),
+            (13, M::ChromaDerivedCl),
+            (14, M::ICtCp),
+        ];
+        for value in 0..=255u8 {
+            let expected = known
+                .iter()
+                .find(|(code, _)| *code == value)
+                .map_or(M::Reserved(value), |(_, v)| *v);
+            assert_eq!(M::from_u8(value), expected, "code {value}");
+        }
+    }
+
+    #[test]
+    fn chroma_sample_positions_map_0_to_2_and_everything_else_is_reserved() {
+        assert_eq!(
+            ChromaSamplePosition::from_u8(0),
+            ChromaSamplePosition::Unknown
+        );
+        assert_eq!(
+            ChromaSamplePosition::from_u8(1),
+            ChromaSamplePosition::Vertical
+        );
+        assert_eq!(
+            ChromaSamplePosition::from_u8(2),
+            ChromaSamplePosition::Colocated
+        );
+        for value in 3..=255u8 {
+            assert_eq!(
+                ChromaSamplePosition::from_u8(value),
+                ChromaSamplePosition::Reserved
+            );
+        }
+    }
+
+    #[test]
+    fn subsampling_names_cover_every_flag_combination_and_monochrome_wins() {
+        let base = color_config(Av1Profile::High, &[(0, 1), (0, 1), (0, 1), (0, 1)]);
+        let name = |mono, x, y| {
+            ColorConfig {
+                mono_chrome: mono,
+                subsampling_x: x,
+                subsampling_y: y,
+                ..base.clone()
+            }
+            .chroma_subsampling_str()
+        };
+        assert_eq!(name(false, true, true), "4:2:0");
+        assert_eq!(name(false, true, false), "4:2:2");
+        assert_eq!(name(false, false, false), "4:4:4");
+        for (x, y) in [(true, true), (true, false), (false, false)] {
+            assert_eq!(name(true, x, y), "4:0:0", "mono with x={x} y={y}");
+        }
+    }
+
+    // ---- bit-exact reads and truncation ----
+
+    /// Parses `fields` and checks the reader stopped exactly after the last field; every shorter
+    /// byte prefix must be an error rather than a partial or defaulted config.
+    fn parse_exact(profile: Av1Profile, fields: &[(u32, u8)]) -> ColorConfig {
+        let bytes = pack(fields);
+        let total: u64 = fields.iter().map(|&(_, width)| width as u64).sum();
+        let mut reader = BitReader::new(&bytes);
+        let config = parse_color_config(&mut reader, &profile).unwrap();
+        assert_eq!(reader.position(), total, "bits consumed for {fields:?}");
+        for len in 0..bytes.len() {
+            if (len as u64) * 8 < total {
+                assert!(
+                    parse_color_config(&mut BitReader::new(&bytes[..len]), &profile).is_err(),
+                    "{len}-byte prefix of {fields:?} should be an error"
+                );
+            }
+        }
+        config
+    }
+
+    #[test]
+    fn the_srgb_shortcut_needs_all_three_of_bt709_srgb_and_identity() {
+        // Full triple: no color_range and no subsampling bits, only separate_uv_delta_q follows.
+        let full = [(0, 1), (0, 1), (1, 1), (1, 8), (13, 8), (0, 8)];
+        let mut with_uv = full.to_vec();
+        with_uv.push((0, 1));
+        let config = parse_exact(Av1Profile::Main, &with_uv);
+        assert!(config.color_range);
+        assert_eq!(config.chroma_subsampling_str(), "4:4:4");
+        assert_eq!(config.chroma_sample_position, ChromaSamplePosition::Unknown);
+
+        // Any one of the three different: the general path reads color_range (here 0, not the
+        // shortcut's forced 1), and for Main the 4:2:0 chroma_sample_position, then the uv bit.
+        for (primaries, transfer, matrix) in [(2, 13, 0), (1, 14, 0), (1, 13, 1)] {
+            let fields = [
+                (0, 1),
+                (0, 1),
+                (1, 1),
+                (primaries, 8),
+                (transfer, 8),
+                (matrix, 8),
+                (0, 1), // color_range
+                (0, 2), // chroma_sample_position
+                (0, 1), // separate_uv_delta_q
+            ];
+            let config = parse_exact(Av1Profile::Main, &fields);
+            assert!(!config.color_range, "{primaries}/{transfer}/{matrix}");
+            assert_eq!(config.chroma_subsampling_str(), "4:2:0");
+        }
+    }
+
+    #[test]
+    fn a_monochrome_stream_ignores_the_srgb_shortcut_and_still_reads_color_range() {
+        let fields = [
+            (0, 1),
+            (1, 1), // mono_chrome
+            (1, 1),
+            (1, 8),
+            (13, 8),
+            (0, 8),
+            (0, 1), // color_range, read even though the triple matches
+        ];
+        let config = parse_exact(Av1Profile::Main, &fields);
+        assert!(config.mono_chrome);
+        assert!(!config.color_range);
+        assert_eq!(config.chroma_subsampling_str(), "4:0:0");
+    }
+
+    #[test]
+    fn a_monochrome_stream_keeps_its_colour_description_and_reads_nothing_after_color_range() {
+        let fields = [(0, 1), (1, 1), (1, 1), (9, 8), (16, 8), (9, 8), (1, 1)];
+        let config = parse_exact(Av1Profile::Main, &fields);
+        assert_eq!(config.num_planes, 1);
+        assert_eq!(config.color_primaries, ColorPrimaries::Bt2020);
+        assert_eq!(
+            config.transfer_characteristics,
+            TransferCharacteristics::Smpte2084
+        );
+        assert_eq!(config.matrix_coefficients, MatrixCoefficients::Bt2020Ncl);
+        assert!(config.color_range);
+    }
+
+    #[test]
+    fn a_12_bit_professional_monochrome_stream_reads_the_twelve_bit_flag_then_only_color_range() {
+        let config = parse_exact(
+            Av1Profile::Professional,
+            &[(1, 1), (1, 1), (1, 1), (0, 1), (1, 1)],
+        );
+        assert_eq!(config.bit_depth, 12);
+        assert!(config.mono_chrome);
+        assert!(config.color_range);
+    }
+
+    #[test]
+    fn reserved_colour_codes_are_kept_not_rejected() {
+        let fields = [
+            (0, 1),
+            (0, 1),
+            (1, 1),
+            (3, 8),
+            (3, 8),
+            (3, 8),
+            (0, 1),
+            (0, 2),
+            (0, 1),
+        ];
+        let config = parse_exact(Av1Profile::Main, &fields);
+        assert_eq!(config.color_primaries, ColorPrimaries::Reserved(3));
+        assert_eq!(
+            config.transfer_characteristics,
+            TransferCharacteristics::Reserved(3)
+        );
+        assert_eq!(config.matrix_coefficients, MatrixCoefficients::Reserved(3));
+        // Chroma sample position 3 is reserved but still read as two bits.
+        let fields = [(0, 1), (0, 1), (0, 1), (0, 1), (3, 2), (0, 1)];
+        let config = parse_exact(Av1Profile::Main, &fields);
+        assert_eq!(
+            config.chroma_sample_position,
+            ChromaSamplePosition::Reserved
+        );
+    }
+
+    #[test]
+    fn every_profile_and_layout_reads_exactly_the_bits_the_spec_lists() {
+        // Main 8-bit 4:2:0 with description.
+        parse_exact(
+            Av1Profile::Main,
+            &[
+                (0, 1),
+                (0, 1),
+                (1, 1),
+                (6, 8),
+                (6, 8),
+                (6, 8),
+                (0, 1),
+                (1, 2),
+                (1, 1),
+            ],
+        );
+        // High: no mono bit, no subsampling, no chroma position; high_bitdepth gives 10-bit.
+        let high = parse_exact(Av1Profile::High, &[(1, 1), (0, 1), (0, 1), (0, 1)]);
+        assert_eq!(high.bit_depth, 10);
+        assert_eq!(high.chroma_subsampling_str(), "4:4:4");
+        // High with the sRGB triple: the shortcut skips color_range.
+        let high_srgb = parse_exact(
+            Av1Profile::High,
+            &[(0, 1), (1, 1), (1, 8), (13, 8), (0, 8), (1, 1)],
+        );
+        assert!(high_srgb.color_range);
+        assert!(high_srgb.separate_uv_delta_q);
+        // Professional 12-bit: 4:2:2 (x=1, y=0) reads two subsampling bits and no position.
+        parse_exact(
+            Av1Profile::Professional,
+            &[
+                (1, 1),
+                (1, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (1, 1),
+                (0, 1),
+                (1, 1),
+            ],
+        );
+        // Professional 12-bit 4:4:4 (x=0) skips the y bit.
+        parse_exact(
+            Av1Profile::Professional,
+            &[(1, 1), (1, 1), (0, 1), (0, 1), (0, 1), (0, 1), (1, 1)],
+        );
+        // Professional 12-bit 4:2:0 reads the chroma sample position.
+        parse_exact(
+            Av1Profile::Professional,
+            &[
+                (1, 1),
+                (1, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (1, 1),
+                (1, 1),
+                (2, 2),
+                (0, 1),
+            ],
+        );
+    }
+
+    #[test]
+    fn random_bytes_never_panic_for_any_profile() {
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        for round in 0..4000 {
+            let mut bytes = [0u8; 8];
+            for byte in &mut bytes {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                *byte = state as u8;
+            }
+            let profile = match round % 4 {
+                0 => Av1Profile::Main,
+                1 => Av1Profile::High,
+                2 => Av1Profile::Professional,
+                _ => Av1Profile::Reserved(3),
+            };
+            let len = (state % 9) as usize;
+            let _ = parse_color_config(&mut BitReader::new(&bytes[..len]), &profile);
+        }
+    }
+
+    #[test]
+    fn the_444_layouts_have_both_subsampling_flags_false() {
+        // The name "4:4:4" also covers x=false,y=true, so check the flags themselves.
+        let srgb = parse_exact(
+            Av1Profile::Main,
+            &[(0, 1), (0, 1), (1, 1), (1, 8), (13, 8), (0, 8), (0, 1)],
+        );
+        assert!(!srgb.subsampling_x && !srgb.subsampling_y);
+        let professional_444 = parse_exact(
+            Av1Profile::Professional,
+            &[(1, 1), (1, 1), (0, 1), (0, 1), (0, 1), (0, 1), (1, 1)],
+        );
+        assert!(!professional_444.subsampling_x && !professional_444.subsampling_y);
+        let high = parse_exact(Av1Profile::High, &[(0, 1), (0, 1), (0, 1), (0, 1)]);
+        assert!(!high.subsampling_x && !high.subsampling_y);
+        let main = parse_exact(
+            Av1Profile::Main,
+            &[(0, 1), (0, 1), (0, 1), (0, 1), (0, 2), (0, 1)],
+        );
+        assert!(main.subsampling_x && main.subsampling_y);
+        let mono = parse_exact(Av1Profile::Main, &[(0, 1), (1, 1), (0, 1), (0, 1)]);
+        assert!(mono.subsampling_x && mono.subsampling_y);
     }
 }
