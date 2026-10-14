@@ -322,4 +322,265 @@ mod tests {
         // Plus key frame (0) since it's needed for dependencies
         assert_eq!(result.frame_count, 4);
     }
+
+    use ObuType::{Frame, FrameHeader, Padding, SequenceHeader, TemporalDelimiter, TileGroup};
+
+    fn obu(obu_type: ObuType, frame_type: Option<FrameType>, size: usize) -> Obu {
+        create_test_obu(obu_type, frame_type, size)
+    }
+
+    fn key(size: usize) -> Obu {
+        obu(Frame, Some(FrameType::Key), size)
+    }
+
+    fn inter(size: usize) -> Obu {
+        obu(Frame, Some(FrameType::Inter), size)
+    }
+
+    fn request(target: usize, before: usize, after: usize, seq: bool) -> ExtractionRequest {
+        ExtractionRequest {
+            target_frame: target,
+            context_before: before,
+            context_after: after,
+            include_sequence_header: seq,
+        }
+    }
+
+    fn extract(obus: &[Obu], request: &ExtractionRequest) -> ExtractionResult {
+        extract_required_obus(request, &DependencyGraph::build(obus), obus)
+    }
+
+    #[test]
+    fn build_records_only_frame_and_frame_header_obus_with_their_stream_position_and_size() {
+        let obus = vec![
+            obu(SequenceHeader, None, 10),
+            obu(TemporalDelimiter, None, 0),
+            key(100),
+            obu(Padding, None, 3),
+            obu(FrameHeader, Some(FrameType::Inter), 7),
+            obu(TileGroup, None, 40),
+        ];
+        let graph = DependencyGraph::build(&obus);
+        assert_eq!(graph.frame_count(), 2);
+        assert_eq!(
+            (
+                graph.frames[0].obu_index,
+                graph.frames[0].frame_type,
+                graph.frames[0].size
+            ),
+            (2, FrameType::Key, 102)
+        );
+        assert_eq!(
+            (
+                graph.frames[1].obu_index,
+                graph.frames[1].frame_type,
+                graph.frames[1].size
+            ),
+            (4, FrameType::Inter, 9)
+        );
+    }
+
+    #[test]
+    fn build_treats_a_frame_without_a_parsed_type_as_a_key_frame() {
+        let graph = DependencyGraph::build(&[obu(Frame, None, 5)]);
+        assert_eq!(graph.frames[0].frame_type, FrameType::Key);
+    }
+
+    #[test]
+    fn build_of_nothing_or_of_non_frame_obus_is_an_empty_graph() {
+        assert_eq!(DependencyGraph::build(&[]).frame_count(), 0);
+        let graph = DependencyGraph::build(&[obu(SequenceHeader, None, 1), obu(Padding, None, 1)]);
+        assert_eq!(graph.frame_count(), 0);
+    }
+
+    #[test]
+    fn nearest_key_frame_is_none_without_a_key_frame_or_without_frames() {
+        assert_eq!(DependencyGraph::build(&[]).find_nearest_key_frame(0), None);
+        let graph = DependencyGraph::build(&[inter(1), inter(1)]);
+        assert_eq!(graph.find_nearest_key_frame(1), None);
+    }
+
+    #[test]
+    fn nearest_key_frame_only_looks_backwards_and_only_counts_key_frames() {
+        let graph = DependencyGraph::build(&[
+            obu(Frame, Some(FrameType::IntraOnly), 1),
+            key(1),
+            obu(Frame, Some(FrameType::IntraOnly), 1),
+            inter(1),
+            key(1),
+        ]);
+        // IntraOnly is not a key frame; a later key frame is not "prior".
+        assert_eq!(graph.find_nearest_key_frame(3), Some(1));
+        assert_eq!(graph.find_nearest_key_frame(2), Some(1));
+        assert_eq!(graph.find_nearest_key_frame(0), None);
+        assert_eq!(graph.find_nearest_key_frame(4), Some(4));
+    }
+
+    #[test]
+    fn nearest_key_frame_past_the_last_frame_searches_from_the_end() {
+        let graph = DependencyGraph::build(&[key(1), inter(1)]);
+        assert_eq!(graph.find_nearest_key_frame(5), Some(0));
+    }
+
+    #[test]
+    fn a_target_past_the_last_frame_extracts_nothing() {
+        let obus = vec![key(10), inter(10)];
+        for target in [2, 3, 1000] {
+            let result = extract(&obus, &request(target, 1, 1, true));
+            assert!(result.obu_indices.is_empty(), "target {target}");
+            assert_eq!((result.frame_count, result.estimated_size), (0, 0));
+        }
+        // The last frame itself is valid.
+        assert_eq!(extract(&obus, &request(1, 0, 0, false)).frame_count, 2);
+    }
+
+    #[test]
+    fn extracting_from_a_stream_without_frames_is_empty_and_does_not_underflow() {
+        let obus = vec![obu(SequenceHeader, None, 4)];
+        let result = extract(&obus, &request(0, 0, 0, true));
+        assert!(result.obu_indices.is_empty());
+        assert_eq!(extract(&[], &request(0, 5, 5, true)).obu_indices.len(), 0);
+    }
+
+    #[test]
+    fn without_a_key_frame_the_extraction_starts_at_the_first_frame() {
+        let obus = vec![inter(1), inter(1), inter(1)];
+        let result = extract(&obus, &request(2, 0, 0, false));
+        assert_eq!(result.obu_indices, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn extraction_runs_from_the_nearest_key_frame_to_the_target() {
+        let obus = vec![key(1), inter(1), key(1), inter(1), inter(1), inter(1)];
+        let result = extract(&obus, &request(4, 0, 0, false));
+        assert_eq!(result.obu_indices, vec![2, 3, 4]);
+        // The target being a key frame itself needs nothing before it.
+        assert_eq!(
+            extract(&obus, &request(2, 0, 0, false)).obu_indices,
+            vec![2]
+        );
+    }
+
+    #[test]
+    fn context_before_reaches_behind_the_key_frame_and_is_limited_by_the_stream_start() {
+        let obus = vec![inter(1), inter(1), inter(1), key(1), inter(1)];
+        // Key frame at 3, target 4: the dependency chain is {3, 4}; 2 frames of context add 2 and 1... but
+        // context_before counts frames before the target, so 4-2 = 2..4 adds frames 2 and 3.
+        assert_eq!(
+            extract(&obus, &request(4, 2, 0, false)).obu_indices,
+            vec![2, 3, 4]
+        );
+        // More context than frames exist: clamps at 0 without underflow.
+        assert_eq!(
+            extract(&obus, &request(4, usize::MAX, 0, false)).obu_indices,
+            vec![0, 1, 2, 3, 4]
+        );
+        assert_eq!(
+            extract(&obus, &request(0, 9, 0, false)).obu_indices,
+            vec![0]
+        );
+    }
+
+    #[test]
+    fn context_after_is_limited_by_the_stream_end() {
+        let obus = vec![key(1), inter(1), inter(1), inter(1)];
+        assert_eq!(
+            extract(&obus, &request(1, 0, 1, false)).obu_indices,
+            vec![0, 1, 2]
+        );
+        assert_eq!(
+            extract(&obus, &request(1, 0, 2, false)).obu_indices,
+            vec![0, 1, 2, 3]
+        );
+        assert_eq!(
+            extract(&obus, &request(1, 0, 50, false)).obu_indices,
+            vec![0, 1, 2, 3]
+        );
+        // Target is the last frame: nothing after it, and no off-by-one on the range end.
+        assert_eq!(
+            extract(&obus, &request(3, 0, 5, false)).obu_indices,
+            vec![0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn the_sequence_header_is_included_only_when_asked_and_only_the_first_one() {
+        let obus = vec![
+            obu(SequenceHeader, None, 10),
+            key(100),
+            obu(SequenceHeader, None, 20),
+            inter(50),
+        ];
+        let with = extract(&obus, &request(0, 0, 0, true));
+        assert_eq!(with.obu_indices, vec![0, 1]);
+        assert_eq!(with.estimated_size, 12 + 102);
+        let without = extract(&obus, &request(0, 0, 0, false));
+        assert_eq!(without.obu_indices, vec![1]);
+        // Asked for but absent from the stream: nothing to add, no error.
+        let no_header = vec![key(1)];
+        assert_eq!(
+            extract(&no_header, &request(0, 0, 0, true)).obu_indices,
+            vec![0]
+        );
+    }
+
+    #[test]
+    fn a_temporal_delimiter_is_kept_only_when_it_directly_precedes_a_required_obu() {
+        let obus = vec![
+            obu(TemporalDelimiter, None, 0), // 0: before the key frame
+            key(10),                         // 1
+            obu(TemporalDelimiter, None, 0), // 2: before the skipped...
+            obu(Padding, None, 1),           // 3: ...padding, so not directly before the frame
+            inter(10),                       // 4
+            obu(TemporalDelimiter, None, 0), // 5: before the target
+            inter(10),                       // 6
+            obu(TemporalDelimiter, None, 0), // 7: after the target, not wanted
+        ];
+        let result = extract(&obus, &request(2, 0, 0, false));
+        assert_eq!(result.obu_indices, vec![0, 1, 4, 5, 6]);
+        assert_eq!(result.frame_count, 3);
+        assert_eq!(result.estimated_size, 2 + 12 + 12 + 2 + 12);
+    }
+
+    #[test]
+    fn a_required_obu_at_index_zero_has_no_delimiter_to_look_for() {
+        let obus = vec![key(1), obu(TemporalDelimiter, None, 0), inter(1)];
+        assert_eq!(
+            extract(&obus, &request(0, 0, 0, false)).obu_indices,
+            vec![0]
+        );
+    }
+
+    #[test]
+    fn the_indices_are_sorted_unique_and_the_totals_match_the_selected_obus() {
+        let obus = vec![
+            obu(SequenceHeader, None, 8),
+            obu(TemporalDelimiter, None, 0),
+            key(30),
+            obu(TemporalDelimiter, None, 0),
+            obu(FrameHeader, Some(FrameType::Inter), 5),
+            obu(TileGroup, None, 20),
+            obu(TemporalDelimiter, None, 0),
+            inter(15),
+        ];
+        // Overlapping ranges (key->target, context_before, context_after) must not duplicate entries.
+        let result = extract(&obus, &request(1, 5, 5, true));
+        assert_eq!(result.obu_indices, vec![0, 1, 2, 3, 4, 6, 7]);
+        // The tile group (5) is not a frame OBU, so it is not part of the selection.
+        let total: u64 = result.obu_indices.iter().map(|&i| obus[i].total_size).sum();
+        assert_eq!(result.estimated_size as u64, total);
+        assert_eq!(result.frame_count, 3); // Frame, FrameHeader, Frame
+    }
+
+    #[test]
+    fn a_graph_that_does_not_match_the_obus_is_tolerated() {
+        // Graph built from a longer stream than the one passed: indices beyond it are skipped.
+        let long = vec![key(1), inter(1), inter(1), inter(1)];
+        let graph = DependencyGraph::build(&long);
+        let short = &long[..2];
+        let result = extract_required_obus(&request(3, 0, 0, true), &graph, short);
+        assert_eq!(result.obu_indices, vec![0, 1, 2, 3]);
+        assert_eq!(result.frame_count, 2);
+        assert_eq!(result.estimated_size, 6);
+    }
 }
