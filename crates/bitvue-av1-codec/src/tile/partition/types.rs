@@ -408,3 +408,308 @@ impl BlockSize {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL_PARTITIONS: [PartitionType; 10] = [
+        PartitionType::None,
+        PartitionType::Horz,
+        PartitionType::Vert,
+        PartitionType::Split,
+        PartitionType::HorzA,
+        PartitionType::HorzB,
+        PartitionType::VertA,
+        PartitionType::VertB,
+        PartitionType::Horz4,
+        PartitionType::Vert4,
+    ];
+
+    /// Every `BlockSize` variant.
+    const ALL_SIZES: [BlockSize; 24] = [
+        BlockSize::Block4x4,
+        BlockSize::Block4x8,
+        BlockSize::Block8x4,
+        BlockSize::Block8x8,
+        BlockSize::Block8x16,
+        BlockSize::Block16x8,
+        BlockSize::Block16x16,
+        BlockSize::Block16x32,
+        BlockSize::Block32x16,
+        BlockSize::Block32x32,
+        BlockSize::Block32x64,
+        BlockSize::Block64x32,
+        BlockSize::Block64x64,
+        BlockSize::Block64x128,
+        BlockSize::Block128x64,
+        BlockSize::Block128x128,
+        BlockSize::Block16x4,
+        BlockSize::Block32x8,
+        BlockSize::Block64x16,
+        BlockSize::Block128x32,
+        BlockSize::Block4x16,
+        BlockSize::Block8x32,
+        BlockSize::Block16x64,
+        BlockSize::Block32x128,
+    ];
+
+    fn square(side: u32) -> BlockSize {
+        match side {
+            4 => BlockSize::Block4x4,
+            8 => BlockSize::Block8x8,
+            16 => BlockSize::Block16x16,
+            32 => BlockSize::Block32x32,
+            64 => BlockSize::Block64x64,
+            128 => BlockSize::Block128x128,
+            _ => panic!("no square block of side {side}"),
+        }
+    }
+
+    const SQUARE_SIDES: [u32; 6] = [4, 8, 16, 32, 64, 128];
+
+    fn dims(sizes: &[BlockSize]) -> Vec<(u32, u32)> {
+        sizes.iter().map(|b| (b.width(), b.height())).collect()
+    }
+
+    // ---- PartitionType ----
+
+    #[test]
+    fn from_u8_round_trips_the_ten_symbols_and_rejects_everything_else() {
+        for (value, expected) in ALL_PARTITIONS.iter().enumerate() {
+            let parsed = PartitionType::from_u8(value as u8);
+            assert_eq!(parsed, Some(*expected), "symbol {value}");
+            assert_eq!(*expected as u8, value as u8, "discriminant of {expected:?}");
+        }
+        for value in 10..=u8::MAX {
+            assert_eq!(PartitionType::from_u8(value), None, "symbol {value}");
+        }
+    }
+
+    #[test]
+    fn the_sub_block_counts_are_the_spec_counts() {
+        let expected = [1, 2, 2, 4, 3, 3, 3, 3, 4, 4];
+        for (partition, count) in ALL_PARTITIONS.iter().zip(expected) {
+            assert_eq!(partition.sub_block_count(), count, "{partition:?}");
+        }
+    }
+
+    /// Spec 5.11.4: which partition types a square block can choose.
+    fn spec_allows(partition: PartitionType, side: u32) -> bool {
+        match partition {
+            PartitionType::None => true,
+            PartitionType::Horz | PartitionType::Vert | PartitionType::Split => side >= 8,
+            PartitionType::HorzA
+            | PartitionType::HorzB
+            | PartitionType::VertA
+            | PartitionType::VertB => side >= 16,
+            PartitionType::Horz4 | PartitionType::Vert4 => (16..=64).contains(&side),
+        }
+    }
+
+    #[test]
+    fn square_blocks_allow_exactly_the_spec_partitions() {
+        for side in SQUARE_SIDES {
+            for partition in ALL_PARTITIONS {
+                assert_eq!(
+                    partition.is_allowed(square(side)),
+                    spec_allows(partition, side),
+                    "{partition:?} on {side}x{side}"
+                );
+            }
+        }
+    }
+
+    /// A partition needs both sides of the block to be big enough, whatever its shape.
+    #[test]
+    fn a_short_side_rules_out_the_partition_even_on_a_non_square_block() {
+        for size in ALL_SIZES {
+            let shortest = size.width().min(size.height());
+            for partition in [
+                PartitionType::Horz,
+                PartitionType::Vert,
+                PartitionType::Split,
+            ] {
+                if shortest < 8 {
+                    assert!(!partition.is_allowed(size), "{partition:?} on {size:?}");
+                }
+            }
+            for partition in [
+                PartitionType::HorzA,
+                PartitionType::HorzB,
+                PartitionType::VertA,
+                PartitionType::VertB,
+            ] {
+                if shortest < 16 {
+                    assert!(!partition.is_allowed(size), "{partition:?} on {size:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_four_way_partitions_are_never_allowed_on_non_square_blocks() {
+        for size in ALL_SIZES {
+            if size.width() == size.height() {
+                continue;
+            }
+            for partition in [PartitionType::Horz4, PartitionType::Vert4] {
+                assert!(!partition.is_allowed(size), "{partition:?} on {size:?}");
+            }
+            assert!(PartitionType::None.is_allowed(size), "None on {size:?}");
+        }
+    }
+
+    #[test]
+    fn four_way_partitions_need_both_sides_in_the_16_to_64_range() {
+        // Edge sizes around the legal range, square and not.
+        for (w, h, ok) in [
+            (8, 8, false),
+            (16, 16, true),
+            (64, 64, true),
+            (128, 128, false),
+        ] {
+            let size = ALL_SIZES
+                .iter()
+                .copied()
+                .find(|b| (b.width(), b.height()) == (w, h))
+                .unwrap();
+            assert_eq!(PartitionType::Horz4.is_allowed(size), ok, "{w}x{h}");
+            assert_eq!(PartitionType::Vert4.is_allowed(size), ok, "{w}x{h}");
+        }
+        // 16x32 has a side in the range but is not square.
+        assert!(!PartitionType::Horz4.is_allowed(BlockSize::Block16x32));
+        assert!(!PartitionType::Vert4.is_allowed(BlockSize::Block32x16));
+    }
+
+    // ---- BlockSize ----
+
+    /// The width and height of each size, restated from its variant name (`Block<W>x<H>`).
+    #[test]
+    fn width_and_height_match_the_variant_names() {
+        for size in ALL_SIZES {
+            let name = format!("{size:?}");
+            let (w, h) = name.strip_prefix("Block").unwrap().split_once('x').unwrap();
+            assert_eq!(size.width(), w.parse::<u32>().unwrap(), "{name} width");
+            assert_eq!(size.height(), h.parse::<u32>().unwrap(), "{name} height");
+        }
+    }
+
+    #[test]
+    fn every_size_is_distinct() {
+        let mut seen = std::collections::BTreeSet::new();
+        for size in ALL_SIZES {
+            assert!(
+                seen.insert((size.width(), size.height())),
+                "{size:?} repeats a size"
+            );
+        }
+        assert_eq!(seen.len(), 24);
+    }
+
+    /// The sub-blocks of a square `side`-sized block, in decode order, restated from the spec.
+    fn expected_sub_blocks(partition: PartitionType, side: u32) -> Vec<(u32, u32)> {
+        let (s, h, q) = (side, side / 2, side / 4);
+        match partition {
+            PartitionType::None => vec![(s, s)],
+            PartitionType::Horz => vec![(s, h); 2],
+            PartitionType::Vert => vec![(h, s); 2],
+            PartitionType::Split => vec![(h, h); 4],
+            PartitionType::HorzA => vec![(h, h), (h, h), (s, h)],
+            PartitionType::HorzB => vec![(s, h), (h, h), (h, h)],
+            PartitionType::VertA => vec![(h, h), (h, h), (h, s)],
+            PartitionType::VertB => vec![(h, s), (h, h), (h, h)],
+            PartitionType::Horz4 => vec![(s, q); 4],
+            PartitionType::Vert4 => vec![(q, s); 4],
+        }
+    }
+
+    #[test]
+    fn allowed_partitions_of_square_blocks_split_as_the_spec_says() {
+        for side in SQUARE_SIDES {
+            for partition in ALL_PARTITIONS {
+                if !spec_allows(partition, side) {
+                    continue;
+                }
+                let subs = square(side).sub_block_size(partition);
+                assert_eq!(
+                    dims(&subs),
+                    expected_sub_blocks(partition, side),
+                    "{partition:?} on {side}x{side}"
+                );
+                assert_eq!(
+                    subs.len(),
+                    partition.sub_block_count(),
+                    "{partition:?} count"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_sub_blocks_tile_the_parent_exactly() {
+        for side in SQUARE_SIDES {
+            for partition in ALL_PARTITIONS {
+                if !spec_allows(partition, side) {
+                    continue;
+                }
+                let area: u32 = square(side)
+                    .sub_block_size(partition)
+                    .iter()
+                    .map(|b| b.width() * b.height())
+                    .sum();
+                assert_eq!(area, side * side, "{partition:?} on {side}x{side}");
+            }
+        }
+    }
+
+    /// `parse_partition_recursive` relies on this: a partition that is not allowed (or not
+    /// real for the size) hands back the block itself, which it then rejects as "no smaller".
+    #[test]
+    fn a_partition_without_a_split_for_the_size_returns_the_block_itself() {
+        for side in SQUARE_SIDES {
+            for partition in ALL_PARTITIONS {
+                if spec_allows(partition, side) {
+                    continue;
+                }
+                assert_eq!(
+                    square(side).sub_block_size(partition),
+                    vec![square(side)],
+                    "{partition:?} on {side}x{side}"
+                );
+            }
+        }
+        // Non-square blocks have no split at all, for any partition.
+        for size in ALL_SIZES {
+            if size.width() == size.height() {
+                continue;
+            }
+            for partition in ALL_PARTITIONS {
+                assert_eq!(
+                    size.sub_block_size(partition),
+                    vec![size],
+                    "{partition:?} on {size:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_split_of_an_allowed_square_block_makes_something_smaller() {
+        for side in SQUARE_SIDES {
+            for partition in ALL_PARTITIONS {
+                if partition == PartitionType::None || !spec_allows(partition, side) {
+                    continue;
+                }
+                let parent = square(side);
+                assert!(
+                    parent
+                        .sub_block_size(partition)
+                        .iter()
+                        .any(|s| s.width() < parent.width() || s.height() < parent.height()),
+                    "{partition:?} on {side}x{side}"
+                );
+            }
+        }
+    }
+}
