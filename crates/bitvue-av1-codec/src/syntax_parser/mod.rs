@@ -267,4 +267,26 @@ mod tests {
         assert_eq!(header.parent, Some("obu[0]".to_string()));
         assert!(!header.children.is_empty(), "Header should have children");
     }
+
+    #[test]
+    fn an_obu_without_a_size_field_has_no_size_container() {
+        // Temporal delimiter header with has_size = 0 (0x10): the payload runs to the end.
+        let model = parse_obu_syntax(&[0x10], 0, 0).unwrap();
+        assert!(model.nodes.values().all(|n| n.field_name != "obu_size"));
+        assert!(model.nodes.values().any(|n| n.field_name == "obu_type"));
+        // The same OBU with a size field has one.
+        let model = parse_obu_syntax(&[0x12, 0x00], 0, 0).unwrap();
+        assert!(model.nodes.values().any(|n| n.field_name == "obu_size"));
+    }
+
+    #[test]
+    fn an_obu_header_alone_or_with_a_bad_size_is_an_error_not_a_panic() {
+        assert!(parse_obu_syntax(&[], 0, 0).is_err());
+        // has_size set but nothing follows.
+        assert!(parse_obu_syntax(&[0x12], 0, 0).is_err());
+        // A size of eight continuation bytes.
+        let mut data = vec![0x12];
+        data.extend([0x80; 8]);
+        assert!(parse_obu_syntax(&data, 0, 0).is_err());
+    }
 }

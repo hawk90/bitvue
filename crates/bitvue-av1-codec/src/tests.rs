@@ -1499,3 +1499,82 @@ fn test_parse_av1_unicode_handling() {
     // Should handle all byte values gracefully
     assert!(result.is_ok() || result.is_err());
 }
+
+// ---- parse_av1: which container each input is routed to ----
+
+fn mp4_like(box_type: &[u8; 4]) -> Vec<u8> {
+    let mut data = 8u32.to_be_bytes().to_vec();
+    data.extend_from_slice(box_type);
+    data
+}
+
+#[test]
+fn parse_av1_sends_mp4_and_mov_boxes_to_the_mp4_reader() {
+    // Every box type that `is_mp4` or `is_mov` accepts reaches the MP4 reader (whose errors
+    // mention MP4 or end early), not the raw-OBU reader (which would accept the bytes as 0 OBUs
+    // or fail with an OBU error).
+    for tag in [b"ftyp", b"moov", b"mdat", b"free", b"skip", b"wide"] {
+        let data = mp4_like(tag);
+        assert!(
+            is_mp4(&data) || is_mov(&data),
+            "{} is a container tag",
+            String::from_utf8_lossy(tag)
+        );
+        let err = parse_av1(&data).expect_err(&String::from_utf8_lossy(tag));
+        let text = err.to_string();
+        assert!(
+            text.contains("MP4") || text.contains("end of file") || text.contains("Unexpected"),
+            "{}: {text}",
+            String::from_utf8_lossy(tag)
+        );
+    }
+    // The tag decides, not the box size.
+    let mut data = 0xFFFF_FFFFu32.to_be_bytes().to_vec();
+    data.extend_from_slice(b"moov");
+    assert!(parse_av1(&data).is_err());
+}
+
+#[test]
+fn parse_av1_sends_the_ebml_magic_to_the_mkv_reader_and_everything_else_to_the_obu_reader() {
+    let err = parse_av1(&[0x1A, 0x45, 0xDF, 0xA3, 0x80]).unwrap_err();
+    assert!(
+        err.to_string().contains("EBML") || err.to_string().contains("MKV"),
+        "{err}"
+    );
+    // Not a container: read as raw OBUs (a temporal delimiter).
+    let info = parse_av1(&[0x12, 0x00]).unwrap();
+    assert_eq!((info.obu_count, info.frame_count), (1, 0));
+}
+
+#[test]
+fn parse_av1_reads_the_same_obus_from_an_ivf_file_and_from_its_packets_concatenated() {
+    const CLIP: &[u8] = include_bytes!("../../../test_data/av1_aomenc_testsrc2.ivf");
+    let (_hdr, packets) = parse_ivf_frames(CLIP).unwrap();
+    let raw: Vec<u8> = packets.iter().flat_map(|p| p.data.clone()).collect();
+    let from_ivf = parse_av1(CLIP).unwrap();
+    let from_raw = parse_av1(&raw).unwrap();
+    assert_eq!(from_ivf.obu_count, from_raw.obu_count);
+    assert_eq!(from_ivf.frame_count, from_raw.frame_count);
+    assert_eq!(from_ivf.width(), Some(320));
+    assert_eq!(from_raw.width(), Some(320));
+    assert!(from_ivf.obu_count > from_ivf.frame_count);
+}
+
+#[test]
+fn parse_av1_counts_frame_and_frame_header_obus_as_frames_and_nothing_else() {
+    // Raw OBUs with a size field: FrameHeader (3), TileGroup (4), Frame (6), Padding (15), TD (2).
+    let obu = |obu_type: u8, payload: &[u8]| {
+        let mut out = vec![(obu_type << 3) | 0x02, payload.len() as u8];
+        out.extend_from_slice(payload);
+        out
+    };
+    let mut data = Vec::new();
+    data.extend(obu(2, &[]));
+    data.extend(obu(3, &[0x00]));
+    data.extend(obu(4, &[0x00, 0x00]));
+    data.extend(obu(6, &[0x00]));
+    data.extend(obu(15, &[0x00]));
+    let info = parse_av1(&data).unwrap();
+    assert_eq!(info.obu_count, 5);
+    assert_eq!(info.frame_count, 2, "the FrameHeader and the Frame OBU");
+}
