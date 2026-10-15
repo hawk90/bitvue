@@ -467,4 +467,169 @@ mod tests {
         assert!(analyzer.analyze(analyzer.frame_count()).is_err());
         assert!(StreamAnalyzer::new(&[0u8; 64]).is_err());
     }
+
+    /// `AOMENC`'s 32-byte IVF header with `packets` as the frames.
+    fn ivf_with(packets: &[Vec<u8>]) -> Vec<u8> {
+        let mut out = AOMENC[..32].to_vec();
+        for (i, packet) in packets.iter().enumerate() {
+            out.extend((packet.len() as u32).to_le_bytes());
+            out.extend((i as u64).to_le_bytes());
+            out.extend(packet);
+        }
+        out
+    }
+
+    fn obu_bytes(obu_type: ObuType, payload: &[u8]) -> Vec<u8> {
+        let mut out = vec![((obu_type as u8) << 3) | 0x02];
+        out.extend(crate::encode_uleb128(payload.len() as u64));
+        out.extend_from_slice(payload);
+        out
+    }
+
+    /// The first packet's sequence header OBU, as bytes.
+    fn aomenc_sequence_obu() -> Vec<u8> {
+        let (_h, frames) = parse_ivf_frames(AOMENC).unwrap();
+        let (bytes, _seq) = find_sequence_header(&frames).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_stream_without_a_sequence_header_is_refused() {
+        let td = obu_bytes(ObuType::TemporalDelimiter, &[]);
+        assert!(find_sequence_header(&[]).is_none());
+        let ivf = ivf_with(&[td.clone(), td.clone()]);
+        assert!(StreamAnalyzer::new(&ivf).is_err());
+        // An IVF with no packets at all.
+        assert!(StreamAnalyzer::new(&ivf_with(&[])).is_err());
+    }
+
+    #[test]
+    fn a_sequence_header_that_does_not_parse_is_refused_and_one_that_does_is_found_in_a_later_packet(
+    ) {
+        let bad = obu_bytes(ObuType::SequenceHeader, &[0x00]);
+        assert!(StreamAnalyzer::new(&ivf_with(&[bad])).is_err());
+
+        let td = obu_bytes(ObuType::TemporalDelimiter, &[]);
+        let seq = aomenc_sequence_obu();
+        let mut packets: Vec<Vec<u8>> = vec![td.clone(); SEQUENCE_HEADER_SCAN_LIMIT - 1];
+        packets.push([td.clone(), seq.clone()].concat());
+        let (_h, frames) = parse_ivf_frames(&ivf_with(&packets)).unwrap();
+        assert!(
+            find_sequence_header(&frames).is_some(),
+            "last scanned packet"
+        );
+
+        // One packet further is beyond the scan limit.
+        let mut packets: Vec<Vec<u8>> = vec![td.clone(); SEQUENCE_HEADER_SCAN_LIMIT];
+        packets.push([td, seq].concat());
+        let (_h, frames) = parse_ivf_frames(&ivf_with(&packets)).unwrap();
+        assert!(
+            find_sequence_header(&frames).is_none(),
+            "past the scan limit"
+        );
+    }
+
+    /// A truncated OBU in front of the sequence header hides it: the scan of that packet stops.
+    #[test]
+    fn a_packet_that_breaks_before_its_sequence_header_does_not_hide_a_later_packet_s() {
+        let seq = aomenc_sequence_obu();
+        let mut broken = obu_bytes(ObuType::Padding, &[0; 6]);
+        broken.truncate(broken.len() - 3);
+        broken.extend(&seq);
+        let (_h, frames) = parse_ivf_frames(&ivf_with(&[broken, seq.clone()])).unwrap();
+        let (bytes, _) = find_sequence_header(&frames).expect("found in the next packet");
+        assert_eq!(bytes, seq);
+    }
+
+    #[test]
+    fn checkpoints_are_taken_every_interval_packets_from_the_first() {
+        let mut analyzer = StreamAnalyzer::with_limits(AOMENC, 3, 2).unwrap();
+        analyzer.analyze(10).unwrap();
+        let kept: Vec<usize> = analyzer.checkpoints.keys().copied().collect();
+        assert_eq!(kept, vec![0, 3, 6, 9]);
+        // An interval of zero is treated as one.
+        let mut analyzer = StreamAnalyzer::with_limits(AOMENC, 0, 2).unwrap();
+        analyzer.analyze(4).unwrap();
+        let kept: Vec<usize> = analyzer.checkpoints.keys().copied().collect();
+        assert_eq!(kept, vec![0, 1, 2, 3, 4]);
+    }
+
+    /// Thinning starts when there are more than MAX_CHECKPOINTS, not when there are that many.
+    #[test]
+    fn thinning_starts_one_checkpoint_past_the_maximum() {
+        const BIG: &[u8] = include_bytes!("../../../../test_data/av1_test.ivf");
+        let mut at_max = StreamAnalyzer::with_limits(BIG, 1, 2).unwrap();
+        at_max.analyze(MAX_CHECKPOINTS - 1).unwrap();
+        assert_eq!(
+            at_max.checkpoints.len(),
+            MAX_CHECKPOINTS,
+            "packets 0..=63: nothing dropped"
+        );
+
+        let mut past_max = StreamAnalyzer::with_limits(BIG, 1, 2).unwrap();
+        past_max.analyze(MAX_CHECKPOINTS).unwrap();
+        assert_eq!(
+            past_max.checkpoints.len(),
+            MAX_CHECKPOINTS / 2 + 1,
+            "65 checkpoints thinned to every other one"
+        );
+        assert!(past_max.checkpoints.keys().all(|k| k % 2 == 0));
+    }
+
+    #[test]
+    fn many_checkpoints_are_thinned_but_random_access_still_matches_sequential_decoding() {
+        const BIG: &[u8] = include_bytes!("../../../../test_data/av1_test.ivf");
+        let mut sequential = StreamAnalyzer::new(BIG).unwrap();
+        let count = sequential.frame_count();
+        assert!(
+            count > MAX_CHECKPOINTS + 8,
+            "needs more packets than checkpoints: {count}"
+        );
+        let want = |a: &mut StreamAnalyzer, i: usize| fingerprint(&a.analyze(i).unwrap());
+
+        // A checkpoint at every packet: past MAX_CHECKPOINTS the older ones are halved.
+        let mut analyzer = StreamAnalyzer::with_limits(BIG, 1, 2).unwrap();
+        let last = want(&mut analyzer, count - 1);
+        assert_eq!(last, want(&mut sequential, count - 1));
+        assert!(
+            analyzer.checkpoints.len() <= MAX_CHECKPOINTS,
+            "{} checkpoints kept",
+            analyzer.checkpoints.len()
+        );
+        assert!(
+            analyzer.checkpoints.len() < count,
+            "some checkpoints were dropped"
+        );
+        assert!(
+            analyzer.checkpoints.contains_key(&0),
+            "the first checkpoint is always kept"
+        );
+
+        // Exactly which checkpoints survive the first forward pass: the same rule applied to a
+        // plain list (insert each packet, and above MAX_CHECKPOINTS drop every other one after
+        // the first).
+        let mut expected: Vec<usize> = Vec::new();
+        for packet in 0..count {
+            expected.push(packet);
+            if expected.len() > MAX_CHECKPOINTS {
+                expected = expected
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, _)| i == 0 || i % 2 == 0)
+                    .map(|(_, &k)| k)
+                    .collect();
+            }
+        }
+        let kept: Vec<usize> = analyzer.checkpoints.keys().copied().collect();
+        assert_eq!(kept, expected);
+
+        // Going back to packets whose checkpoint was dropped still decodes the same frames.
+        for index in [5, 1, 100, 33, 64, 3] {
+            assert_eq!(
+                want(&mut analyzer, index),
+                want(&mut sequential, index),
+                "packet {index}"
+            );
+        }
+    }
 }
