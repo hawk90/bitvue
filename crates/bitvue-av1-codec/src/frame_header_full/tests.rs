@@ -1682,3 +1682,44 @@ fn explicit_tile_sizes_bound_the_row_height_by_the_minimum_tile_area() {
         (5, 3)
     );
 }
+
+#[test]
+fn explicit_tiles_of_a_small_frame_use_the_whole_frame_as_the_area_bound() {
+    // 320x240: 5x4 superblocks, minLog2Tiles = 0. One column (ns(5) of 4), rows
+    // bounded by the frame (4): ns(4) for 3 is 2 bits `11`.
+    let seq = base_seq();
+    let mut b = HeaderBits::default();
+    b.put(0, 1);
+    b.put(0b111, 3); // ns(5) of 4: `11` then the extra bit
+    b.put(0b11, 2);
+    let bytes = b.bytes();
+    let mut reader = BitReader::new(&bytes);
+    let layout = read_tile_info(&mut reader, &seq, 320, 240).unwrap();
+    assert_eq!(reader.position(), b.bit_len());
+    assert_eq!(layout.col_starts_sb, vec![0, 5]);
+    assert_eq!(layout.row_starts_sb, vec![0, 4]);
+    assert_eq!(layout.tile_count(), 1);
+}
+
+/// 4224x2240 is 66x35 superblocks: `minLog2Tiles = 1`, so explicit rows are bounded by
+/// `(66 * 35) >> 2 = 577` area, i.e. 577 / 64 = 9 rows for the 64-wide first column.
+#[test]
+fn a_minimum_of_one_halves_the_area_and_the_widest_tile_is_the_first_not_the_last() {
+    let seq = base_seq();
+    let mut b = HeaderBits::default();
+    b.put(0, 1);
+    b.put(63, 6); // first column: 64 superblocks
+    b.put(1, 1); // second column: 2 superblocks (ns(2): 1 bit, minus_1 = 1)
+    for _ in 0..3 {
+        b.put(0b111, 3).put(1, 1); // ns(9) of 8
+    }
+    b.put(0b111, 3); // last row: 8 left, ns(8) of 7
+    b.put(1, 3).put(0, 2); // context_update_tile_id (1 + 2 bits), tile_size_bytes_minus_1
+    let bytes = b.bytes();
+    let mut reader = BitReader::new(&bytes);
+    let layout = read_tile_info(&mut reader, &seq, 4224, 2240).unwrap();
+    assert_eq!(reader.position(), b.bit_len());
+    assert_eq!(layout.col_starts_sb, vec![0, 64, 66]);
+    assert_eq!(layout.row_starts_sb, vec![0, 9, 18, 27, 35]);
+    assert_eq!((layout.tile_cols_log2, layout.tile_rows_log2), (1, 2));
+}

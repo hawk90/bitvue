@@ -650,4 +650,37 @@ mod tests {
             let _ = parse_frame_header_basic(&bytes[..cut]);
         }
     }
+
+    #[test]
+    fn a_shown_key_frame_refreshes_every_slot_without_a_refresh_field() {
+        // show_existing 0, KEY, show_frame 1 (no showable, error-resilient implied), disable_cdf
+        // 0, then the quantizer: the refresh byte is not in the stream, so the base index follows
+        // the flags directly.
+        let mut fields = vec![(0, 1), (0, 2), (1, 1), (0, 1)];
+        fields.extend(quant_fields(0x5A));
+        let (bytes, bit_len) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.frame_type, FrameType::Key);
+        assert_eq!(h.refresh_frame_flags, Some(0xFF));
+        assert_eq!(h.base_q_idx, Some(0x5A));
+        assert_eq!(h.header_size_bits, bit_len);
+        // A key frame that is not shown has showable/error flags, a primary_ref_frame and a refresh
+        // byte.
+        let mut fields = vec![
+            (0, 1),
+            (0, 2),
+            (0, 1),
+            (0, 1),
+            (0, 1),
+            (0, 1),
+            (0, 3),
+            (0x21, 8),
+        ];
+        fields.extend(quant_fields(7));
+        let (bytes, bit_len) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.refresh_frame_flags, Some(0x21));
+        assert_eq!(h.base_q_idx, Some(7));
+        assert_eq!(h.header_size_bits, bit_len);
+    }
 }
