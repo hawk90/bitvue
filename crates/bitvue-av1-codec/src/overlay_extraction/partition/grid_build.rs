@@ -93,3 +93,55 @@ where
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tile::{CodingUnit, TxSize};
+
+    fn frame(width: u32, height: u32) -> ParsedFrame {
+        let mut parsed = ParsedFrame::parse(&[]).unwrap();
+        parsed.dimensions.width = width;
+        parsed.dimensions.height = height;
+        parsed
+    }
+
+    fn build(
+        parsed: &ParsedFrame,
+        units: &[CodingUnit],
+        block_w: u32,
+        block_h: u32,
+        output: &mut Vec<Option<u32>>,
+    ) {
+        build_grid_from_coding_units_spatial(units, parsed, block_w, block_h, output, |cu| {
+            cu.tx_size.size()
+        })
+        .unwrap();
+    }
+
+    /// Production only builds square-block grids; the function takes both sizes, and each must
+    /// be used on its own axis.
+    #[test]
+    fn rectangular_blocks_use_the_width_for_columns_and_the_height_for_rows() {
+        let parsed = frame(64, 32);
+        let mut unit = CodingUnit::new(48, 8, 8, 8);
+        unit.tx_size = TxSize::Tx8x8;
+        let mut out = Vec::new();
+        // 32x8 blocks -> 2 columns x 4 rows; the unit sits in column 1, row 1.
+        build(&parsed, &[unit], 32, 8, &mut out);
+        let expected: Vec<Option<u32>> = (0..8).map(|i| (i == 3).then_some(8)).collect();
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn the_output_is_padded_to_the_grid_but_a_longer_vector_is_left_alone() {
+        let parsed = frame(32, 16);
+        let mut short = Vec::new();
+        build(&parsed, &[], 16, 16, &mut short);
+        assert_eq!(short, vec![None, None]);
+
+        let mut long = vec![Some(9); 5];
+        build(&parsed, &[], 16, 16, &mut long);
+        assert_eq!(long, vec![Some(9); 5], "existing entries are not cleared");
+    }
+}
