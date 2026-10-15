@@ -87,3 +87,112 @@ pub fn parse_all_obus_resilient(
 
     (obus, diagnostics)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitvue_engine::event::Severity;
+
+    const TD: [u8; 2] = [0x12, 0x00];
+    /// forbidden bit set: always a parse error, consumed one byte at a time.
+    const BAD: u8 = 0x80;
+
+    fn run(data: &[u8]) -> (Vec<Obu>, Vec<bitvue_engine::event::Diagnostic>) {
+        parse_all_obus_resilient(data, bitvue_engine::StreamId::A)
+    }
+
+    #[test]
+    fn enough_valid_obus_between_errors_keep_the_scan_going_past_ten_diagnostics() {
+        // A valid OBU then one bad byte, fifteen times: 15 diagnostics, 15 OBUs.
+        let mut data = Vec::new();
+        for _ in 0..15 {
+            data.extend(TD);
+            data.push(BAD);
+        }
+        let (obus, diags) = run(&data);
+        assert_eq!(obus.len(), 15);
+        assert_eq!(diags.len(), 15);
+        assert!(diags.iter().all(|d| d.severity != Severity::Fatal));
+        assert!(diags.iter().all(|d| !d.message.contains("Too many")));
+    }
+
+    #[test]
+    fn ten_errors_in_a_row_stop_the_scan_with_one_fatal_diagnostic() {
+        let mut data = TD.to_vec();
+        data.extend([BAD; 40]);
+        data.extend(TD); // never reached
+        let (obus, diags) = run(&data);
+        assert_eq!(obus.len(), 1, "the scan stopped before the trailing OBU");
+        assert_eq!(diags.len(), 11, "ten errors and the fatal one");
+        let last = diags.last().unwrap();
+        assert_eq!(last.severity, Severity::Fatal);
+        assert!(last.message.contains("Too many parse errors"));
+        assert_eq!(last.count, 10);
+        assert!(diags[..10]
+            .iter()
+            .all(|d| d.severity != Severity::Fatal || d.message.contains("end")));
+    }
+
+    #[test]
+    fn the_limit_is_ten_diagnostics_that_also_outnumber_the_obus_found_so_far() {
+        // Ten valid OBUs first: ten errors in a row are then not more than the OBUs, so the scan
+        // goes on to the OBU after them.
+        let mut data = Vec::new();
+        for _ in 0..10 {
+            data.extend(TD);
+        }
+        data.extend([BAD; 10]);
+        data.extend(TD);
+        let (obus, diags) = run(&data);
+        assert_eq!(obus.len(), 11, "the trailing OBU is reached");
+        assert_eq!(diags.len(), 10);
+        assert!(diags.iter().all(|d| !d.message.contains("Too many")));
+
+        // An eleventh error in a row is more than the ten OBUs: stop, before the trailing OBU.
+        let mut data = Vec::new();
+        for _ in 0..10 {
+            data.extend(TD);
+        }
+        data.extend([BAD; 11]);
+        data.extend(TD);
+        let (obus, diags) = run(&data);
+        assert_eq!(obus.len(), 10);
+        assert_eq!(diags.len(), 12, "eleven errors and the fatal one");
+        assert!(diags
+            .last()
+            .unwrap()
+            .message
+            .contains("Too many parse errors"));
+        assert_eq!(diags.last().unwrap().count, 11);
+
+        // Fewer OBUs mean the limit is reached at ten errors.
+        let mut data = Vec::new();
+        for _ in 0..3 {
+            data.extend(TD);
+        }
+        data.extend([BAD; 30]);
+        let (obus, diags) = run(&data);
+        assert_eq!(obus.len(), 3);
+        assert_eq!(diags.len(), 11);
+        assert_eq!(diags.last().unwrap().count, 10);
+    }
+
+    #[test]
+    fn diagnostics_are_numbered_in_order_and_carry_the_byte_offset() {
+        let mut data = TD.to_vec();
+        data.push(BAD);
+        data.extend(TD);
+        data.push(BAD);
+        let (obus, diags) = run(&data);
+        assert_eq!(obus.len(), 2);
+        assert_eq!(diags.iter().map(|d| d.id).collect::<Vec<_>>(), vec![0, 1]);
+        assert_eq!(
+            diags.iter().map(|d| d.offset_bytes).collect::<Vec<_>>(),
+            vec![2, 5]
+        );
+        assert_eq!(
+            diags.iter().map(|d| d.frame_index).collect::<Vec<_>>(),
+            vec![Some(1), Some(2)]
+        );
+    }
+}

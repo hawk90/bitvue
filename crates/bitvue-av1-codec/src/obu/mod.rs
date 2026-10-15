@@ -193,4 +193,38 @@ mod tests {
             _ => panic!("Expected InvalidData error for oversized payload"),
         }
     }
+
+    #[test]
+    fn the_iterator_ends_cleanly_and_stays_ended() {
+        // Two temporal delimiters, then nothing.
+        let data = [0x12, 0x00, 0x12, 0x00];
+        let mut it = ObuIterator::new(&data);
+        assert!(it.next_obu_with_offset().unwrap().is_ok());
+        assert_eq!(it.current_offset(), 2);
+        assert!(it.next_obu_with_offset().unwrap().is_ok());
+        assert_eq!(it.current_offset(), 4);
+        for _ in 0..3 {
+            assert!(it.next_obu_with_offset().is_none());
+            assert!(it.next().is_none());
+        }
+        assert!(ObuIterator::new(&[]).next().is_none());
+        assert!(ObuIterator::new(&[]).next_obu_with_offset().is_none());
+    }
+
+    #[test]
+    fn after_an_error_neither_iterator_method_yields_again() {
+        // A valid OBU followed by a truncated one, then more bytes that would parse.
+        let data = [0x12, 0x00, 0x32, 0x40, 0x01, 0x12, 0x00];
+        let mut it = ObuIterator::new(&data);
+        assert!(it.next_obu_with_offset().unwrap().is_ok());
+        assert!(it.next_obu_with_offset().unwrap().is_err());
+        assert!(it.next_obu_with_offset().is_none(), "ended by the failure");
+        assert!(it.next().is_none());
+
+        let mut it = ObuIterator::new(&data);
+        assert!(it.next().unwrap().is_ok());
+        assert!(it.next().unwrap().is_err());
+        assert!(it.next().is_none());
+        assert!(it.next_obu_with_offset().is_none());
+    }
 }

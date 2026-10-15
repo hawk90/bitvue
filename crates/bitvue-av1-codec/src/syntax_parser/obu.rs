@@ -433,4 +433,61 @@ mod tests {
         let value_node = model.get_node("obu[0].obu_size_value").unwrap();
         assert_eq!(value_node.value.as_ref().unwrap(), "0 bytes");
     }
+
+    // ---- parse_leb128_size_syntax ----
+
+    fn leb(data: &[u8]) -> (Result<u64>, bitvue_engine::types::SyntaxModel) {
+        let mut reader = TrackedBitReader::new(data, 0);
+        let mut builder = SyntaxBuilder::new("obu[0]".to_string(), "obu_0".to_string());
+        let result = parse_leb128_size_syntax(&mut reader, &mut builder);
+        (result, builder.build())
+    }
+
+    #[test]
+    fn leb128_sizes_decode_and_record_one_field_per_byte() {
+        for (bytes, value) in [
+            (&[0x00][..], 0u64),
+            (&[0x7F], 127),
+            (&[0x80, 0x01], 128),
+            (&[0xFF, 0x7F], 16383),
+            (&[0x80, 0x80, 0x01], 16384),
+            // A non-minimal encoding is accepted (its value is what counts).
+            (&[0x85, 0x00], 5),
+            (
+                &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F],
+                (1 << 56) - 1,
+            ),
+        ] {
+            let (result, model) = leb(bytes);
+            assert_eq!(result.unwrap(), value, "{bytes:02X?}");
+            let fields = model
+                .nodes
+                .values()
+                .filter(|n| n.field_name.starts_with("size_byte["))
+                .count();
+            assert_eq!(fields, bytes.len(), "{bytes:02X?}");
+        }
+    }
+
+    #[test]
+    fn a_size_of_eight_continuation_bytes_is_refused() {
+        // 8 bytes is the maximum length: a ninth would be needed.
+        let (result, _) = leb(&[0x80; 8]);
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("exceeded maximum"), "{err}");
+        let (result, _) = leb(&[0xFF; 12]);
+        assert!(result.is_err());
+        // Seven continuation bytes then a last one is the longest accepted.
+        let mut longest = vec![0x80u8; 7];
+        longest.push(0x01);
+        assert_eq!(leb(&longest).0.unwrap(), 1 << 49);
+    }
+
+    #[test]
+    fn a_size_cut_short_is_an_error_at_every_length() {
+        assert!(leb(&[]).0.is_err());
+        for len in 1..8 {
+            assert!(leb(&vec![0x80; len]).0.is_err(), "{len} continuation bytes");
+        }
+    }
 }

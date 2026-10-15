@@ -165,3 +165,33 @@ impl SyntaxBuilder {
         self.model
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extra_pops_and_a_build_after_them_do_nothing_harmful() {
+        let mut builder = SyntaxBuilder::new("root".to_string(), "unit".to_string());
+        // The root is on the stack from the start: the first pop closes it at bit 10; the later
+        // ones find nothing and must neither panic nor move that end.
+        builder.pop_container(10);
+        builder.pop_container(20);
+        builder.pop_container(30);
+        let model = builder.build();
+        assert_eq!(model.nodes[&model.root_id].bit_range.end_bit, 10);
+    }
+
+    #[test]
+    fn a_container_takes_the_end_bit_it_is_popped_with_and_the_root_spans_the_maximum() {
+        let mut builder = SyntaxBuilder::new("root".to_string(), "unit".to_string());
+        let a = builder.push_container("a", 0);
+        builder.pop_container(8);
+        let b = builder.push_container("b", 8);
+        builder.pop_container(40);
+        let model = builder.build();
+        assert_eq!(model.nodes[&a].bit_range.end_bit, 8);
+        assert_eq!(model.nodes[&b].bit_range.end_bit, 40);
+        assert_eq!(model.nodes[&model.root_id].bit_range.end_bit, 40);
+    }
+}
