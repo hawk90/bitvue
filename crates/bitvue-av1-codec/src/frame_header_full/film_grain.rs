@@ -516,4 +516,54 @@ mod tests {
         assert_eq!(pos, used);
         assert!(info.ar_coeffs_uv.is_empty(), "Cb list is absent");
     }
+
+    /// Chroma points are skipped for 4:2:0 without luma points only; every other subsampling
+    /// (and mono, and chroma-from-luma) decides separately.
+    #[test]
+    fn without_luma_points_only_4_2_0_skips_the_chroma_point_counts() {
+        for (sub, reads_counts) in [
+            ((true, true), false),
+            ((false, false), true),
+            ((true, false), true),
+            ((false, true), true),
+        ] {
+            let mut b = Bits::default();
+            b.put(1, 1).put(9, 16); // apply_grain, seed (key frame: no update_grain)
+            b.put(0, 4); // num_y_points
+            b.put(0, 1); // chroma_scaling_from_luma
+            if reads_counts {
+                b.put(1, 4).put(40, 8).put(50, 8); // num_cb_points, one point
+                b.put(2, 4).put(1, 8).put(2, 8).put(3, 8).put(4, 8); // num_cr_points, two
+            }
+            b.put(1, 2); // grain_scaling_shift_minus_8
+            b.put(1, 2); // ar_coeff_lag 1: 4 positions, none for luma (no luma points)
+            if reads_counts {
+                for v in [130u32, 126, 131, 127] {
+                    b.put(v, 8); // ar_coeffs_cb_plus_128
+                }
+                for _ in 0..4 {
+                    b.put(128, 8); // ar_coeffs_cr_plus_128
+                }
+            }
+            b.put(0, 2).put(0, 2); // ar_coeff_shift_minus_6, grain_scale_shift
+            if reads_counts {
+                b.put(1, 8).put(2, 8).put(3, 9); // cb_mult, cb_luma_mult, cb_offset
+                b.put(4, 8).put(5, 8).put(6, 9); // cr_mult, cr_luma_mult, cr_offset
+            }
+            b.put(1, 1).put(1, 1); // overlap, clip_to_restricted_range
+            let used = b.len();
+            b.put(0xA5, 8);
+            let (info, pos) = parse(&seq(false, sub), &b, true, true, FrameType::Key);
+            assert_eq!(pos, used, "subsampling {sub:?}");
+            assert!(info.overlap && info.clip_to_restricted_range, "{sub:?}");
+            assert_eq!(info.scaling_shift, 9, "{sub:?}");
+            assert!(info.ar_coeffs_y.is_empty(), "{sub:?}");
+            let expected_uv: Vec<i8> = if reads_counts {
+                vec![2, -2, 3, -1]
+            } else {
+                vec![]
+            };
+            assert_eq!(info.ar_coeffs_uv, expected_uv, "{sub:?}");
+        }
+    }
 }
