@@ -1559,3 +1559,22 @@ fn parse_av1_reads_the_same_obus_from_an_ivf_file_and_from_its_packets_concatena
     assert_eq!(from_raw.width(), Some(320));
     assert!(from_ivf.obu_count > from_ivf.frame_count);
 }
+
+#[test]
+fn parse_av1_counts_frame_and_frame_header_obus_as_frames_and_nothing_else() {
+    // Raw OBUs with a size field: FrameHeader (3), TileGroup (4), Frame (6), Padding (15), TD (2).
+    let obu = |obu_type: u8, payload: &[u8]| {
+        let mut out = vec![(obu_type << 3) | 0x02, payload.len() as u8];
+        out.extend_from_slice(payload);
+        out
+    };
+    let mut data = Vec::new();
+    data.extend(obu(2, &[]));
+    data.extend(obu(3, &[0x00]));
+    data.extend(obu(4, &[0x00, 0x00]));
+    data.extend(obu(6, &[0x00]));
+    data.extend(obu(15, &[0x00]));
+    let info = parse_av1(&data).unwrap();
+    assert_eq!(info.obu_count, 5);
+    assert_eq!(info.frame_count, 2, "the FrameHeader and the Frame OBU");
+}
