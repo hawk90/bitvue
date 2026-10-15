@@ -507,4 +507,180 @@ mod tests {
         let result = parse_frame_header_basic(&payload);
         assert!(result.is_ok());
     }
+
+    // ---- parse_frame_header_basic: the branches the key/inter fixtures do not reach ----
+
+    /// Writes `fields` (value, width) MSB first and returns the bytes and the bit count.
+    fn basic_bits(fields: &[(u32, u8)]) -> (Vec<u8>, u64) {
+        let (mut bits, mut push) = bits_writer();
+        for &(v, w) in fields {
+            push(&mut bits, v, w);
+        }
+        let n = bits.len() as u64;
+        (pack(&bits), n)
+    }
+
+    /// `base_q_idx`, three uncoded deltas, `using_qmatrix = 0`, then `delta_q_present = 0`.
+    fn quant_fields(base_q: u32) -> Vec<(u32, u8)> {
+        vec![(base_q, 8), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1)]
+    }
+
+    #[test]
+    fn a_switch_frame_has_no_size_override_primary_ref_or_refresh_bits() {
+        let mut fields = vec![
+            (0, 1), // show_existing_frame
+            (3, 2), // frame_type = SWITCH_FRAME
+            (1, 1), // show_frame
+            (0, 1), // showable_frame
+            (0, 1), // error_resilient_mode
+            (0, 1), // disable_cdf_update
+        ];
+        // No frame_size_override_flag, primary_ref_frame or refresh_frame_flags for a switch
+        // frame; the reference indices follow.
+        fields.push((0, 1)); // frame_refs_short_signaling
+        fields.extend((1..=7).map(|i| (i, 3)));
+        fields.extend(quant_fields(77));
+        let (bytes, bit_len) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.frame_type, FrameType::Switch);
+        assert_eq!(h.refresh_frame_flags, Some(0xFF));
+        assert_eq!(h.ref_frame_idx, Some([1, 2, 3, 4, 5, 6, 7]));
+        assert_eq!(h.base_q_idx, Some(77));
+        assert_eq!(h.header_size_bits, bit_len);
+    }
+
+    #[test]
+    fn an_inter_frame_reads_size_override_primary_ref_and_refresh_bits() {
+        let mut fields = vec![
+            (0, 1),
+            (1, 2),    // INTER_FRAME
+            (1, 1),    // show_frame
+            (0, 1),    // showable_frame
+            (0, 1),    // error_resilient_mode
+            (0, 1),    // disable_cdf_update
+            (0, 1),    // frame_size_override_flag
+            (5, 3),    // primary_ref_frame
+            (0xA5, 8), // refresh_frame_flags
+            (0, 1),    // frame_refs_short_signaling
+        ];
+        fields.extend((0..7).map(|i| (7 - i, 3)));
+        fields.extend(quant_fields(9));
+        let (bytes, bit_len) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.frame_type, FrameType::Inter);
+        assert_eq!(h.refresh_frame_flags, Some(0xA5));
+        assert_eq!(h.ref_frame_idx, Some([7, 6, 5, 4, 3, 2, 1]));
+        assert_eq!(h.base_q_idx, Some(9));
+        assert_eq!(h.header_size_bits, bit_len);
+
+        // Error resilience drops the primary_ref_frame bits (3).
+        let mut fields = vec![
+            (0, 1),
+            (1, 2),
+            (1, 1),
+            (0, 1),
+            (1, 1), // error_resilient_mode
+            (0, 1),
+            (0, 1),
+            (0xA5, 8),
+            (0, 1),
+        ];
+        fields.extend((0..7).map(|i| (7 - i, 3)));
+        fields.extend(quant_fields(9));
+        let (bytes, bit_len) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.refresh_frame_flags, Some(0xA5));
+        assert_eq!(h.ref_frame_idx, Some([7, 6, 5, 4, 3, 2, 1]));
+        assert_eq!(h.header_size_bits, bit_len);
+    }
+
+    #[test]
+    fn short_signaling_leaves_the_reference_indices_unknown() {
+        let mut fields = vec![
+            (0, 1),
+            (1, 2),
+            (1, 1),
+            (0, 1),
+            (1, 1),
+            (0, 1),
+            (0, 1),
+            (0x0F, 8),
+            (1, 1), // frame_refs_short_signaling
+            (2, 3), // last_frame_idx
+            (3, 3), // gold_frame_idx
+        ];
+        fields.extend(quant_fields(31));
+        let (bytes, bit_len) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.ref_frame_idx, None);
+        assert_eq!(
+            h.base_q_idx,
+            Some(31),
+            "the quantizer is still read after the short form"
+        );
+        assert_eq!(h.header_size_bits, bit_len);
+    }
+
+    #[test]
+    fn reference_indices_cut_short_give_no_indices_and_no_quantizer() {
+        // Inter frame whose payload ends after four of the seven reference indices.
+        let mut fields = vec![
+            (0, 1),
+            (1, 2),
+            (1, 1),
+            (0, 1),
+            (1, 1),
+            (0, 1),
+            (0, 1),
+            (0x0F, 8),
+            (0, 1),
+        ];
+        fields.extend((1..=4).map(|i| (i, 3)));
+        let (bytes, _) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.ref_frame_idx, None);
+        assert_eq!(h.base_q_idx, None);
+        assert!(!h.delta_q_present);
+        // Every shorter prefix of a full header parses without panicking.
+        let mut full = fields.clone();
+        full.extend((5..=7).map(|i| (i, 3)));
+        full.extend(quant_fields(5));
+        let (bytes, _) = basic_bits(&full);
+        for cut in 0..=bytes.len() {
+            let _ = parse_frame_header_basic(&bytes[..cut]);
+        }
+    }
+
+    #[test]
+    fn a_shown_key_frame_refreshes_every_slot_without_a_refresh_field() {
+        // show_existing 0, KEY, show_frame 1 (no showable, error-resilient implied), disable_cdf
+        // 0, then the quantizer: the refresh byte is not in the stream, so the base index follows
+        // the flags directly.
+        let mut fields = vec![(0, 1), (0, 2), (1, 1), (0, 1)];
+        fields.extend(quant_fields(0x5A));
+        let (bytes, bit_len) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.frame_type, FrameType::Key);
+        assert_eq!(h.refresh_frame_flags, Some(0xFF));
+        assert_eq!(h.base_q_idx, Some(0x5A));
+        assert_eq!(h.header_size_bits, bit_len);
+        // A key frame that is not shown has showable/error flags, a primary_ref_frame and a refresh
+        // byte.
+        let mut fields = vec![
+            (0, 1),
+            (0, 2),
+            (0, 1),
+            (0, 1),
+            (0, 1),
+            (0, 1),
+            (0, 3),
+            (0x21, 8),
+        ];
+        fields.extend(quant_fields(7));
+        let (bytes, bit_len) = basic_bits(&fields);
+        let h = parse_frame_header_basic(&bytes).unwrap();
+        assert_eq!(h.refresh_frame_flags, Some(0x21));
+        assert_eq!(h.base_q_idx, Some(7));
+        assert_eq!(h.header_size_bits, bit_len);
+    }
 }

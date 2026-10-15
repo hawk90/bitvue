@@ -1355,3 +1355,370 @@ fn lossless_frame_with_superres_still_reads_loop_restoration() {
     assert_eq!(h.base_q_idx, Some(0));
     assert_eq!(h.header_size_bits, b.bit_len());
 }
+
+// ---- relative_dist / skip_mode_params -----------------------------------------------------------
+
+/// Spec `get_relative_dist`, restated: the signed distance of `a - b` wrapped into
+/// `[-2^(bits-1), 2^(bits-1))`.
+fn reference_relative_dist(a: u32, b: u32, bits: u32) -> i64 {
+    let n = 1i64 << bits;
+    let d = (i64::from(a) - i64::from(b)).rem_euclid(n);
+    if d >= n / 2 {
+        d - n
+    } else {
+        d
+    }
+}
+
+#[test]
+fn relative_dist_wraps_like_the_spec_for_every_pair_of_small_order_hints() {
+    for bits in 1..=7u32 {
+        for a in 0..(1u32 << bits) {
+            for b in 0..(1u32 << bits) {
+                assert_eq!(
+                    relative_dist(a, b, true, bits),
+                    reference_relative_dist(a, b, bits),
+                    "bits {bits}: {a} vs {b}"
+                );
+            }
+        }
+    }
+    // A worked case: 1 is two ticks after 127 once seven bits wrap.
+    assert_eq!(relative_dist(1, 127, true, 7), 2);
+    assert_eq!(relative_dist(127, 1, true, 7), -2);
+    assert_eq!(relative_dist(0, 64, true, 7), -64);
+}
+
+#[test]
+fn relative_dist_is_zero_without_order_hints() {
+    assert_eq!(relative_dist(5, 1, false, 7), 0);
+    assert_eq!(relative_dist(5, 1, true, 0), 0);
+    assert_eq!(relative_dist(5, 1, false, 0), 0);
+    assert_eq!(relative_dist(u32::MAX, 0, false, 7), 0);
+}
+
+fn ref_state_with(hints: [u32; 8]) -> RefFrameState {
+    let mut state = RefFrameState::new();
+    state.ref_order_hint = hints;
+    state
+}
+
+type SkipModeResult = std::result::Result<(bool, Option<[u8; 2]>), BitvueError>;
+
+/// Runs `read_skip_mode_params` over `bits` (the one `skip_mode_present` bit, when read) for a
+/// frame with `order_hint` whose seven references point at slots `0..7`.
+fn skip_mode(
+    seq: &SequenceHeader,
+    intra: bool,
+    reference_select: bool,
+    hints: [u32; 8],
+    order_hint: u32,
+    present_bit: u32,
+) -> (SkipModeResult, u64) {
+    let bytes = pack(&[present_bit as u8]);
+    let mut reader = BitReader::new(&bytes);
+    let refs = [0u32, 1, 2, 3, 4, 5, 6];
+    let result = read_skip_mode_params(
+        &mut reader,
+        intra,
+        reference_select,
+        seq,
+        &ref_state_with(hints),
+        &refs,
+        order_hint,
+    );
+    (result, reader.position())
+}
+
+#[test]
+fn skip_mode_needs_an_inter_frame_with_reference_select_and_order_hints() {
+    let seq = base_seq();
+    let hints = [8, 9, 12, 20, 3, 11, 15, 0];
+    // The baseline is allowed and reads one bit.
+    let (result, pos) = skip_mode(&seq, false, true, hints, 10, 1);
+    assert_eq!((result.unwrap().0, pos), (true, 1));
+    // Intra frame, no reference_select, or order hints disabled: nothing is read.
+    for (intra, select) in [(true, true), (false, false), (true, false)] {
+        let (result, pos) = skip_mode(&seq, intra, select, hints, 10, 1);
+        assert_eq!(
+            (result.unwrap(), pos),
+            ((false, None), 0),
+            "intra {intra} select {select}"
+        );
+    }
+    let mut no_hints = seq.clone();
+    no_hints.enable_order_hint = false;
+    let (result, pos) = skip_mode(&no_hints, false, true, hints, 10, 1);
+    assert_eq!((result.unwrap(), pos), ((false, None), 0));
+}
+
+#[test]
+fn skip_mode_picks_the_closest_forward_and_backward_references() {
+    let seq = base_seq();
+    // Current frame 10. Forward (earlier): slots 0 (8), 1 (9), 4 (3) -> 9 at index 1 is the
+    // closest. Backward (later): 2 (12), 3 (20), 5 (11), 6 (15) -> 11 at index 5.
+    let hints = [8, 9, 12, 20, 3, 11, 15, 0];
+    let (result, pos) = skip_mode(&seq, false, true, hints, 10, 1);
+    assert_eq!(
+        result.unwrap(),
+        (true, Some([2, 6])),
+        "LAST-relative numbering is index + 1"
+    );
+    assert_eq!(pos, 1);
+    // The flag itself is read, not assumed.
+    let (result, _) = skip_mode(&seq, false, true, hints, 10, 0);
+    assert_eq!(result.unwrap(), (false, Some([2, 6])));
+    // The order of the two references in the result is by index, whichever side is first.
+    let hints = [11, 12, 9, 8, 20, 3, 15, 0];
+    let (result, _) = skip_mode(&seq, false, true, hints, 10, 1);
+    assert_eq!(result.unwrap().1, Some([1, 3]));
+}
+
+#[test]
+fn skip_mode_with_only_forward_references_uses_the_two_closest_ones() {
+    let seq = base_seq();
+    // Everything is earlier than frame 10: the closest is 9 (index 1), then 8 (index 0).
+    let hints = [8, 9, 7, 3, 5, 6, 2, 0];
+    let (result, _) = skip_mode(&seq, false, true, hints, 10, 1);
+    assert_eq!(result.unwrap().1, Some([1, 2]));
+    // The second one is searched among strictly earlier hints than the first.
+    let hints = [3, 5, 9, 8, 9, 2, 1, 0];
+    let (result, _) = skip_mode(&seq, false, true, hints, 10, 1);
+    // First forward: index 2 (9; the later 9 at index 4 does not replace it). Second: 8 at 3.
+    assert_eq!(result.unwrap().1, Some([3, 4]));
+}
+
+#[test]
+fn skip_mode_has_no_references_without_two_distinct_earlier_frames() {
+    let seq = base_seq();
+    // No earlier frame at all (equal and later hints do not count).
+    let (result, pos) = skip_mode(&seq, false, true, [10, 11, 12, 10, 20, 30, 10, 0], 10, 1);
+    assert_eq!((result.unwrap(), pos), ((false, None), 0));
+    // One earlier frame, the rest equal or later: no second forward reference and no backward
+    // one.
+    let (result, pos) = skip_mode(&seq, false, true, [9, 10, 10, 10, 10, 10, 10, 0], 10, 1);
+    assert_eq!((result.unwrap(), pos), ((false, None), 0));
+    // All references share the same earlier hint: still no second distinct one.
+    let (result, _) = skip_mode(&seq, false, true, [9; 8], 10, 1);
+    assert_eq!(result.unwrap(), (false, None));
+}
+
+#[test]
+fn skip_mode_compares_order_hints_with_wrap_around() {
+    let seq = base_seq();
+    // Seven-bit hints, current frame 2: 126 and 127 are earlier (-4 and -3), 5 and 6 later.
+    let hints = [126, 127, 5, 6, 0, 0, 0, 0];
+    let (result, _) = skip_mode(&seq, false, true, hints, 2, 1);
+    // Earlier than frame 2 (distance -4, -3, -2): 126 (index 0), 127 (index 1) and the zeros at
+    // indices 4..6; the closest is the first 0 (index 4). Later: 5 (index 2) is closer than 6.
+    assert_eq!(result.unwrap().1, Some([3, 5]));
+}
+
+#[test]
+fn skip_mode_flag_missing_from_the_data_is_an_error() {
+    let seq = base_seq();
+    let mut reader = BitReader::new(&[]);
+    let refs = [0u32, 1, 2, 3, 4, 5, 6];
+    let err = read_skip_mode_params(
+        &mut reader,
+        false,
+        true,
+        &seq,
+        &ref_state_with([8, 9, 12, 20, 3, 11, 15, 0]),
+        &refs,
+        10,
+    );
+    assert!(err.is_err());
+}
+
+// ---- segmentation_params without update_map ---------------------------------------------------
+
+/// `update_map = 0`: no `segmentation_temporal_update` bit, and `update_data` follows directly.
+#[test]
+fn segmentation_without_a_map_update_reads_no_temporal_update_bit() {
+    let mut previous = SegmentationFeatures::default();
+    previous.feature_enabled[1][0] = true;
+    previous.feature_data[1][0] = 7;
+    // enabled = 1, update_map = 0, update_data = 0, then an 0xFF tail that must not be consumed.
+    let data = [0b1000_0111u8, 0xFF];
+    let mut reader = BitReader::new(&data);
+    let info = parse_segmentation_params(&mut reader, 2, &previous).unwrap();
+    assert_eq!(reader.position(), 3);
+    assert!(info.enabled && !info.update_map && !info.temporal_update);
+    assert_eq!(info.feature_data[1][0], 7);
+    assert_eq!(info.last_active_seg_id, 1);
+
+    // With update_map = 1, the temporal_update bit is read before update_data.
+    let data = [0b1110_0111u8, 0xFF];
+    let mut reader = BitReader::new(&data);
+    let info = parse_segmentation_params(&mut reader, 2, &previous).unwrap();
+    assert_eq!(reader.position(), 4);
+    assert!(info.update_map && info.temporal_update);
+
+    // With no primary reference, nothing is read after `enabled` besides the data itself.
+    let mut bits = vec![0b1000_0000u8];
+    bits.extend([0u8; 9]);
+    let mut reader = BitReader::new(&bits);
+    let info = parse_segmentation_params(&mut reader, PRIMARY_REF_NONE, &previous).unwrap();
+    assert!(info.update_map && !info.temporal_update);
+    assert!(info.feature_enabled.iter().flatten().all(|&on| !on));
+}
+
+// ---- sequences without order hints ------------------------------------------------------------
+
+/// An inter frame header from `show_existing_frame` through the `ref_frame_idx[]` loop for a
+/// sequence with `enable_order_hint = 0`: no `order_hint`, no `ref_order_hint[]` loop even with
+/// error resilience, and no `frame_refs_short_signaling` bit.
+fn put_inter_header_without_order_hints(b: &mut HeaderBits, error_resilient: bool) {
+    b.put(0, 1); // show_existing_frame
+    b.put(1, 2); // INTER_FRAME
+    b.put(1, 1); // show_frame
+    b.put(u32::from(error_resilient), 1);
+    b.put(0, 1); // disable_cdf_update
+    b.put(0, 1); // allow_screen_content_tools (seq_force_screen_content_tools is SELECT)
+    b.put(0, 1); // frame_size_override_flag
+    if !error_resilient {
+        b.put(INTER_PRIMARY_REF_FRAME, 3);
+    }
+    b.put(INTER_REFRESH_FLAGS, 8);
+    for idx in 1..=7 {
+        b.put(idx, 3); // ref_frame_idx[i]
+    }
+}
+
+fn seq_without_order_hints() -> SequenceHeader {
+    let mut seq = base_seq();
+    seq.enable_order_hint = false;
+    seq.order_hint_bits_minus_1 = None;
+    seq
+}
+
+#[test]
+fn without_order_hints_an_error_resilient_inter_frame_reads_no_order_hint_elements() {
+    for error_resilient in [true, false] {
+        let seq = seq_without_order_hints();
+        let mut b = HeaderBits::default();
+        put_inter_header_without_order_hints(&mut b, error_resilient);
+        b.put(0, 1); // render_and_frame_size_different
+        b.put(0, 1); // allow_high_precision_mv
+        b.put(1, 1); // is_filter_switchable
+        b.put(0, 1); // is_motion_mode_switchable
+        b.put(1, 1); // disable_frame_end_update_cdf
+        put_tile_info_through_tx_mode(&mut b);
+        b.put(1, 1); // reference_select (no skip_mode_present bit follows: no order hints)
+        b.put(0, 1); // reduced_tx_set
+        for _ in 0..7 {
+            b.put(0, 1); // global motion: IDENTITY
+        }
+        let (result, ref_state) = parse_with(&seq, &b);
+        let h = result.unwrap_or_else(|e| panic!("error_resilient {error_resilient}: {e}"));
+        assert_eq!(h.error_resilient_mode, error_resilient);
+        assert_eq!(h.order_hint, 0, "no order_hint field");
+        assert_eq!(h.ref_frame_idx, Some([1, 2, 3, 4, 5, 6, 7]));
+        assert!(h.reference_select && !h.skip_mode_present);
+        assert_eq!(h.skip_mode_refs, [0, 0]);
+        assert_eq!(
+            h.header_size_bits,
+            b.bit_len(),
+            "error_resilient {error_resilient}: stopped at the last bit written"
+        );
+        assert_eq!(
+            ref_state.ref_order_hint, [0; 8],
+            "order hints stay untouched"
+        );
+    }
+}
+
+// ---- tile_info with a minimum tile count -------------------------------------------------------
+
+/// 8192x4608 with 64x64 superblocks is 128x72 superblocks, more than one tile's worth of area:
+/// `minLog2Tiles = 2`.
+fn big_frame_tile_info(bits: &HeaderBits) -> (crate::frame_header::TileLayout, u64) {
+    let seq = base_seq();
+    let bytes = bits.bytes();
+    let mut reader = BitReader::new(&bytes);
+    let layout = read_tile_info(&mut reader, &seq, 8192, 4608).unwrap();
+    (layout, reader.position())
+}
+
+#[test]
+fn uniform_tile_spacing_starts_from_the_minimum_log2_counts() {
+    // Columns: min 1 (a tile is at most 64 superblocks wide), one more increment bit, which we
+    // answer 0. Rows: minLog2Tiles (2) minus the column count (1) = 1, one more bit, 0.
+    let mut b = HeaderBits::default();
+    b.put(1, 1).put(0, 1).put(0, 1);
+    b.put(2, 2).put(1, 2); // context_update_tile_id (2 bits), tile_size_bytes_minus_1
+    let (layout, used) = big_frame_tile_info(&b);
+    assert_eq!(used, b.bit_len());
+    assert_eq!((layout.tile_cols_log2, layout.tile_rows_log2), (1, 1));
+    assert_eq!(layout.col_starts_sb, vec![0, 64, 128]);
+    assert_eq!(layout.row_starts_sb, vec![0, 36, 72]);
+    assert_eq!(
+        (layout.context_update_tile_id, layout.tile_size_bytes),
+        (2, 2)
+    );
+    assert_eq!(layout.tile_count(), 4);
+}
+
+#[test]
+fn explicit_tile_sizes_bound_the_row_height_by_the_minimum_tile_area() {
+    // Non-uniform: two 64-wide columns (ns(64) = 6 bits of 63), then rows of at most
+    // (128 * 72) >> (2 + 1) / 64 = 18 superblocks: ns(18) of 17 = 1111 + extra bit 1.
+    let mut b = HeaderBits::default();
+    b.put(0, 1);
+    b.put(63, 6).put(63, 6);
+    for _ in 0..4 {
+        b.put(0b1111, 4).put(1, 1);
+    }
+    b.put(5, 3).put(2, 2); // context_update_tile_id (1 + 2 bits), tile_size_bytes_minus_1
+    let (layout, used) = big_frame_tile_info(&b);
+    assert_eq!(used, b.bit_len());
+    assert_eq!(layout.col_starts_sb, vec![0, 64, 128]);
+    assert_eq!(layout.row_starts_sb, vec![0, 18, 36, 54, 72]);
+    assert_eq!((layout.tile_cols_log2, layout.tile_rows_log2), (1, 2));
+    assert_eq!(
+        (layout.context_update_tile_id, layout.tile_size_bytes),
+        (5, 3)
+    );
+}
+
+#[test]
+fn explicit_tiles_of_a_small_frame_use_the_whole_frame_as_the_area_bound() {
+    // 320x240: 5x4 superblocks, minLog2Tiles = 0. One column (ns(5) of 4), rows
+    // bounded by the frame (4): ns(4) for 3 is 2 bits `11`.
+    let seq = base_seq();
+    let mut b = HeaderBits::default();
+    b.put(0, 1);
+    b.put(0b111, 3); // ns(5) of 4: `11` then the extra bit
+    b.put(0b11, 2);
+    let bytes = b.bytes();
+    let mut reader = BitReader::new(&bytes);
+    let layout = read_tile_info(&mut reader, &seq, 320, 240).unwrap();
+    assert_eq!(reader.position(), b.bit_len());
+    assert_eq!(layout.col_starts_sb, vec![0, 5]);
+    assert_eq!(layout.row_starts_sb, vec![0, 4]);
+    assert_eq!(layout.tile_count(), 1);
+}
+
+/// 4224x2240 is 66x35 superblocks: `minLog2Tiles = 1`, so explicit rows are bounded by
+/// `(66 * 35) >> 2 = 577` area, i.e. 577 / 64 = 9 rows for the 64-wide first column.
+#[test]
+fn a_minimum_of_one_halves_the_area_and_the_widest_tile_is_the_first_not_the_last() {
+    let seq = base_seq();
+    let mut b = HeaderBits::default();
+    b.put(0, 1);
+    b.put(63, 6); // first column: 64 superblocks
+    b.put(1, 1); // second column: 2 superblocks (ns(2): 1 bit, minus_1 = 1)
+    for _ in 0..3 {
+        b.put(0b111, 3).put(1, 1); // ns(9) of 8
+    }
+    b.put(0b111, 3); // last row: 8 left, ns(8) of 7
+    b.put(1, 3).put(0, 2); // context_update_tile_id (1 + 2 bits), tile_size_bytes_minus_1
+    let bytes = b.bytes();
+    let mut reader = BitReader::new(&bytes);
+    let layout = read_tile_info(&mut reader, &seq, 4224, 2240).unwrap();
+    assert_eq!(reader.position(), b.bit_len());
+    assert_eq!(layout.col_starts_sb, vec![0, 64, 66]);
+    assert_eq!(layout.row_starts_sb, vec![0, 9, 18, 27, 35]);
+    assert_eq!((layout.tile_cols_log2, layout.tile_rows_log2), (1, 2));
+}
