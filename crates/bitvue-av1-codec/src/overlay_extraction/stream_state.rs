@@ -306,4 +306,102 @@ mod tests {
             state.slots[6].as_ref().unwrap()
         ));
     }
+
+    // ---- frame_units over rebuilt OBU sequences ----
+
+    fn obu(obu_type: ObuType, payload: &[u8]) -> Vec<u8> {
+        let mut out = vec![((obu_type as u8) << 3) | 0x02];
+        out.extend(crate::encode_uleb128(payload.len() as u64));
+        out.extend_from_slice(payload);
+        out
+    }
+
+    #[test]
+    fn frame_units_of_nothing_or_of_obus_without_frames_is_empty() {
+        assert!(frame_units(&[], false).is_empty());
+        let mut packet = obu(ObuType::TemporalDelimiter, &[]);
+        packet.extend(obu(ObuType::Padding, &[0; 4]));
+        packet.extend(obu(ObuType::Metadata, &[1, 2]));
+        packet.extend(obu(ObuType::RedundantFrameHeader, &[0x10]));
+        assert!(frame_units(&packet, false).is_empty());
+    }
+
+    #[test]
+    fn each_frame_obu_and_each_header_with_its_tile_groups_is_one_unit_of_the_original_bytes() {
+        let frame_a = obu(ObuType::Frame, &[1, 2, 3]);
+        let header = obu(ObuType::FrameHeader, &[0x10, 0x20]);
+        let tg1 = obu(ObuType::TileGroup, &[4, 5]);
+        let tg2 = obu(ObuType::TileGroup, &[6]);
+        let frame_b = obu(ObuType::Frame, &[7, 8]);
+        let mut packet = obu(ObuType::TemporalDelimiter, &[]);
+        packet.extend(&frame_a);
+        packet.extend(&header);
+        packet.extend(&tg1);
+        packet.extend(obu(ObuType::RedundantFrameHeader, &[0x10, 0x20]));
+        packet.extend(&tg2);
+        packet.extend(&frame_b);
+        let units = frame_units(&packet, false);
+        assert_eq!(units, vec![frame_a, [header, tg1, tg2].concat(), frame_b,]);
+    }
+
+    #[test]
+    fn a_tile_group_with_no_open_header_is_dropped() {
+        // Before any header, and after a Frame OBU (which closes the previous header).
+        let mut packet = obu(ObuType::TileGroup, &[9, 9]);
+        let frame = obu(ObuType::Frame, &[1]);
+        packet.extend(&frame);
+        packet.extend(obu(ObuType::TileGroup, &[8, 8]));
+        assert_eq!(frame_units(&packet, false), vec![frame]);
+
+        // After a header that was closed by a Frame OBU in between.
+        let mut packet = obu(ObuType::FrameHeader, &[0x10]);
+        let frame = obu(ObuType::Frame, &[2]);
+        packet.extend(&frame);
+        packet.extend(obu(ObuType::TileGroup, &[7]));
+        let units = frame_units(&packet, false);
+        assert_eq!(units.len(), 2);
+        assert_eq!(
+            units[1], frame,
+            "the late tile group is not appended to the Frame OBU"
+        );
+    }
+
+    #[test]
+    fn a_show_existing_frame_header_makes_no_unit_and_its_tile_groups_are_ignored() {
+        // First payload bit set = show_existing_frame.
+        let mut packet = obu(ObuType::FrameHeader, &[0x80, 0x00]);
+        packet.extend(obu(ObuType::TileGroup, &[1, 2, 3]));
+        assert!(frame_units(&packet, false).is_empty());
+        // Bit clear: an ordinary header.
+        let mut packet = obu(ObuType::FrameHeader, &[0x7F]);
+        packet.extend(obu(ObuType::TileGroup, &[1]));
+        assert_eq!(frame_units(&packet, false).len(), 1);
+    }
+
+    #[test]
+    fn a_reduced_still_picture_header_has_no_show_existing_bit() {
+        let mut packet = obu(ObuType::FrameHeader, &[0x80]);
+        let tg = obu(ObuType::TileGroup, &[1, 2]);
+        packet.extend(&tg);
+        let units = frame_units(&packet, true);
+        assert_eq!(units.len(), 1, "the high bit is a different element here");
+        assert!(units[0].ends_with(&tg));
+    }
+
+    #[test]
+    fn a_frame_header_without_payload_is_an_ordinary_header() {
+        let mut packet = obu(ObuType::FrameHeader, &[]);
+        packet.extend(obu(ObuType::TileGroup, &[1]));
+        assert_eq!(frame_units(&packet, false).len(), 1);
+    }
+
+    #[test]
+    fn a_truncated_trailing_obu_ends_the_scan_but_keeps_the_units_before_it() {
+        let frame = obu(ObuType::Frame, &[1, 2, 3]);
+        let mut packet = frame.clone();
+        let mut cut = obu(ObuType::Frame, &[4, 5, 6, 7, 8]);
+        cut.truncate(cut.len() - 2);
+        packet.extend(cut);
+        assert_eq!(frame_units(&packet, false), vec![frame]);
+    }
 }

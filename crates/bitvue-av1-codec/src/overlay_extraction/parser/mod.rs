@@ -754,4 +754,112 @@ mod tests {
         assert_eq!(frame.gm_type, [0u8; 8]);
         assert!(frame.tiles.is_none() && frame.decoded.is_none());
     }
+
+    #[test]
+    fn without_a_sequence_header_a_frame_obu_holding_only_the_header_has_no_tile_data() {
+        let packets = packets();
+        let basic = parse_frame_header_basic(&packets[0].frame).unwrap();
+        let mut data = td();
+        data.extend(obu(
+            ObuType::Frame,
+            &packets[0].frame[..basic.header_size_bytes],
+        ));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        assert!(frame.tile_data.is_empty() && frame.tile_groups.is_empty());
+        assert!(
+            frame.frame_type.is_intra_only,
+            "the approximate header was still applied"
+        );
+        assert_eq!(frame.frame_type.base_qp, basic.base_q_idx);
+        // One byte more and there is a tile byte.
+        let mut data = td();
+        data.extend(obu(
+            ObuType::Frame,
+            &packets[0].frame[..basic.header_size_bytes + 1],
+        ));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        assert_eq!(
+            &frame.tile_data[..],
+            &[packets[0].frame[basic.header_size_bytes]]
+        );
+    }
+
+    #[test]
+    fn a_frame_header_obu_without_a_sequence_header_applies_only_the_approximate_header() {
+        let packets = packets();
+        let (_, full) = key_header(&packets);
+        let basic = parse_frame_header_basic(&packets[0].frame).unwrap();
+        let header = &packets[0].frame[..full.header_size_bytes];
+        let frame = ParsedFrame::parse(&obu(ObuType::FrameHeader, header)).unwrap();
+        assert!(frame.frame_type.is_intra_only);
+        assert_eq!(frame.frame_type.base_qp, basic.base_q_idx);
+        assert!(
+            !frame.key_frame,
+            "key_frame comes from the exact header only"
+        );
+        assert_eq!(
+            frame.dimensions.width, 1920,
+            "no sequence header: scaffold size"
+        );
+        assert!(frame.tile_data.is_empty());
+    }
+
+    #[test]
+    fn a_frame_header_obu_too_short_to_parse_changes_nothing() {
+        let packets = packets();
+        let mut data = obu(ObuType::SequenceHeader, packets[0].seq.as_ref().unwrap());
+        data.extend(obu(ObuType::FrameHeader, &[]));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        assert_eq!(
+            types(&frame),
+            vec![ObuType::SequenceHeader, ObuType::FrameHeader]
+        );
+        assert!(!frame.key_frame && !frame.frame_type.is_intra_only);
+        assert_eq!(frame.frame_type.base_qp, None);
+        assert!(frame.tile_data.is_empty());
+        // Without a sequence header either.
+        let frame = ParsedFrame::parse(&obu(ObuType::FrameHeader, &[])).unwrap();
+        assert_eq!(types(&frame), vec![ObuType::FrameHeader]);
+        assert!(!frame.frame_type.is_intra_only);
+    }
+
+    #[test]
+    fn a_zero_base_index_with_a_nonzero_luma_dc_delta_is_not_lossless() {
+        let (seq, payload) = first_frame();
+        let mut header =
+            parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
+        header.base_q_idx = Some(0);
+        header.uv_dc_delta_q = Some(0);
+        for (y_dc, lossless) in [
+            (Some(0), true),
+            (None, true),
+            (Some(1), false),
+            (Some(-1), false),
+        ] {
+            header.y_dc_delta_q = y_dc;
+            let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+            frame.apply_full_header(&header, &seq, &[0; 8]);
+            assert_eq!(frame.coded_lossless, lossless, "y_dc {y_dc:?}");
+        }
+    }
+
+    /// Every prefix of a real Frame OBU payload, with no sequence header: the tile bytes are
+    /// whatever follows the approximate header, and nothing when the payload ends inside it.
+    #[test]
+    fn without_a_sequence_header_every_prefix_of_a_frame_payload_gives_the_bytes_after_the_header()
+    {
+        let packets = packets();
+        let payload = &packets[0].frame;
+        let mut with_tiles = 0;
+        for cut in 0..=payload.len().min(60) {
+            let frame = ParsedFrame::parse(&obu(ObuType::Frame, &payload[..cut])).unwrap();
+            let expected: &[u8] = match parse_frame_header_basic(&payload[..cut]) {
+                Ok(h) if h.header_size_bytes < cut => &payload[h.header_size_bytes..cut],
+                _ => &[],
+            };
+            assert_eq!(&frame.tile_data[..], expected, "prefix of {cut} bytes");
+            with_tiles += usize::from(!expected.is_empty());
+        }
+        assert!(with_tiles > 0, "some prefix reaches into the tile");
+    }
 }

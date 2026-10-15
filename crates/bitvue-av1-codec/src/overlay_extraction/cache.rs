@@ -355,4 +355,38 @@ mod tests {
             );
         }
     }
+
+    // ---- compute_frame_cache_key ----
+
+    #[test]
+    fn the_cache_key_depends_on_the_tile_bytes_the_qp_and_the_context() {
+        let base = compute_frame_cache_key(&[1, 2, 3], 32, "ctx");
+        assert_eq!(
+            base,
+            compute_frame_cache_key(&[1, 2, 3], 32, "ctx"),
+            "deterministic"
+        );
+        assert_ne!(base, compute_frame_cache_key(&[1, 2, 4], 32, "ctx"));
+        assert_ne!(base, compute_frame_cache_key(&[1, 2], 32, "ctx"));
+        assert_ne!(base, compute_frame_cache_key(&[1, 2, 3], 33, "ctx"));
+        assert_ne!(base, compute_frame_cache_key(&[1, 2, 3], 32, "other"));
+        assert_ne!(base, compute_frame_cache_key(&[1, 2, 3], 32, ""));
+        assert_ne!(
+            compute_frame_cache_key(&[], 0, ""),
+            compute_frame_cache_key(&[0], 0, "")
+        );
+    }
+
+    #[test]
+    fn out_of_range_quantizers_still_give_distinct_keys_without_panicking() {
+        let keys: Vec<u64> = [-1i16, 0, 255, 256, i16::MAX, i16::MIN]
+            .iter()
+            .map(|&qp| compute_frame_cache_key(&[1, 2, 3], qp, "ctx"))
+            .collect();
+        for (i, a) in keys.iter().enumerate() {
+            for b in &keys[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+    }
 }
