@@ -1403,6 +1403,8 @@ fn ref_state_with(hints: [u32; 8]) -> RefFrameState {
     state
 }
 
+type SkipModeResult = std::result::Result<(bool, Option<[u8; 2]>), BitvueError>;
+
 /// Runs `read_skip_mode_params` over `bits` (the one `skip_mode_present` bit, when read) for a
 /// frame with `order_hint` whose seven references point at slots `0..7`.
 fn skip_mode(
@@ -1412,10 +1414,7 @@ fn skip_mode(
     hints: [u32; 8],
     order_hint: u32,
     present_bit: u32,
-) -> (
-    std::result::Result<(bool, Option<[u8; 2]>), BitvueError>,
-    u64,
-) {
+) -> (SkipModeResult, u64) {
     let bytes = pack(&[present_bit as u8]);
     let mut reader = BitReader::new(&bytes);
     let refs = [0u32, 1, 2, 3, 4, 5, 6];
