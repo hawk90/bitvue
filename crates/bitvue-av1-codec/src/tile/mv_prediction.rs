@@ -1,12 +1,16 @@
-//! Motion Vector Prediction
+//! Motion vector predictor placeholder (see #215).
 //!
-//! Per AV1 Specification Section 5.10 (Motion Vector Prediction Process)
+//! The MVs of the parsed coding units do not come from here. They come from the spec 7.10.2
+//! reference MV stack (`read_near_mv` / `read_new_mv` for one reference, `stack[drl_idx]` for
+//! compound, in `tile/coding_unit/`), which the oracle tests check against dav1d.
 //!
-//! This module implements MV predictor calculation for:
-//! - NEARESTMV: Use nearest available MV from neighboring blocks
-//! - NEARMV: Use near MV from candidate list
-//! - GLOBALMV: Use global motion parameters
-//! - NEWMV: Use explicit MV from bitstream (with predictor added)
+//! What production still calls is `MvPredictorContext::get_mv_predictor` / `get_mv_predictor_l1`
+//! for `GlobalMv` blocks. That resolves to [`MvPredictorContext::predict_global_mv`], which
+//! returns a zero vector (it does not apply the frame's global motion parameters).
+//!
+//! The neighbour tracking (`add_cu`, `find_nearest_neighbor`, `get_mv_candidates`) and the
+//! nearest / near / new arms of `predict_by_kind` are reached only by this file's own tests.
+//! `predict_near_mv` cannot return anything but zero. Do not extend them; extend the MV stack.
 
 use crate::tile::coding_unit::{CodingUnit, MotionVector, MvKind, PredictionMode, RefFrame};
 
