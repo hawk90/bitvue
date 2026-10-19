@@ -484,12 +484,107 @@ impl H264IndexExtractor {
 
         Ok(None)
     }
+
+    /// Build the metadata of the frame NAL that starts at `nal_start`, and leave the reader at
+    /// the start code that ends it (or wherever the size search stopped, at end of stream).
+    ///
+    /// The reader must sit just after the NAL header; `index` is both the display and the
+    /// decode index (this extractor does not reorder).
+    fn read_frame(
+        &self,
+        reader: &mut dyn ReadSeek,
+        file_size: u64,
+        nal_start: u64,
+        unit_type: u8,
+        index: usize,
+    ) -> ExtractResult<FrameMetadata> {
+        // Find next start code to determine NAL unit size
+        let next_start = self.find_next_start_code(reader, file_size)?;
+
+        let size = next_start.unwrap_or(file_size) - nal_start;
+        let is_keyframe = unit_type == NAL_IDR_SLICE;
+
+        let frame = FrameMetadata {
+            display_idx: index,
+            decode_idx: index,
+            byte_offset: nal_start,
+            size,
+            is_keyframe,
+            pts: None, // Would need container parsing
+            dts: None,
+            frame_type: Some(if is_keyframe { "I" } else { "P" }.to_string()),
+        };
+
+        // Seek to next start code position
+        if let Some(next_offset) = next_start {
+            reader.seek(std::io::SeekFrom::Start(next_offset))?;
+        }
+
+        Ok(frame)
+    }
 }
 
 impl Default for H264IndexExtractor {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// NAL unit types that carry a picture: non-IDR slice and IDR slice.
+const NAL_NON_IDR_SLICE: u8 = 1;
+const NAL_IDR_SLICE: u8 = 5;
+
+fn is_frame_nal(unit_type: u8) -> bool {
+    matches!(unit_type, NAL_NON_IDR_SLICE | NAL_IDR_SLICE)
+}
+
+/// Fail with the "cancelled" error when the caller asked to stop.
+fn check_cancelled(should_cancel: CancelCallback<'_>) -> ExtractResult<()> {
+    match should_cancel {
+        Some(cancel_fn) if cancel_fn() => Err(BitvueError::InvalidData(
+            "Indexing cancelled by user".to_string(),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Outcome of looking for a NAL unit at one scan position.
+enum NalProbe {
+    /// Too few bytes left for a start code, or no header byte after one.
+    Truncated,
+    /// No start code here; the reader is now one byte past `offset`.
+    NotStartCode,
+    /// A start code and its header; the reader is just after the header byte.
+    Nal { unit_type: u8 },
+}
+
+/// Look for a 3- or 4-byte start code at `offset` (the reader's position) and read the NAL header.
+fn probe_nal_unit(reader: &mut dyn ReadSeek, offset: u64) -> ExtractResult<NalProbe> {
+    // Read 4 bytes for start code detection
+    let mut buffer = [0u8; 4];
+    if reader.read_exact(&mut buffer).is_err() {
+        return Ok(NalProbe::Truncated); // EOF
+    }
+
+    if buffer == [0x00, 0x00, 0x00, 0x01] {
+        // 4-byte start code: the header follows.
+    } else if buffer[0..3] == [0x00, 0x00, 0x01] {
+        // 3-byte start code: the 4th byte read is already the header.
+        reader.seek(std::io::SeekFrom::Current(-1))?;
+    } else {
+        reader.seek(std::io::SeekFrom::Start(offset + 1))?;
+        return Ok(NalProbe::NotStartCode);
+    }
+
+    // Read NAL unit header
+    let mut nal_header = [0u8; 1];
+    if reader.read_exact(&mut nal_header).is_err() {
+        return Ok(NalProbe::Truncated);
+    }
+
+    Ok(NalProbe::Nal {
+        unit_type: nal_header[0] & 0x1F,
+    })
 }
 
 impl IndexExtractor for H264IndexExtractor {
@@ -535,19 +630,9 @@ impl IndexExtractor for H264IndexExtractor {
         reader.seek(std::io::SeekFrom::Start(0))?;
 
         let mut frames = Vec::new();
-        let mut display_idx = 0;
-        let mut decode_idx = 0;
-        let mut buffer = [0u8; 4];
 
         loop {
-            // Check cancellation
-            if let Some(cancel_fn) = should_cancel {
-                if cancel_fn() {
-                    return Err(BitvueError::InvalidData(
-                        "Indexing cancelled by user".to_string(),
-                    ));
-                }
-            }
+            check_cancelled(should_cancel)?;
 
             let offset = reader.stream_position()?;
 
@@ -558,74 +643,18 @@ impl IndexExtractor for H264IndexExtractor {
             // Report progress
             if let Some(callback) = progress_callback {
                 let progress = offset as f64 / file_size as f64;
-                callback(progress, &format!("Scanning frame {}", display_idx));
+                callback(progress, &format!("Scanning frame {}", frames.len()));
             }
 
-            // Read 4 bytes for start code detection
-            match reader.read_exact(&mut buffer) {
-                Ok(_) => {}
-                Err(_) => break, // EOF
-            }
-
-            // Check for start codes
-            let (_start_code_len, has_start_code) = if buffer == [0x00, 0x00, 0x00, 0x01] {
-                (4, true)
-            } else if buffer[0..3] == [0x00, 0x00, 0x01] {
-                reader.seek(std::io::SeekFrom::Current(-1))?;
-                (3, true)
-            } else {
-                reader.seek(std::io::SeekFrom::Start(offset + 1))?;
-                (0, false)
-            };
-
-            if !has_start_code {
-                continue;
-            }
-
-            // Read NAL unit header
-            let mut nal_header = [0u8; 1];
-            if reader.read_exact(&mut nal_header).is_err() {
-                break;
-            }
-
-            let nal_unit_type = nal_header[0] & 0x1F;
-            let is_keyframe = nal_unit_type == 5;
-            let is_frame = matches!(nal_unit_type, 1 | 5);
-
-            if is_frame {
-                // Find next start code to determine NAL unit size
-                let nal_start = offset;
-                let next_start = self.find_next_start_code(reader, file_size)?;
-
-                let size = if let Some(next_offset) = next_start {
-                    next_offset - nal_start
-                } else {
-                    file_size - nal_start
-                };
-
-                let frame = FrameMetadata {
-                    display_idx,
-                    decode_idx,
-                    byte_offset: nal_start,
-                    size,
-                    is_keyframe,
-                    pts: None, // Would need container parsing
-                    dts: None,
-                    frame_type: Some(if is_keyframe {
-                        "I".to_string()
-                    } else {
-                        "P".to_string()
-                    }),
-                };
-
-                frames.push(frame);
-                display_idx += 1;
-                decode_idx += 1;
-
-                // Seek to next start code position
-                if let Some(next_offset) = next_start {
-                    reader.seek(std::io::SeekFrom::Start(next_offset))?;
+            match probe_nal_unit(reader, offset)? {
+                NalProbe::Truncated => break,
+                NalProbe::NotStartCode => continue,
+                NalProbe::Nal { unit_type } if is_frame_nal(unit_type) => {
+                    let frame =
+                        self.read_frame(reader, file_size, offset, unit_type, frames.len())?;
+                    frames.push(frame);
                 }
+                NalProbe::Nal { .. } => {}
             }
         }
 
