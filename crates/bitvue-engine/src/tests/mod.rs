@@ -63,6 +63,7 @@ pub mod discoverability;
 pub mod edge_cases_bitreader_test;
 pub mod endianness_edge_cases_test;
 pub mod evidence;
+pub mod evidence_diff;
 pub mod export;
 pub mod frame_identity_core_vp9_evidence_chain_004;
 pub mod frame_identity_core_vp9_evidence_chain_005;

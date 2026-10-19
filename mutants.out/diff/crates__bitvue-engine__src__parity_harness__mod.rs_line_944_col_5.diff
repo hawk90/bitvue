@@ -1,0 +1,30 @@
+--- crates/bitvue-engine/src/parity_harness/mod.rs
++++ replace diff_schema_version with ()
+@@ -936,26 +936,17 @@
+         differences,
+         ignored_changes,
+     }
+ }
+ 
+ type Manifest = crate::export::EvidenceBundleManifest;
+ 
+ fn diff_schema_version(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+-    if let crate::export::BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major } =
+-        crate::export::check_bundle_schema_compatibility(&a.bundle_version, &b.bundle_version)
+-    {
+-        out.push(EvidenceDifference {
+-            field: "bundle_version".to_string(),
+-            a_value: format!("{} (schema major {a_major})", a.bundle_version),
+-            b_value: format!("{} (schema major {b_major})", b.bundle_version),
+-            severity: DiffSeverity::Breaking,
+-        });
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Order type must match (critical).
+ fn diff_order_type(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+     if a.order_type != b.order_type {
+         out.push(EvidenceDifference {
+             field: "order_type".to_string(),
+             a_value: format!("{:?}", a.order_type),

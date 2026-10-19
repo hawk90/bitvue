@@ -1,0 +1,32 @@
+--- crates/bitvue-engine/src/parity_harness/mod.rs
++++ replace diff_warnings with ()
+@@ -1023,28 +1023,17 @@
+         if !a.plugin_versions.contains_key(key) {
+             ignored.push(format!("New plugin in b: {}", key));
+         }
+     }
+ }
+ 
+ /// Compared as sorted lists, so order does not matter but duplicates do.
+ fn diff_warnings(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+-    let mut a_warnings = a.warnings.clone();
+-    let mut b_warnings = b.warnings.clone();
+-    a_warnings.sort();
+-    b_warnings.sort();
+-    if a_warnings != b_warnings {
+-        out.push(EvidenceDifference {
+-            field: "warnings".to_string(),
+-            a_value: a_warnings.join(", "),
+-            b_value: b_warnings.join(", "),
+-            severity: DiffSeverity::Warning,
+-        });
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Loads `bundle_manifest.json` from an evidence bundle directory (as produced by
+ /// `export_evidence_bundle`).
+ pub fn load_evidence_bundle_manifest(
+     bundle_dir: &std::path::Path,
+ ) -> Result<crate::export::EvidenceBundleManifest, String> {
+     let path = bundle_dir.join("bundle_manifest.json");

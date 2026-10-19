@@ -908,97 +908,21 @@ pub fn compare_evidence_bundles(
     // value comparison, it's a precondition for whether the rest of the diff is trustworthy: a
     // MAJOR-version mismatch means a field may have been removed/repurposed between the two
     // bundles' schemas, so a value-level diff below could silently miss or misreport it.
-    if let crate::export::BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major } =
-        crate::export::check_bundle_schema_compatibility(&a.bundle_version, &b.bundle_version)
-    {
-        differences.push(EvidenceDifference {
-            field: "bundle_version".to_string(),
-            a_value: format!("{} (schema major {a_major})", a.bundle_version),
-            b_value: format!("{} (schema major {b_major})", b.bundle_version),
-            severity: DiffSeverity::Breaking,
-        });
+    diff_schema_version(a, b, &mut differences);
+    if compares("order_type") {
+        diff_order_type(a, b, &mut differences);
     }
-
-    // Order type must match (critical)
-    if compares("order_type") && a.order_type != b.order_type {
-        differences.push(EvidenceDifference {
-            field: "order_type".to_string(),
-            a_value: format!("{:?}", a.order_type),
-            b_value: format!("{:?}", b.order_type),
-            severity: DiffSeverity::Breaking,
-        });
-    }
-
-    // Selection state
     if compares("selection_state") {
-        let a_sel = serde_json::to_string(&a.selection_state).unwrap_or_default();
-        let b_sel = serde_json::to_string(&b.selection_state).unwrap_or_default();
-        if a_sel != b_sel {
-            differences.push(EvidenceDifference {
-                field: "selection_state".to_string(),
-                a_value: a_sel,
-                b_value: b_sel,
-                severity: DiffSeverity::Warning,
-            });
-        }
+        diff_selection_state(a, b, &mut differences);
     }
-
-    // Backend fingerprint
-    if compares("backend_fingerprint") && a.backend != b.backend {
-        differences.push(EvidenceDifference {
-            field: "backend_fingerprint".to_string(),
-            a_value: a.backend.clone(),
-            b_value: b.backend.clone(),
-            severity: DiffSeverity::Info,
-        });
+    if compares("backend_fingerprint") {
+        diff_backend(a, b, &mut differences);
     }
-
-    // Plugin versions
     if compares("plugin_versions") {
-        for (key, a_ver) in &a.plugin_versions {
-            match b.plugin_versions.get(key) {
-                Some(b_ver) if a_ver != b_ver => {
-                    differences.push(EvidenceDifference {
-                        field: format!("plugin_versions.{}", key),
-                        a_value: a_ver.clone(),
-                        b_value: b_ver.clone(),
-                        severity: DiffSeverity::Info,
-                    });
-                }
-                None => {
-                    differences.push(EvidenceDifference {
-                        field: format!("plugin_versions.{}", key),
-                        a_value: a_ver.clone(),
-                        b_value: "(missing)".to_string(),
-                        severity: DiffSeverity::Warning,
-                    });
-                }
-                _ => {}
-            }
-        }
-
-        // Check for new plugins in b
-        for key in b.plugin_versions.keys() {
-            if !a.plugin_versions.contains_key(key) {
-                ignored_changes.push(format!("New plugin in b: {}", key));
-            }
-        }
+        diff_plugin_versions(a, b, &mut differences, &mut ignored_changes);
     }
-
-    // Warnings
     if compares("warnings") {
-        let mut a_warnings = a.warnings.clone();
-        let mut b_warnings = b.warnings.clone();
-        a_warnings.sort();
-        b_warnings.sort();
-        if a_warnings != b_warnings {
-            differences.push(EvidenceDifference {
-                field: "warnings".to_string(),
-                a_value: a_warnings.join(", "),
-                b_value: b_warnings.join(", "),
-                severity: DiffSeverity::Warning,
-            });
-        }
+        diff_warnings(a, b, &mut differences);
     }
 
     // ABI compatibility: breaking if order_type differs
@@ -1011,6 +935,110 @@ pub fn compare_evidence_bundles(
         abi_compatible,
         differences,
         ignored_changes,
+    }
+}
+
+type Manifest = crate::export::EvidenceBundleManifest;
+
+fn diff_schema_version(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+    if let crate::export::BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major } =
+        crate::export::check_bundle_schema_compatibility(&a.bundle_version, &b.bundle_version)
+    {
+        out.push(EvidenceDifference {
+            field: "bundle_version".to_string(),
+            a_value: format!("{} (schema major {a_major})", a.bundle_version),
+            b_value: format!("{} (schema major {b_major})", b.bundle_version),
+            severity: DiffSeverity::Breaking,
+        });
+    }
+}
+
+/// Order type must match (critical).
+fn diff_order_type(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+    if a.order_type != b.order_type {
+        out.push(EvidenceDifference {
+            field: "order_type".to_string(),
+            a_value: format!("{:?}", a.order_type),
+            b_value: format!("{:?}", b.order_type),
+            severity: DiffSeverity::Breaking,
+        });
+    }
+}
+
+fn diff_selection_state(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+    let a_sel = serde_json::to_string(&a.selection_state).unwrap_or_default();
+    let b_sel = serde_json::to_string(&b.selection_state).unwrap_or_default();
+    if a_sel != b_sel {
+        out.push(EvidenceDifference {
+            field: "selection_state".to_string(),
+            a_value: a_sel,
+            b_value: b_sel,
+            severity: DiffSeverity::Warning,
+        });
+    }
+}
+
+fn diff_backend(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+    if a.backend != b.backend {
+        out.push(EvidenceDifference {
+            field: "backend_fingerprint".to_string(),
+            a_value: a.backend.clone(),
+            b_value: b.backend.clone(),
+            severity: DiffSeverity::Info,
+        });
+    }
+}
+
+/// A changed version is Info, a plugin missing from `b` a Warning; a plugin only in `b` is noted
+/// in `ignored` and is not a difference.
+fn diff_plugin_versions(
+    a: &Manifest,
+    b: &Manifest,
+    out: &mut Vec<EvidenceDifference>,
+    ignored: &mut Vec<String>,
+) {
+    for (key, a_ver) in &a.plugin_versions {
+        match b.plugin_versions.get(key) {
+            Some(b_ver) if a_ver != b_ver => {
+                out.push(EvidenceDifference {
+                    field: format!("plugin_versions.{}", key),
+                    a_value: a_ver.clone(),
+                    b_value: b_ver.clone(),
+                    severity: DiffSeverity::Info,
+                });
+            }
+            None => {
+                out.push(EvidenceDifference {
+                    field: format!("plugin_versions.{}", key),
+                    a_value: a_ver.clone(),
+                    b_value: "(missing)".to_string(),
+                    severity: DiffSeverity::Warning,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    for key in b.plugin_versions.keys() {
+        if !a.plugin_versions.contains_key(key) {
+            ignored.push(format!("New plugin in b: {}", key));
+        }
+    }
+}
+
+/// Compared as sorted lists, so order does not matter but duplicates do.
+fn diff_warnings(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+    let mut a_warnings = a.warnings.clone();
+    let mut b_warnings = b.warnings.clone();
+    a_warnings.sort();
+    b_warnings.sort();
+    if a_warnings != b_warnings {
+        out.push(EvidenceDifference {
+            field: "warnings".to_string(),
+            a_value: a_warnings.join(", "),
+            b_value: b_warnings.join(", "),
+            severity: DiffSeverity::Warning,
+        });
     }
 }
 
