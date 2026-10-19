@@ -78,6 +78,26 @@ mod tests {
         screen_content: (u32, u32),
         integer_mv: (u32, u32),
     ) -> Vec<u8> {
+        header_sized(
+            display_delay,
+            frame_ids,
+            screen_content,
+            integer_mv,
+            (15, 15),
+            0,
+        )
+    }
+
+    /// [`header`] with the coded `max_frame_width_minus_1` / `max_frame_height_minus_1` (4 bits
+    /// each) and `high_bitdepth` chosen.
+    fn header_sized(
+        display_delay: Option<u32>,
+        frame_ids: Option<(u32, u32)>,
+        screen_content: (u32, u32),
+        integer_mv: (u32, u32),
+        (max_w_minus_1, max_h_minus_1): (u32, u32),
+        high_bitdepth: u32,
+    ) -> Vec<u8> {
         let mut f: Vec<(u32, u8)> = vec![
             (0, 3),                              // seq_profile
             (0, 1),                              // still_picture
@@ -92,7 +112,7 @@ mod tests {
             f.push((1, 1)); // initial_display_delay_present_for_this_op
             f.push((delay, 4)); // initial_display_delay_minus_1
         }
-        f.extend([(3, 4), (3, 4), (15, 4), (15, 4)]); // frame size: 4 bits each, 16x16
+        f.extend([(3, 4), (3, 4), (max_w_minus_1, 4), (max_h_minus_1, 4)]); // frame size
         match frame_ids {
             Some((delta_minus_2, additional_minus_1)) => {
                 f.extend([(1, 1), (delta_minus_2, 4), (additional_minus_1, 3)])
@@ -118,7 +138,7 @@ mod tests {
             }
         }
         f.extend([(0, 1), (0, 1), (0, 1)]); // superres, cdef, restoration
-        f.extend([(0, 1), (0, 1), (0, 1), (0, 1), (0, 2), (0, 1)]); // color_config
+        f.extend([(high_bitdepth, 1), (0, 1), (0, 1), (0, 1), (0, 2), (0, 1)]); // color_config
         f.push((0, 1)); // film_grain_params_present_flag
         pack(&f)
     }
@@ -913,9 +933,13 @@ mod tests {
     #[test]
     fn the_header_accessors_report_the_parsed_fields() {
         let seq = parse_sequence_header(&header(None, None, (1, 0), (1, 0))).unwrap();
-        assert_eq!(seq.width(), 16);
-        assert_eq!(seq.height(), 16);
-        assert_eq!(seq.bit_depth(), 8);
+        assert_eq!((seq.width(), seq.height(), seq.bit_depth()), (16, 16, 8));
+
+        // Distinct width and height, and a 10-bit stream.
+        let wide = header_sized(None, None, (1, 0), (1, 0), (11, 5), 1);
+        let wide = parse_sequence_header(&wide).unwrap();
+        assert_eq!((wide.width(), wide.height()), (12, 6));
+        assert_eq!(wide.bit_depth(), 10);
         assert_eq!(seq.level(), seq.operating_points[0].seq_level_idx);
         assert_eq!(seq.level(), 0, "the header was built with seq_level_idx 0");
 

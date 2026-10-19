@@ -468,13 +468,13 @@ mod tests {
 
     const RECT: BlockRect = BlockRect {
         x: 16,
-        y: 16,
+        y: 32,
         width: 16,
         height: 16,
     };
     const MI: MiRect = MiRect {
         x4: 4,
-        y4: 4,
+        y4: 8,
         width: 4,
         height: 4,
     };
@@ -503,7 +503,7 @@ mod tests {
 
             // The mode is the 8-symbol compound_mode() read in the block's context.
             let mut r = SymbolDecoder::new(&data).unwrap();
-            let ctx = TileContext::new(32, 32).compound_mode_context(4, 4, 4, 4, 0, 4);
+            let ctx = TileContext::new(32, 32).compound_mode_context(4, 8, 4, 4, 0, 4);
             let want = compound_mode_from_symbol(r.read_compound_mode(ctx).unwrap()).unwrap();
             assert_eq!(cu.mode, want, "seed {seed}");
             modes.insert(format!("{want:?}"));
@@ -521,7 +521,7 @@ mod tests {
             assert_eq!(
                 logs,
                 vec![format!(
-                    "Compound mode {:?} at (16, 16): mv0={:?}, mv1={:?}",
+                    "Compound mode {:?} at (16, 32): mv0={:?}, mv1={:?}",
                     cu.mode, cu.mv[0], cu.mv[1]
                 )],
                 "seed {seed}: exactly one debug line describing the result"
@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(bits, untouched, "skip_mode reads no symbol at all");
         assert_eq!(logs.len(), 1);
         assert!(
-            logs[0].starts_with("Compound mode NearestNearestMv at (16, 16)"),
+            logs[0].starts_with("Compound mode NearestNearestMv at (16, 32)"),
             "{}",
             logs[0]
         );
