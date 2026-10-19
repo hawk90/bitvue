@@ -8,7 +8,7 @@ use std::sync::Arc;
 use bitvue_engine::BitvueError;
 
 use super::cache::{compute_frame_cache_key, get_or_parse_coding_units, ParsedCodingUnits};
-use super::parser::ParsedFrame;
+use super::parser::{FrameDimensions, ParsedFrame};
 use super::provenance::DecodeOutcome;
 
 /// Parse all coding units from tile data
@@ -50,6 +50,22 @@ fn parse_all_coding_units_with_temporal(
     temporal: Option<(&crate::tile::ProjectedMotionField, [i32; 7])>,
 ) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
     parse_coding_units_with_outcome(parsed, temporal).map(|(units, _)| units)
+}
+
+/// Most luma samples a frame may have for the decode to allocate its per-tile context: AV1
+/// level 6.3's `MaxPicSize` (spec A.3). The frame header's 16-bit width and height allow 65536 x
+/// 65536, whose context grid alone is over 2 GB (found by the `frame_analysis` fuzz target).
+const MAX_FRAME_LUMA_SAMPLES: u64 = 35_651_584;
+
+fn check_frame_size(dims: &FrameDimensions) -> Result<(), BitvueError> {
+    let samples = u64::from(dims.width) * u64::from(dims.height);
+    if samples > MAX_FRAME_LUMA_SAMPLES {
+        return Err(BitvueError::InvalidData(format!(
+            "frame size {}x{} exceeds the {} luma samples of AV1 level 6.3",
+            dims.width, dims.height, MAX_FRAME_LUMA_SAMPLES
+        )));
+    }
+    Ok(())
 }
 
 /// The entropy-context tracker for `parsed`'s tile: sized to the tile's full extent in 4x4 units
@@ -112,6 +128,7 @@ pub(crate) fn decode_frame(
     parsed: &ParsedFrame,
     inputs: FrameDecodeInputs<'_>,
 ) -> Result<FrameDecode, BitvueError> {
+    check_frame_size(&parsed.dimensions)?;
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     let sb_cols = parsed.dimensions.sb_cols;
     let sb_rows = parsed.dimensions.sb_rows;

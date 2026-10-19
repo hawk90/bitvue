@@ -1119,3 +1119,68 @@ fn real_fixture_compound_drl_wiring_parses_cleanly() {
          compound CUs had skip_mode=true"
     );
 }
+
+/// Found by the `frame_analysis` fuzz target: a header declaring 65536 x 65536 made
+/// `TileContext::new` try to allocate over 2 GB. Frames above AV1 level 6.3's picture size are
+/// now refused before anything is allocated.
+mod frame_size_limit {
+    use super::*;
+    use crate::overlay_extraction::parser::FrameDimensions;
+
+    fn dims(width: u32, height: u32) -> FrameDimensions {
+        FrameDimensions {
+            width,
+            height,
+            sb_size: 64,
+            sb_cols: width.div_ceil(64),
+            sb_rows: height.div_ceil(64),
+        }
+    }
+
+    #[test]
+    fn the_limit_is_level_6_3_max_pic_size() {
+        assert_eq!(MAX_FRAME_LUMA_SAMPLES, 35_651_584);
+        // 8192 x 4352 is level 6.3's own maximum picture.
+        assert_eq!(8192u64 * 4352, MAX_FRAME_LUMA_SAMPLES);
+    }
+
+    #[test]
+    fn a_frame_at_the_limit_is_accepted_and_one_sample_more_is_not() {
+        assert!(check_frame_size(&dims(8192, 4352)).is_ok());
+        assert!(check_frame_size(&dims(8193, 4352)).is_err());
+        assert!(check_frame_size(&dims(8192, 4353)).is_err());
+    }
+
+    #[test]
+    fn ordinary_and_8k_frames_are_accepted() {
+        for (w, h) in [(1, 1), (352, 288), (1920, 1080), (3840, 2160), (7680, 4320)] {
+            assert!(check_frame_size(&dims(w, h)).is_ok(), "{w}x{h}");
+        }
+    }
+
+    #[test]
+    fn the_largest_header_value_is_refused_without_overflow() {
+        let err = check_frame_size(&dims(65536, 65536)).unwrap_err();
+        let text = err.to_string();
+        assert!(text.contains("65536x65536"), "{text}");
+        assert!(text.contains("level 6.3"), "{text}");
+        // Even u32::MAX x u32::MAX must not wrap the product.
+        assert!(check_frame_size(&dims(u32::MAX, u32::MAX)).is_err());
+    }
+
+    #[test]
+    fn decoding_a_real_frame_whose_header_claims_a_huge_size_fails_cleanly() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq = find_seq_header_bytes(&frames).unwrap();
+        let obu_data: Vec<u8> = [seq.as_slice(), frames[0].data.as_slice()].concat();
+        let mut parsed = crate::overlay_extraction::parser::ParsedFrame::parse(&obu_data).unwrap();
+        assert!(
+            parse_all_coding_units(&parsed).is_ok(),
+            "control: the real size decodes"
+        );
+
+        parsed.dimensions = dims(65536, 65536);
+        assert!(decode_frame(&parsed, FrameDecodeInputs::default()).is_err());
+        assert!(parse_coding_units_checked(&parsed).is_err());
+    }
+}
