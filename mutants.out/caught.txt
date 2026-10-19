@@ -1,0 +1,20 @@
+crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with None
+crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with Some(1)
+crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with Some(0)
+crates/bitvue-engine/src/export/evidence.rs:57:16: replace == with != in check_bundle_schema_compatibility
+crates/bitvue-engine/src/export/evidence.rs:277:5: replace build_manifest -> EvidenceBundleManifest with Default::default()
+crates/bitvue-engine/src/export/evidence.rs:325:9: replace BundleWriter<'a>::json -> Result<(), String> with Ok(())
+crates/bitvue-engine/src/export/evidence.rs:328:26: replace += with -= in BundleWriter<'a>::json
+crates/bitvue-engine/src/export/evidence.rs:328:26: replace += with *= in BundleWriter<'a>::json
+crates/bitvue-engine/src/export/evidence.rs:333:9: replace BundleWriter<'a>::create_dir -> Result<std::path::PathBuf, String> with Ok(Default::default())
+crates/bitvue-engine/src/export/evidence.rs:346:5: replace write_metadata_files -> Result<(), String> with Ok(())
+crates/bitvue-engine/src/export/evidence.rs:394:5: replace write_screenshots -> Result<(), String> with Ok(())
+crates/bitvue-engine/src/export/evidence.rs:394:37: replace || with && in write_screenshots
+crates/bitvue-engine/src/export/evidence.rs:404:28: replace += with -= in write_screenshots
+crates/bitvue-engine/src/export/evidence.rs:394:8: delete ! in write_screenshots
+crates/bitvue-engine/src/export/evidence.rs:404:28: replace += with *= in write_screenshots
+crates/bitvue-engine/src/export/evidence.rs:415:5: replace write_render_snapshots -> Result<(), String> with Ok(())
+crates/bitvue-engine/src/export/evidence.rs:415:42: replace || with && in write_render_snapshots
+crates/bitvue-engine/src/export/evidence.rs:415:8: delete ! in write_render_snapshots
+crates/bitvue-engine/src/export/evidence.rs:459:5: replace write_json_file -> std::io::Result<usize> with Ok(0)
+crates/bitvue-engine/src/export/evidence.rs:459:5: replace write_json_file -> std::io::Result<usize> with Ok(1)

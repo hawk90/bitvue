@@ -1,0 +1,21 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace += with *= in write_screenshots
+@@ -396,17 +396,17 @@
+     }
+     let dir = writer.create_dir("screenshots", "screenshots")?;
+     for (idx, png_bytes) in screenshots.iter().enumerate() {
+         std::fs::write(dir.join(format!("screenshot_{:04}.png", idx)), png_bytes)
+             .map_err(|e| format!("Failed to write screenshot: {}", e))?;
+         writer
+             .files
+             .push(format!("screenshots/screenshot_{:04}.png", idx));
+-        writer.total_bytes += png_bytes.len();
++        writer.total_bytes *= /* ~ changed by cargo-mutants ~ */ png_bytes.len();
+     }
+     Ok(())
+ }
+ 
+ /// `render_snapshots/snapshot_NNNN.json`, only when requested and non-empty.
+ fn write_render_snapshots(
+     writer: &mut BundleWriter,
+     request: &EvidenceBundleExportRequest,

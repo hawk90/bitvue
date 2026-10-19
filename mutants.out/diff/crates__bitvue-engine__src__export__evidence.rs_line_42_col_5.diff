@@ -1,0 +1,21 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace parse_major_version -> Option<u32> with None
+@@ -34,17 +34,17 @@
+     /// Different MAJOR version -- a breaking schema change (field removal/repurposing) happened
+     /// between these versions.
+     IncompatibleMajorVersion { a_major: u32, b_major: u32 },
+     /// `bundle_version` wasn't parseable as `MAJOR.MINOR` (pre-versioning or corrupt bundle).
+     UnparseableVersion(String),
+ }
+ 
+ fn parse_major_version(version: &str) -> Option<u32> {
+-    version.split('.').next()?.parse::<u32>().ok()
++    None /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Compares two `bundle_version` strings per this module's ABI policy. Pass
+ /// [`CURRENT_BUNDLE_SCHEMA_VERSION`] as `b` to check a bundle against the running build's schema,
+ /// or two real bundles' versions to check whether they're safe to diff against each other.
+ pub fn check_bundle_schema_compatibility(a: &str, b: &str) -> BundleSchemaCompatibility {
+     let (Some(a_major), Some(b_major)) = (parse_major_version(a), parse_major_version(b)) else {
+         let bad = if parse_major_version(a).is_none() {

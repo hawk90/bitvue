@@ -1,0 +1,1560 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 20.8199515,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 5.1904825,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with None",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "parse_major_version",
+            "return_type": "-> Option<u32>",
+            "span": {
+              "start": {
+                "line": 41,
+                "column": 1
+              },
+              "end": {
+                "line": 43,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 42,
+              "column": 5
+            },
+            "end": {
+              "line": 42,
+              "column": 51
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_42_col_5.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_42_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.969815583,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.461915916,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with Some(1)",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "parse_major_version",
+            "return_type": "-> Option<u32>",
+            "span": {
+              "start": {
+                "line": 41,
+                "column": 1
+              },
+              "end": {
+                "line": 43,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 42,
+              "column": 5
+            },
+            "end": {
+              "line": 42,
+              "column": 51
+            }
+          },
+          "replacement": "Some(1)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_42_col_5_002.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_42_col_5_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.417945875,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.053786125,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:49:5: replace check_bundle_schema_compatibility -> BundleSchemaCompatibility with Default::default()",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "check_bundle_schema_compatibility",
+            "return_type": "-> BundleSchemaCompatibility",
+            "span": {
+              "start": {
+                "line": 45,
+                "column": 1
+              },
+              "end": {
+                "line": 62,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 49,
+              "column": 5
+            },
+            "end": {
+              "line": 61,
+              "column": 6
+            }
+          },
+          "replacement": "Default::default()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_49_col_5.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_49_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.972282125,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with Some(0)",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "parse_major_version",
+            "return_type": "-> Option<u32>",
+            "span": {
+              "start": {
+                "line": 41,
+                "column": 1
+              },
+              "end": {
+                "line": 43,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 42,
+              "column": 5
+            },
+            "end": {
+              "line": 42,
+              "column": 51
+            }
+          },
+          "replacement": "Some(0)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_42_col_5_001.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_42_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 27.71092625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 4.8618165829999995,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:57:16: replace == with != in check_bundle_schema_compatibility",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "check_bundle_schema_compatibility",
+            "return_type": "-> BundleSchemaCompatibility",
+            "span": {
+              "start": {
+                "line": 45,
+                "column": 1
+              },
+              "end": {
+                "line": 62,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 57,
+              "column": 16
+            },
+            "end": {
+              "line": 57,
+              "column": 18
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_57_col_16.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_57_col_16.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.548947958,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 5.546691542,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:202:9: replace EvidenceBundleExportResult::success -> Self with Default::default()",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "EvidenceBundleExportResult::success",
+            "return_type": "-> Self",
+            "span": {
+              "start": {
+                "line": 200,
+                "column": 5
+              },
+              "end": {
+                "line": 209,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 202,
+              "column": 9
+            },
+            "end": {
+              "line": 208,
+              "column": 10
+            }
+          },
+          "replacement": "Default::default()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_202_col_9.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_202_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.3390845000000002,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:213:9: replace EvidenceBundleExportResult::error -> Self with Default::default()",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "EvidenceBundleExportResult::error",
+            "return_type": "-> Self",
+            "span": {
+              "start": {
+                "line": 211,
+                "column": 5
+              },
+              "end": {
+                "line": 220,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 213,
+              "column": 9
+            },
+            "end": {
+              "line": 219,
+              "column": 10
+            }
+          },
+          "replacement": "Default::default()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_213_col_9.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_213_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.341204792,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:248:5: replace export_evidence_bundle -> EvidenceBundleExportResult with Default::default()",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "export_evidence_bundle",
+            "return_type": "-> EvidenceBundleExportResult",
+            "span": {
+              "start": {
+                "line": 223,
+                "column": 1
+              },
+              "end": {
+                "line": 272,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 248,
+              "column": 5
+            },
+            "end": {
+              "line": 271,
+              "column": 6
+            }
+          },
+          "replacement": "Default::default()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_248_col_5.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_248_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.220246417,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:277:5: replace build_manifest -> EvidenceBundleManifest with Default::default()",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "build_manifest",
+            "return_type": "-> EvidenceBundleManifest",
+            "span": {
+              "start": {
+                "line": 274,
+                "column": 1
+              },
+              "end": {
+                "line": 300,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 277,
+              "column": 5
+            },
+            "end": {
+              "line": 299,
+              "column": 6
+            }
+          },
+          "replacement": "Default::default()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_277_col_5.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_277_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.48526775,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 4.982802542,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:325:9: replace BundleWriter<'a>::json -> Result<(), String> with Ok(())",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "BundleWriter<'a>::json",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 318,
+                "column": 5
+              },
+              "end": {
+                "line": 330,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 325,
+              "column": 9
+            },
+            "end": {
+              "line": 329,
+              "column": 15
+            }
+          },
+          "replacement": "Ok(())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_325_col_9.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_325_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.825345959,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 5.61589425,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:328:26: replace += with -= in BundleWriter<'a>::json",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "BundleWriter<'a>::json",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 318,
+                "column": 5
+              },
+              "end": {
+                "line": 330,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 328,
+              "column": 26
+            },
+            "end": {
+              "line": 328,
+              "column": 28
+            }
+          },
+          "replacement": "-=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_328_col_26.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_328_col_26.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.213513333,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 4.9114379580000005,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:328:26: replace += with *= in BundleWriter<'a>::json",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "BundleWriter<'a>::json",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 318,
+                "column": 5
+              },
+              "end": {
+                "line": 330,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 328,
+              "column": 26
+            },
+            "end": {
+              "line": 328,
+              "column": 28
+            }
+          },
+          "replacement": "*=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_328_col_26_001.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_328_col_26_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.544372292,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 5.340740916,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:333:9: replace BundleWriter<'a>::create_dir -> Result<std::path::PathBuf, String> with Ok(Default::default())",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "BundleWriter<'a>::create_dir",
+            "return_type": "-> Result<std::path::PathBuf, String>",
+            "span": {
+              "start": {
+                "line": 332,
+                "column": 5
+              },
+              "end": {
+                "line": 337,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 333,
+              "column": 9
+            },
+            "end": {
+              "line": 336,
+              "column": 16
+            }
+          },
+          "replacement": "Ok(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_333_col_9.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_333_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.341928417,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 4.8033572079999995,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:346:5: replace write_metadata_files -> Result<(), String> with Ok(())",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_metadata_files",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 340,
+                "column": 1
+              },
+              "end": {
+                "line": 386,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 346,
+              "column": 5
+            },
+            "end": {
+              "line": 385,
+              "column": 70
+            }
+          },
+          "replacement": "Ok(())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_346_col_5.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_346_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.366112375,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 5.446533333,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:394:5: replace write_screenshots -> Result<(), String> with Ok(())",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_screenshots",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 388,
+                "column": 1
+              },
+              "end": {
+                "line": 407,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 394,
+              "column": 5
+            },
+            "end": {
+              "line": 406,
+              "column": 11
+            }
+          },
+          "replacement": "Ok(())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_394_col_5.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_394_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.386828875,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 5.120743916,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:394:37: replace || with && in write_screenshots",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_screenshots",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 388,
+                "column": 1
+              },
+              "end": {
+                "line": 407,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 394,
+              "column": 37
+            },
+            "end": {
+              "line": 394,
+              "column": 39
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_394_col_37.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_394_col_37.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.215060542,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.705357208,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:404:28: replace += with -= in write_screenshots",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_screenshots",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 388,
+                "column": 1
+              },
+              "end": {
+                "line": 407,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 404,
+              "column": 28
+            },
+            "end": {
+              "line": 404,
+              "column": 30
+            }
+          },
+          "replacement": "-=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_404_col_28.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_404_col_28.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.236006625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.1412935,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:394:8: delete ! in write_screenshots",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_screenshots",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 388,
+                "column": 1
+              },
+              "end": {
+                "line": 407,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 394,
+              "column": 8
+            },
+            "end": {
+              "line": 394,
+              "column": 9
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_394_col_8.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_394_col_8.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.421625708,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.306495917,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:404:28: replace += with *= in write_screenshots",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_screenshots",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 388,
+                "column": 1
+              },
+              "end": {
+                "line": 407,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 404,
+              "column": 28
+            },
+            "end": {
+              "line": 404,
+              "column": 30
+            }
+          },
+          "replacement": "*=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_404_col_28_001.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_404_col_28_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 8.996488583,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.160086042,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:415:5: replace write_render_snapshots -> Result<(), String> with Ok(())",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_render_snapshots",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 1
+              },
+              "end": {
+                "line": 424,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 415,
+              "column": 5
+            },
+            "end": {
+              "line": 423,
+              "column": 11
+            }
+          },
+          "replacement": "Ok(())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_415_col_5.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_415_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.703491583,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.698539125,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:415:42: replace || with && in write_render_snapshots",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_render_snapshots",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 1
+              },
+              "end": {
+                "line": 424,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 415,
+              "column": 42
+            },
+            "end": {
+              "line": 415,
+              "column": 44
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_415_col_42.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_415_col_42.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 8.762327625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.3120784580000002,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:415:8: delete ! in write_render_snapshots",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_render_snapshots",
+            "return_type": "-> Result<(), String>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 1
+              },
+              "end": {
+                "line": 424,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 415,
+              "column": 8
+            },
+            "end": {
+              "line": 415,
+              "column": 9
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_415_col_8.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_415_col_8.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.348240083,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 10.194714790999999,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:459:5: replace write_json_file -> std::io::Result<usize> with Ok(0)",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_json_file",
+            "return_type": "-> std::io::Result<usize>",
+            "span": {
+              "start": {
+                "line": 457,
+                "column": 1
+              },
+              "end": {
+                "line": 462,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 459,
+              "column": 5
+            },
+            "end": {
+              "line": 461,
+              "column": 19
+            }
+          },
+          "replacement": "Ok(0)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_459_col_5.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_459_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 17.557700916,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 3.180804042,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/bitvue-engine/src/export/evidence.rs:459:5: replace write_json_file -> std::io::Result<usize> with Ok(1)",
+          "package": "bitvue-engine",
+          "file": "crates/bitvue-engine/src/export/evidence.rs",
+          "function": {
+            "function_name": "write_json_file",
+            "return_type": "-> std::io::Result<usize>",
+            "span": {
+              "start": {
+                "line": 457,
+                "column": 1
+              },
+              "end": {
+                "line": 462,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 459,
+              "column": 5
+            },
+            "end": {
+              "line": 461,
+              "column": 19
+            }
+          },
+          "replacement": "Ok(1)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__bitvue-engine__src__export__evidence.rs_line_459_col_5_001.log",
+      "diff_path": "diff/crates__bitvue-engine__src__export__evidence.rs_line_459_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.93819575,
+          "process_status": "Success",
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.4682862500000002,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/hawk/.rustup/toolchains/1.99.1-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=bitvue-engine@0.12.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 24,
+  "missed": 0,
+  "caught": 20,
+  "timeout": 0,
+  "unviable": 4,
+  "success": 0,
+  "start_time": "2026-10-19T13:15:32.016447Z",
+  "end_time": "2026-10-19T13:18:14.76819Z",
+  "cargo_mutants_version": "27.1.0"
+}

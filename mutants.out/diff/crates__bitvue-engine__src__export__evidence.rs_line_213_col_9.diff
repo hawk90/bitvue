@@ -1,0 +1,27 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace EvidenceBundleExportResult::error -> Self with Default::default()
+@@ -205,23 +205,17 @@
+             files_created: files,
+             total_bytes: bytes,
+             error: None,
+         }
+     }
+ 
+     /// Create error result
+     pub fn error(message: &str) -> Self {
+-        Self {
+-            success: false,
+-            bundle_path: None,
+-            files_created: Vec::new(),
+-            total_bytes: 0,
+-            error: Some(message.to_string()),
+-        }
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// Export evidence bundle to directory
+ ///
+ /// Creates a bundle directory containing:
+ /// - bundle_manifest.json
+ /// - env.json

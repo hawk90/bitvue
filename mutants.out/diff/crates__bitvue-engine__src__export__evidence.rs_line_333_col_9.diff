@@ -1,0 +1,24 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace BundleWriter<'a>::create_dir -> Result<std::path::PathBuf, String> with Ok(Default::default())
+@@ -325,20 +325,17 @@
+         let bytes = write_json_file(&self.dir.join(relative_path), data)
+             .map_err(|e| format!("Failed to write {}: {}", what, e))?;
+         self.files.push(relative_path.to_string());
+         self.total_bytes += bytes;
+         Ok(())
+     }
+ 
+     fn create_dir(&self, name: &str, what: &str) -> Result<std::path::PathBuf, String> {
+-        let dir = self.dir.join(name);
+-        std::fs::create_dir_all(&dir)
+-            .map_err(|e| format!("Failed to create {} directory: {}", what, e))?;
+-        Ok(dir)
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// The seven fixed files, in the order they appear in `files_created`.
+ fn write_metadata_files(
+     writer: &mut BundleWriter,
+     request: &EvidenceBundleExportRequest,
+     manifest: &EvidenceBundleManifest,

@@ -1,0 +1,44 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace export_evidence_bundle -> EvidenceBundleExportResult with Default::default()
+@@ -240,40 +240,17 @@
+ /// `screenshots` is raw PNG bytes, one entry per captured image -- decoding a base64/data-URL
+ /// screenshot (e.g. from Electron's `capturePage()`) is the caller's job, matching how
+ /// `render_snapshots` is likewise already-decoded data by the time it reaches this function.
+ pub fn export_evidence_bundle(
+     request: &EvidenceBundleExportRequest,
+     render_snapshots: &[RenderSnapshot],
+     screenshots: &[Vec<u8>],
+ ) -> EvidenceBundleExportResult {
+-    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+-    let bundle_name = format!("bitvue_evidence_{}", timestamp);
+-    let bundle_dir = request.output_dir.join(&bundle_name);
+-
+-    if let Err(e) = std::fs::create_dir_all(&bundle_dir) {
+-        return EvidenceBundleExportResult::error(&format!(
+-            "Failed to create bundle directory: {}",
+-            e
+-        ));
+-    }
+-
+-    let manifest = build_manifest(request);
+-    let mut writer = BundleWriter::new(&bundle_dir);
+-    let written = write_metadata_files(&mut writer, request, &manifest)
+-        .and_then(|()| write_screenshots(&mut writer, request, screenshots))
+-        .and_then(|()| write_render_snapshots(&mut writer, request, render_snapshots));
+-    match written {
+-        Ok(()) => EvidenceBundleExportResult::success(
+-            bundle_dir.to_string_lossy().to_string(),
+-            writer.files,
+-            writer.total_bytes,
+-        ),
+-        Err(message) => EvidenceBundleExportResult::error(&message),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Manifest for this build and request. `warnings`/`artifacts` start empty; the export does not
+ /// collect any.
+ fn build_manifest(request: &EvidenceBundleExportRequest) -> EvidenceBundleManifest {
+     EvidenceBundleManifest {
+         bundle_version: "1.0".to_string(),
+         app_version: env!("CARGO_PKG_VERSION").to_string(),

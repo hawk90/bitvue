@@ -1,0 +1,33 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace check_bundle_schema_compatibility -> BundleSchemaCompatibility with Default::default()
+@@ -41,29 +41,17 @@
+ fn parse_major_version(version: &str) -> Option<u32> {
+     version.split('.').next()?.parse::<u32>().ok()
+ }
+ 
+ /// Compares two `bundle_version` strings per this module's ABI policy. Pass
+ /// [`CURRENT_BUNDLE_SCHEMA_VERSION`] as `b` to check a bundle against the running build's schema,
+ /// or two real bundles' versions to check whether they're safe to diff against each other.
+ pub fn check_bundle_schema_compatibility(a: &str, b: &str) -> BundleSchemaCompatibility {
+-    let (Some(a_major), Some(b_major)) = (parse_major_version(a), parse_major_version(b)) else {
+-        let bad = if parse_major_version(a).is_none() {
+-            a
+-        } else {
+-            b
+-        };
+-        return BundleSchemaCompatibility::UnparseableVersion(bad.to_string());
+-    };
+-    if a_major == b_major {
+-        BundleSchemaCompatibility::Compatible
+-    } else {
+-        BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major }
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Evidence bundle manifest (per export_evidence_bundle.schema.json)
+ ///
+ /// `#[serde(default)]` (container-level, backed by this struct's `Default` impl below) means a
+ /// bundle missing a field a newer schema added deserializes fine instead of hard-failing -- see
+ /// [`CURRENT_BUNDLE_SCHEMA_VERSION`]'s doc for the full ABI policy this implements.
+ #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,0 +1,4 @@
+crates/bitvue-engine/src/export/evidence.rs:49:5: replace check_bundle_schema_compatibility -> BundleSchemaCompatibility with Default::default()
+crates/bitvue-engine/src/export/evidence.rs:202:9: replace EvidenceBundleExportResult::success -> Self with Default::default()
+crates/bitvue-engine/src/export/evidence.rs:213:9: replace EvidenceBundleExportResult::error -> Self with Default::default()
+crates/bitvue-engine/src/export/evidence.rs:248:5: replace export_evidence_bundle -> EvidenceBundleExportResult with Default::default()
