@@ -322,7 +322,7 @@ mod tests {
         // One level below the limit it is just a normal parse (no depth error).
         let below = message(recurse(&data, (0, 0), BlockSize::Block8x8, (rows, cols), 9));
         assert!(
-            below.map_or(true, |m| !m.contains("depth")),
+            below.is_none_or(|m| !m.contains("depth")),
             "depth 9 is allowed"
         );
     }
