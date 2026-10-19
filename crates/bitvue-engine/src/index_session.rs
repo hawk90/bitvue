@@ -253,29 +253,14 @@ impl IndexSession {
     where
         F: Fn(IndexingProgress),
     {
-        // Update state
-        {
-            let mut state = self.state.lock().unwrap();
-            if *state != IndexingState::QuickComplete {
-                return Err(BitvueError::InvalidData(format!(
-                    "Cannot start full index from state {:?}. Run quick index first.",
-                    *state
-                )));
-            }
-            *state = IndexingState::FullIndexing;
-        }
+        self.begin_full_index()?;
 
-        self.reset_cancellation();
-
-        // Report start
-        if let Some(ref callback) = progress_callback {
-            callback(IndexingProgress {
-                phase: IndexingPhase::Full,
-                progress: 0.0,
-                message: "Starting full index...".to_string(),
-                frames_indexed: 0,
-            });
-        }
+        report_full(
+            &progress_callback,
+            0.0,
+            "Starting full index...".to_string(),
+            0,
+        );
 
         // Create cancellation checker
         let should_cancel = Arc::clone(&self.should_cancel);
@@ -300,58 +285,17 @@ impl IndexSession {
 
                 // OPTIMIZATION: Extract count before moving frames
                 let frames_count = frames.len();
-
-                // Build full index
-                let file_size = {
-                    let quick = self.quick_index.lock().unwrap();
-                    quick.as_ref().map(|q| q.file_size).unwrap_or(0)
-                };
-
-                let full_idx = FullIndex::new(frames, file_size, true);
-
-                // Store result (move instead of clone)
-                *self.full_index.lock().unwrap() = Some(full_idx);
-
-                // Create evidence for all frames
-                {
-                    let mut evidence_mgr = self.evidence_manager.lock().unwrap();
-
-                    // Get reference to stored frames to avoid clone
-                    if let Some(ref idx) = *self.full_index.lock().unwrap() {
-                        for frame in &idx.frames {
-                            evidence_mgr.create_frame_metadata_evidence(frame);
-                        }
-
-                        // Update seek point sizes with accurate data
-                        if let Some(quick) = self.quick_index.lock().unwrap().as_ref() {
-                            for seek_point in &quick.seek_points {
-                                if let Some(frame) = idx
-                                    .frames
-                                    .iter()
-                                    .find(|f| f.display_idx == seek_point.display_idx)
-                                {
-                                    evidence_mgr.update_seekpoint_size(
-                                        frame.display_idx,
-                                        frame.size as usize,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
+                self.store_full_index(frames);
 
                 // Update state
                 *self.state.lock().unwrap() = IndexingState::FullComplete;
 
-                // Report completion
-                if let Some(ref callback) = progress_callback {
-                    callback(IndexingProgress {
-                        phase: IndexingPhase::Full,
-                        progress: 1.0,
-                        message: format!("Full index complete: {} frames", frames_count),
-                        frames_indexed: frames_count,
-                    });
-                }
+                report_full(
+                    &progress_callback,
+                    1.0,
+                    format!("Full index complete: {} frames", frames_count),
+                    frames_count,
+                );
 
                 // Return by cloning since we moved it into the mutex
                 self.full_index
@@ -368,6 +312,66 @@ impl IndexSession {
                     *self.state.lock().unwrap() = IndexingState::Error;
                 }
                 Err(e)
+            }
+        }
+    }
+
+    /// Moves `QuickComplete` to `FullIndexing` and clears any earlier cancel request; any other
+    /// state is refused and left as it was.
+    fn begin_full_index(&self) -> Result<(), BitvueError> {
+        {
+            let mut state = self.state.lock().unwrap();
+            if *state != IndexingState::QuickComplete {
+                return Err(BitvueError::InvalidData(format!(
+                    "Cannot start full index from state {:?}. Run quick index first.",
+                    *state
+                )));
+            }
+            *state = IndexingState::FullIndexing;
+        }
+
+        self.reset_cancellation();
+        Ok(())
+    }
+
+    /// Keeps `frames` as the full index (sized from the quick index) and records evidence for
+    /// every frame.
+    fn store_full_index(&self, frames: Vec<crate::indexing::FrameMetadata>) {
+        let file_size = {
+            let quick = self.quick_index.lock().unwrap();
+            quick.as_ref().map(|q| q.file_size).unwrap_or(0)
+        };
+
+        let full_idx = FullIndex::new(frames, file_size, true);
+
+        // Store result (move instead of clone)
+        *self.full_index.lock().unwrap() = Some(full_idx);
+
+        self.record_full_index_evidence();
+    }
+
+    /// Evidence for all frames of the stored full index, then the seek points' placeholder sizes
+    /// replaced with the frames' real ones.
+    fn record_full_index_evidence(&self) {
+        let mut evidence_mgr = self.evidence_manager.lock().unwrap();
+
+        // Get reference to stored frames to avoid clone
+        if let Some(ref idx) = *self.full_index.lock().unwrap() {
+            for frame in &idx.frames {
+                evidence_mgr.create_frame_metadata_evidence(frame);
+            }
+
+            // Update seek point sizes with accurate data
+            if let Some(quick) = self.quick_index.lock().unwrap().as_ref() {
+                for seek_point in &quick.seek_points {
+                    if let Some(frame) = idx
+                        .frames
+                        .iter()
+                        .find(|f| f.display_idx == seek_point.display_idx)
+                    {
+                        evidence_mgr.update_seekpoint_size(frame.display_idx, frame.size as usize);
+                    }
+                }
             }
         }
     }
@@ -449,6 +453,23 @@ impl Default for IndexSession {
     unused_parens,
     unused_assignments
 )]
+/// Calls `callback`, if any, with a full-index progress report.
+fn report_full<F: Fn(IndexingProgress)>(
+    callback: &Option<F>,
+    progress: f64,
+    message: String,
+    frames_indexed: usize,
+) {
+    if let Some(callback) = callback {
+        callback(IndexingProgress {
+            phase: IndexingPhase::Full,
+            progress,
+            message,
+            frames_indexed,
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     include!("index_session_test.rs");
