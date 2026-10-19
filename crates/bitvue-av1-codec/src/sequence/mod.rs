@@ -909,4 +909,25 @@ mod tests {
         let mono = parse_exact(Av1Profile::Main, &[(0, 1), (1, 1), (0, 1), (0, 1)]);
         assert!(mono.subsampling_x && mono.subsampling_y);
     }
+
+    #[test]
+    fn the_header_accessors_report_the_parsed_fields() {
+        let seq = parse_sequence_header(&header(None, None, (1, 0), (1, 0))).unwrap();
+        assert_eq!(seq.width(), 16);
+        assert_eq!(seq.height(), 16);
+        assert_eq!(seq.bit_depth(), 8);
+        assert_eq!(seq.level(), seq.operating_points[0].seq_level_idx);
+        assert_eq!(seq.level(), 0, "the header was built with seq_level_idx 0");
+
+        // The level is the first operating point's; without any it falls back to 0.
+        let mut none = seq.clone();
+        none.operating_points.clear();
+        assert_eq!(none.level(), 0);
+        let mut two = seq.clone();
+        let mut second = two.operating_points[0].clone();
+        two.operating_points[0].seq_level_idx = 5;
+        second.seq_level_idx = 9;
+        two.operating_points.push(second);
+        assert_eq!(two.level(), 5, "operating point 0 decides");
+    }
 }

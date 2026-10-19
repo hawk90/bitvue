@@ -139,3 +139,26 @@ impl SequenceHeader {
         self.color_config.bit_depth
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profiles_map_to_their_names_and_reserved_values_keep_the_number() {
+        for (value, profile, name) in [
+            (0u8, Av1Profile::Main, "Main"),
+            (1, Av1Profile::High, "High"),
+            (2, Av1Profile::Professional, "Professional"),
+        ] {
+            assert_eq!(Av1Profile::from_u8(value), profile);
+            assert_eq!(profile.name(), name);
+            assert_eq!(profile.to_string(), name, "Display is the name");
+        }
+        for value in [3u8, 7, 255] {
+            let p = Av1Profile::from_u8(value);
+            assert_eq!(p, Av1Profile::Reserved(value));
+            assert_eq!(p.to_string(), "Reserved");
+        }
+    }
+}
