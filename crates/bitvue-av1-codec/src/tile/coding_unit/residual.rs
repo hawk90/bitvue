@@ -593,4 +593,80 @@ mod tests {
             assert_eq!(fingerprint(&mut d), fingerprint(&mut want_d), "seed {seed}");
         }
     }
+
+    #[test]
+    fn chroma_tile_count_decides_the_not_one_block_context() {
+        // (luma w, h, luma tx origins in 4x4 units, luma tx px, chroma tile origins, chroma
+        // tx w4/h4, not_one_blk)
+        type Case = (
+            u32,
+            u32,
+            Vec<(u32, u32, u32, u32)>,
+            Vec<(u32, u32)>,
+            (u32, u32),
+            bool,
+        );
+        let cases: Vec<Case> = vec![
+            // 128x64 -> chroma 64x32: two 32x32 tiles side by side.
+            (
+                128,
+                64,
+                vec![(0, 0, 64, 64), (16, 0, 64, 64)],
+                vec![(0, 0), (8, 0)],
+                (8, 8),
+                true,
+            ),
+            // 64x128 -> chroma 32x64: two stacked.
+            (
+                64,
+                128,
+                vec![(0, 0, 64, 64), (0, 16, 64, 64)],
+                vec![(0, 0), (0, 8)],
+                (8, 8),
+                true,
+            ),
+            // 64x64 -> chroma 32x32: one tile, and one luma transform.
+            (64, 64, vec![(0, 0, 64, 64)], vec![(0, 0)], (8, 8), false),
+        ];
+        let f = frame(false, (true, true), false);
+        for (w, h, luma, chroma, (tw4, th4), not_one) in cases {
+            let (r, mi) = rect(0, 0, w / 4, h / 4);
+            for seed in 1..=8u64 {
+                let data = noise(seed, 2048);
+                let mut cu = CodingUnit::new(0, 0, w, h);
+                cu.tx_size = TxSize::Tx64x64;
+                let mut d = SymbolDecoder::new(&data).unwrap();
+                let mut ctx = TileContext::new(64, 64);
+                read_residual(&mut d, &mut ctx, r, mi, &f, &mut cu, 0).unwrap();
+
+                let mut want_d = SymbolDecoder::new(&data).unwrap();
+                let mut want_ctx = TileContext::new(64, 64);
+                manual_luma(&mut want_d, &mut want_ctx, &luma, false);
+                for plane in 0..2usize {
+                    for &(cx4, cy4) in &chroma {
+                        let skip_ctx =
+                            want_ctx.txb_skip_context_chroma(plane, cx4, cy4, tw4, th4, not_one);
+                        let sign_ctx = want_ctx.dc_sign_context_chroma(plane, cx4, cy4, tw4, th4);
+                        let b = want_d
+                            .read_chroma_residual_block(32, 32, skip_ctx, sign_ctx, TxClass1d::TwoD)
+                            .unwrap();
+                        want_ctx.set_residual_ctx_chroma(
+                            plane,
+                            cx4,
+                            cy4,
+                            tw4,
+                            th4,
+                            b.sum_abs_level.min(63) as u8,
+                            b.dc_sign_value,
+                        );
+                    }
+                }
+                assert_eq!(
+                    fingerprint(&mut d),
+                    fingerprint(&mut want_d),
+                    "{w}x{h} seed {seed}"
+                );
+            }
+        }
+    }
 }

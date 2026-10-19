@@ -249,6 +249,9 @@ mod tests {
             read_post_skip(&mut d, &mut ctx, mi(4, 4), s, false).unwrap(),
             None
         );
+        // The 0 is recorded: with the left and above-left cells written and the cell above not,
+        // exactly one pair agrees (context 1); with nothing recorded all three would agree (2).
+        assert_eq!(ctx.segment_id_context(6, 5).0, 1);
         assert_eq!(bits(&mut d), untouched);
         assert_eq!(ctx.segment_id_context(5, 4).1, 0);
     }

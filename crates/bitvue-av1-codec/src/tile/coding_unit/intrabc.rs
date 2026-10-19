@@ -321,42 +321,67 @@ mod tests {
 
     #[test]
     fn narrow_chroma_blocks_move_the_clip_borders_by_four() {
-        // A 4-wide block with chroma on a subsampled stream borders 4 samples further in.
+        // A block narrower than 8 samples on an axis that is subsampled, with chroma, starts its
+        // source area 4 samples further in on that axis.
         let none = tile_with(&[]);
-        let narrow = MiRect {
-            x4: 1,
-            y4: 40,
-            width: 1,
-            height: 1,
-        };
-        let mut differing = 0;
-        for seed in 1..=48u64 {
-            let data = noise(seed, 64);
-            let run_flags = |has_chroma: bool, sub: (bool, bool)| {
+        let positions = [(1u32, 40u32), (1, 1), (5, 1), (9, 0), (1, 17)];
+        let (mut x_moved, mut y_moved) = (false, false);
+        for (x4, y4) in positions {
+            let narrow = MiRect {
+                x4,
+                y4,
+                width: 1,
+                height: 1,
+            };
+            for seed in 1..=48u64 {
+                let data = noise(seed, 64);
+                let run_flags = |has_chroma: bool, sub: (bool, bool)| {
+                    let mut d = SymbolDecoder::new(&data).unwrap();
+                    read_displacement_vector(&mut d, &none, narrow, 64, false, has_chroma, sub).ok()
+                };
                 let mut d = SymbolDecoder::new(&data).unwrap();
-                read_displacement_vector(&mut d, &none, narrow, 64, false, has_chroma, sub).ok()
-            };
-            let plain = run_flags(false, (true, true));
-            let bordered = run_flags(true, (true, true));
-            // The border only applies with chroma AND subsampling on that axis.
-            assert_eq!(
-                run_flags(true, (false, false)),
-                plain,
-                "seed {seed}: 4:4:4 has no border"
-            );
-            let mut g = geometry_of(narrow);
-            let mut d = SymbolDecoder::new(&data).unwrap();
-            let diff = read_explicit_mv(&mut d, -1).unwrap();
-            let v = {
+                let diff = read_explicit_mv(&mut d, -1).unwrap();
                 let r = default_vector(narrow.y4, false);
-                MotionVector::new(r.x + diff.x, r.y + diff.y)
-            };
-            assert_eq!(plain, clip_to_decoded_area(v, &g), "seed {seed}");
-            g.chroma_border_x = true;
-            g.chroma_border_y = true;
-            assert_eq!(bordered, clip_to_decoded_area(v, &g), "seed {seed}");
-            differing += usize::from(plain != bordered);
+                let v = MotionVector::new(r.x + diff.x, r.y + diff.y);
+                let clip = |bx: bool, by: bool| {
+                    let mut g = geometry_of(narrow);
+                    g.chroma_border_x = bx;
+                    g.chroma_border_y = by;
+                    clip_to_decoded_area(v, &g)
+                };
+                let label = format!("({x4},{y4}) seed {seed}");
+                assert_eq!(
+                    run_flags(false, (true, true)),
+                    clip(false, false),
+                    "{label}: no chroma"
+                );
+                assert_eq!(
+                    run_flags(true, (false, false)),
+                    clip(false, false),
+                    "{label}: 4:4:4"
+                );
+                assert_eq!(
+                    run_flags(true, (true, false)),
+                    clip(true, false),
+                    "{label}: x only"
+                );
+                assert_eq!(
+                    run_flags(true, (false, true)),
+                    clip(false, true),
+                    "{label}: y only"
+                );
+                assert_eq!(
+                    run_flags(true, (true, true)),
+                    clip(true, true),
+                    "{label}: both"
+                );
+                x_moved |= clip(true, false) != clip(false, false);
+                y_moved |= clip(false, true) != clip(false, false);
+            }
         }
-        assert!(differing > 0, "some seed must be moved by the border");
+        assert!(
+            x_moved && y_moved,
+            "each border must change some result: x {x_moved} y {y_moved}"
+        );
     }
 }

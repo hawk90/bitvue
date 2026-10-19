@@ -548,6 +548,14 @@ mod tests {
                 );
                 let leaves = r.leaves.unwrap();
                 assert_exact_cover(&leaves, (0, 0), (w, h), (64, 64));
+                // The tree is at most two splits deep: each side shrinks to a quarter at most.
+                let (start_w, start_h) = (w.min(64), h.min(64));
+                assert!(
+                    leaves
+                        .iter()
+                        .all(|b| b.width_px >= start_w / 4 && b.height_px >= start_h / 4),
+                    "seed {seed} {w}x{h}: a leaf is more than two splits below {start_w}x{start_h}"
+                );
                 shapes.insert((w, h, leaves.len()));
             }
         }
@@ -596,6 +604,43 @@ mod tests {
         assert!(
             fewer_than_full,
             "some seed must split into children beyond the frame edge"
+        );
+    }
+
+    #[test]
+    fn a_leaf_starting_exactly_on_the_frame_edge_is_not_coded() {
+        // Splitting the 64x64 tile puts children at unit 8 (and 16): frames 8 units tall and/or
+        // wide end exactly there.
+        let mut dropped = false;
+        for frame in [(8, 16), (16, 8), (8, 8)] {
+            for seed in 1..=40u64 {
+                let data = noise(seed, 96);
+                let r = run(
+                    &data,
+                    (0, 0),
+                    (64, 64),
+                    false,
+                    false,
+                    TxfmMode::Switchable,
+                    frame,
+                );
+                let leaves = r.leaves.unwrap();
+                assert_exact_cover(&leaves, (0, 0), (64, 64), frame);
+                let full = run(
+                    &data,
+                    (0, 0),
+                    (64, 64),
+                    false,
+                    false,
+                    TxfmMode::Switchable,
+                    (64, 64),
+                );
+                dropped |= leaves.len() < full.leaves.unwrap().len();
+            }
+        }
+        assert!(
+            dropped,
+            "some seed must split into children that start on the edge"
         );
     }
 }
