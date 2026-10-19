@@ -339,6 +339,15 @@ fn biased_partition_cdfs_have_the_requested_alphabet_and_end_at_the_scale() {
         let shares: Vec<u16> = cdf.cdf.windows(2).map(|w| w[1] - w[0]).collect();
         assert_eq!(shares.iter().max(), shares.first(), "{n}: {shares:?}");
     }
+    // The documented NONE shares: 60% for the 8x8 alphabet, 50% for the 10-symbol one.
+    assert_eq!(
+        PartitionCdf::biased_none(4).cdf[1],
+        (CDF_SCALE as f32 * 0.6) as u16
+    );
+    assert_eq!(
+        PartitionCdf::biased_none(10).cdf[1],
+        (CDF_SCALE as f32 * 0.5) as u16
+    );
     // The 10-symbol shape ends with the two small 4-way partitions, a few percent each.
     let ten = PartitionCdf::biased_none(10);
     for (name, share) in [
