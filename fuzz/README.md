@@ -29,7 +29,9 @@ a target means adding its `[[bin]]` entry, or that check fails. This does not ru
 
 ## Corpus
 
-`corpus/` and `artifacts/` are gitignored. Random bytes rarely get past the sequence header, so seed
+`corpus/` and `artifacts/` are gitignored. `scripts/fuzz_seed_corpus.py` regenerates the seeds described
+below from `test_data/av1_*.ivf` (40 frames per clip by default; nothing is copied into the repo).
+Random bytes rarely get past the sequence header, so seed
 `frame_analysis`, `obu_stream`, `syntax_parser` and `obu_parser` with the first frame payloads of
 `test_data/av1_*.ivf` (IVF frame data without the 12-byte frame header), and `ivf_parser`/`av1_decode`
 with whole files. Without seeds `frame_analysis` stays at shallow coverage.
