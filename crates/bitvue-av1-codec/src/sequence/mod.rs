@@ -123,6 +123,61 @@ mod tests {
         pack(&f)
     }
 
+    /// Like [`header`] with `initial_display_delay_present_flag` set, but the operating point's own
+    /// presence bit clear: no delay value follows.
+    fn header_with_clear_per_op_delay_flag() -> Vec<u8> {
+        let f: Vec<(u32, u8)> = vec![
+            (0, 3),  // seq_profile
+            (0, 1),  // still_picture
+            (0, 1),  // reduced_still_picture_header
+            (0, 1),  // timing_info_present_flag
+            (1, 1),  // initial_display_delay_present_flag
+            (0, 5),  // operating_points_cnt_minus_1
+            (0, 12), // operating_point_idc[0]
+            (0, 5),  // seq_level_idx[0]
+            (0, 1),  // initial_display_delay_present_for_this_op = 0
+            (3, 4),
+            (3, 4),
+            (15, 4),
+            (15, 4), // 16x16
+            (0, 1),  // frame_id_numbers_present_flag
+            (0, 1),
+            (0, 1),
+            (0, 1), // 128x128 sb, filter_intra, intra_edge_filter
+            (0, 1),
+            (0, 1),
+            (0, 1),
+            (0, 1), // interintra, masked, warped, dual filter
+            (0, 1), // enable_order_hint
+            (1, 1), // seq_choose_screen_content_tools
+            (0, 1),
+            (0, 1),
+            (0, 1), // superres, cdef, restoration
+            (0, 1),
+            (0, 1),
+            (0, 1),
+            (0, 1),
+            (0, 2),
+            (0, 1), // color_config
+            (0, 1), // film_grain_params_present_flag
+        ];
+        pack(&f)
+    }
+
+    #[test]
+    fn an_operating_point_can_opt_out_of_the_display_delay_the_sequence_announces() {
+        let seq = parse_sequence_header(&header_with_clear_per_op_delay_flag()).unwrap();
+        assert_eq!(seq.operating_points[0].initial_display_delay, None);
+        // No value was consumed: the frame size that follows is still 16x16.
+        assert_eq!((seq.max_frame_width, seq.max_frame_height), (16, 16));
+        // Same header, but with the per-op bit set, reads the 4-bit value and shifts everything.
+        let with_value = parse_sequence_header(&header(Some(0), None, (1, 0), (1, 0))).unwrap();
+        assert_eq!(
+            with_value.operating_points[0].initial_display_delay,
+            Some(1)
+        );
+    }
+
     #[test]
     fn the_initial_display_delay_of_an_operating_point_is_the_coded_value_plus_one() {
         let seq = parse_sequence_header(&header(Some(5), None, (1, 0), (1, 0))).unwrap();

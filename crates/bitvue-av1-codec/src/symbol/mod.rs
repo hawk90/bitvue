@@ -223,4 +223,108 @@ mod tests {
         assert_eq!(cdf[2], 1, "adaptation count after one read");
         assert_ne!(cdf[0], 32768 - 30531, "probability moved");
     }
+
+    // ---- read_partition: the four hasRows / hasCols branches (spec 5.11.4) ------------------
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_block_with_neither_rows_nor_columns_is_split_without_reading_anything() {
+        let data = noise(1, 32);
+        for log2 in 3..=7u8 {
+            for ctx in 0..4u8 {
+                let mut d = SymbolDecoder::new(&data).unwrap();
+                let before = decoder_state(&d);
+                let cdf_before = d.cdf_context.get_partition_cdf_mut(log2, ctx).to_vec();
+                assert_eq!(d.read_partition(log2, ctx, false, false).unwrap(), 3);
+                assert_eq!(
+                    decoder_state(&d),
+                    before,
+                    "log2 {log2} ctx {ctx}: no symbol read"
+                );
+                assert_eq!(
+                    d.cdf_context.get_partition_cdf_mut(log2, ctx),
+                    &cdf_before[..]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_fully_inside_block_reads_the_whole_alphabet_and_adapts_its_cdf() {
+        let mut seen = std::collections::BTreeSet::new();
+        for seed in 1..=64u64 {
+            let data = noise(seed, 64);
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let before = d.cdf_context.get_partition_cdf_mut(5, 1).to_vec();
+            let symbol = d.read_partition(5, 1, true, true).unwrap();
+            assert!(symbol <= 9, "seed {seed}: {symbol}");
+            assert_ne!(
+                d.cdf_context.get_partition_cdf_mut(5, 1),
+                &before[..],
+                "the CDF adapts"
+            );
+            // Same symbol as a plain adaptive read from the same state.
+            let mut r = SymbolDecoder::new(&data).unwrap();
+            let cdf = r.cdf_context.get_partition_cdf_mut(5, 1);
+            assert_eq!(r.decoder.read_symbol_adaptive(cdf).unwrap(), symbol);
+            seen.insert(symbol);
+        }
+        assert!(seen.len() >= 4, "{seen:?}");
+    }
+
+    #[test]
+    fn an_edge_block_reads_one_binary_symbol_and_leaves_the_cdf_alone() {
+        // (has_rows, has_cols, the non-split outcome: HORZ when only columns remain, VERT when
+        // only rows remain)
+        for (has_rows, has_cols, other) in [(false, true, 1u8), (true, false, 2u8)] {
+            let mut seen = std::collections::BTreeSet::new();
+            for seed in 1..=64u64 {
+                let data = noise(seed, 64);
+                for log2 in [3u8, 5, 7] {
+                    let mut d = SymbolDecoder::new(&data).unwrap();
+                    let cdf_before = d.cdf_context.get_partition_cdf_mut(log2, 2).to_vec();
+                    let got = d.read_partition(log2, 2, has_rows, has_cols).unwrap();
+                    assert!(got == 3 || got == other, "seed {seed} log2 {log2}: {got}");
+                    assert_eq!(
+                        d.cdf_context.get_partition_cdf_mut(log2, 2),
+                        &cdf_before[..],
+                        "edge reads are not adaptive"
+                    );
+
+                    // Reference: the binary symbol over the aggregated probability.
+                    let mut r = SymbolDecoder::new(&data).unwrap();
+                    let cdf = r.cdf_context.get_partition_cdf_mut(log2, 2).to_vec();
+                    let psum = if has_cols {
+                        cdf::split_or_horz_prob(&cdf)
+                    } else {
+                        cdf::split_or_vert_prob(&cdf)
+                    };
+                    let split = r.decoder.read_symbol(&[psum, 0, 0]).unwrap() == 1;
+                    assert_eq!(
+                        got,
+                        if split { 3 } else { other },
+                        "seed {seed} log2 {log2}"
+                    );
+                    assert_eq!(decoder_state(&d), decoder_state(&r), "one symbol consumed");
+                    seen.insert(got);
+                }
+            }
+            assert_eq!(
+                seen.len(),
+                2,
+                "rows {has_rows} cols {has_cols}: both outcomes occur"
+            );
+        }
+    }
 }

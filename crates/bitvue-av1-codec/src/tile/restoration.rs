@@ -538,4 +538,38 @@ mod tests {
             "only {complete} frames without an SGRPROJ unit"
         );
     }
+
+    #[test]
+    fn superres_with_a_restored_plane_is_an_error_but_an_unrestored_frame_is_not() {
+        let data = [0x5a_u8; 64];
+        let mut refs = [RestorationRef::default(); 3];
+
+        // Every plane None: nothing to read, superres or not.
+        let mut none = RestorationParams::none();
+        none.superres = true;
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let before = d.decoder.range;
+        read_superblock_restoration(&mut d, &none, &mut refs, 0, 0).unwrap();
+        assert_eq!(d.decoder.range, before, "no symbol was read");
+
+        // One restored plane: refused, whichever plane it is and wherever the unit starts.
+        for plane in 0..3 {
+            let mut p = params([64; 3], 128, 128);
+            p.types = [LoopRestorationType::None; 3];
+            p.types[plane] = LoopRestorationType::Wiener;
+            p.superres = true;
+            for (x, y) in [(0, 0), (64, 64), (7, 3)] {
+                let mut d = SymbolDecoder::new(&data).unwrap();
+                let err = read_superblock_restoration(&mut d, &p, &mut refs, x, y).unwrap_err();
+                assert!(
+                    matches!(&err, bitvue_engine::BitvueError::Decode(m) if m.contains("superres")),
+                    "plane {plane} at ({x},{y}): {err:?}"
+                );
+            }
+            // Without superres the same call is fine.
+            p.superres = false;
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            read_superblock_restoration(&mut d, &p, &mut refs, 0, 0).unwrap();
+        }
+    }
 }

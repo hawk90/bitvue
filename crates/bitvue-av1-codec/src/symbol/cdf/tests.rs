@@ -313,3 +313,43 @@ fn mv_component_cdfs_match_dav1d_defaults() {
     let other = context.get_mv_component_cdfs_mut(1).classes.clone();
     assert_eq!(context.get_mv_component_cdfs_mut(0).classes, other);
 }
+
+#[test]
+fn biased_partition_cdfs_have_the_requested_alphabet_and_end_at_the_scale() {
+    // 4x4 (one symbol), 8x8 (four) and the 10-symbol alphabet of 16x16 and larger.
+    for n in [1usize, 4, 10] {
+        let cdf = PartitionCdf::biased_none(n);
+        assert_eq!(cdf.num_symbols, n);
+        assert_eq!(cdf.cdf.len(), n + 1, "{n} symbols + the leading 0");
+        assert_eq!(cdf.cdf[0], 0);
+        assert_eq!(
+            *cdf.cdf.last().unwrap(),
+            CDF_SCALE,
+            "{n}: last entry is exactly 32768"
+        );
+        assert!(
+            cdf.cdf.windows(2).all(|w| w[0] <= w[1]),
+            "{n}: cumulative values never decrease: {:?}",
+            cdf.cdf
+        );
+    }
+    // NONE keeps the largest share in every multi-symbol alphabet.
+    for n in [4usize, 10] {
+        let cdf = PartitionCdf::biased_none(n);
+        let shares: Vec<u16> = cdf.cdf.windows(2).map(|w| w[1] - w[0]).collect();
+        assert_eq!(shares.iter().max(), shares.first(), "{n}: {shares:?}");
+    }
+    // The 10-symbol shape ends with the two small 4-way partitions, a few percent each.
+    let ten = PartitionCdf::biased_none(10);
+    for (name, share) in [
+        ("HORZ_4", ten.cdf[9] - ten.cdf[8]),
+        ("VERT_4", ten.cdf[10] - ten.cdf[9]),
+    ] {
+        let percent = f32::from(share) * 100.0 / f32::from(CDF_SCALE);
+        assert!(
+            (2.0..=5.0).contains(&percent),
+            "{name} {percent:.2}% of {:?}",
+            ten.cdf
+        );
+    }
+}

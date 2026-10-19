@@ -162,4 +162,28 @@ mod tests {
             assert_eq!(saved.kfym, start.kfym);
         }
     }
+
+    #[test]
+    fn resetting_clears_only_the_adaptation_counter_of_each_cdf() {
+        let mut cdf = vec![100u16, 200, 300, 7];
+        cdf.reset_counters();
+        assert_eq!(
+            cdf,
+            vec![100, 200, 300, 0],
+            "values stay, the counter is zeroed"
+        );
+
+        // An empty CDF has no counter slot: nothing to do, and no panic.
+        let mut empty: Vec<u16> = Vec::new();
+        empty.reset_counters();
+        assert!(empty.is_empty());
+
+        // Nested arrays reach every CDF.
+        let mut nested = [[vec![1u16, 9], vec![2, 8]], [vec![3, 7], vec![4, 6]]];
+        nested.reset_counters();
+        assert_eq!(
+            nested,
+            [[vec![1u16, 0], vec![2, 0]], [vec![3, 0], vec![4, 0]]]
+        );
+    }
 }
