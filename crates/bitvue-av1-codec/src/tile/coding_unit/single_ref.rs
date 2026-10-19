@@ -418,4 +418,299 @@ mod tests {
             RefFrame::Last2
         ));
     }
+
+    // ---- read_motion_mode_info ----------------------------------------------------------
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    /// rav1d's reference number of LAST, used for both the neighbours and the block.
+    const REF0: i8 = 0;
+
+    fn mi(w4: u32, h4: u32) -> MiRect {
+        MiRect {
+            x4: 8,
+            y4: 8,
+            width: w4,
+            height: h4,
+        }
+    }
+
+    /// A tile where the block at (8, 8) has an inter neighbour above (and to the left) whose single
+    /// reference is `neighbour_ref`; `inter == false` leaves every cell intra (the default).
+    fn tile(inter: bool, neighbour_ref: i8) -> TileContext {
+        let mut ctx = TileContext::new(64, 64);
+        ctx.set_frame_extent(256, 256);
+        ctx.set_tile_extent(0, 64, 0, 64);
+        if inter {
+            for (x4, y4, w4, h4) in [(0u32, 7u32, 64u32, 1u32), (7, 0, 1, 64)] {
+                ctx.set_intra_flag(x4, y4, w4, h4, false);
+                ctx.set_spatial_ref_block(
+                    x4,
+                    y4,
+                    w4,
+                    h4,
+                    neighbour_ref,
+                    -1,
+                    false,
+                    MotionVector::zero(),
+                    MotionVector::zero(),
+                );
+            }
+        }
+        ctx
+    }
+
+    fn frame(switchable: bool, allow_warp: bool) -> FrameCodingParams {
+        let mut f = FrameCodingParams::for_tests();
+        f.inter_mode_flags.switchable_motion_mode = switchable;
+        f.inter_mode_flags.allow_warped_motion = allow_warp;
+        f.mi_cols = 64;
+        f.mi_rows = 64;
+        f
+    }
+
+    fn cu(mode: PredictionMode) -> CodingUnit {
+        let mut cu = CodingUnit::new(32, 32, 16, 16);
+        cu.mode = mode;
+        cu.ref_frames = [RefFrame::Last, RefFrame::Intra];
+        cu
+    }
+
+    /// Returns `(is_warp, next 24 bits)`.
+    fn run(
+        data: &[u8],
+        ctx: &mut TileContext,
+        m: MiRect,
+        f: &FrameCodingParams,
+        cu: &CodingUnit,
+        interintra: bool,
+    ) -> (bool, u32) {
+        let mut d = SymbolDecoder::new(data).unwrap();
+        let warp = read_motion_mode_info(&mut d, ctx, m, f, REF0, cu, interintra).unwrap();
+        (warp, d.read_bools_n(24).unwrap())
+    }
+
+    fn untouched(data: &[u8]) -> u32 {
+        SymbolDecoder::new(data).unwrap().read_bools_n(24).unwrap()
+    }
+
+    #[test]
+    fn a_matching_neighbour_and_allow_warped_motion_read_motion_mode_otherwise_use_obmc() {
+        let m = mi(4, 4); // 16x16 -> size index 3
+        let (mut warp_seen, mut simple_seen) = (false, false);
+        for seed in 1..=48u64 {
+            let data = noise(seed, 64);
+            let mut r = SymbolDecoder::new(&data).unwrap();
+            let sym = r.read_motion_mode(3).unwrap();
+            let after_motion_mode = r.read_bools_n(24).unwrap();
+            let mut r = SymbolDecoder::new(&data).unwrap();
+            r.read_obmc(3).unwrap();
+            let after_obmc = r.read_bools_n(24).unwrap();
+
+            // warp allowed: neighbour references the block's own reference.
+            let (warp, bits) = run(
+                &data,
+                &mut tile(true, REF0),
+                m,
+                &frame(true, true),
+                &cu(PredictionMode::NewMv),
+                false,
+            );
+            assert_eq!(warp, sym == 2, "seed {seed}");
+            assert_eq!(
+                bits, after_motion_mode,
+                "seed {seed}: one motion_mode symbol"
+            );
+            warp_seen |= warp;
+            simple_seen |= !warp;
+
+            // neighbour uses another reference, or warping is off: OBMC bit instead.
+            for (label, ctx, f) in [
+                ("other reference", tile(true, 3), frame(true, true)),
+                ("warp disabled", tile(true, REF0), frame(true, false)),
+            ] {
+                let mut ctx = ctx;
+                let (warp, bits) = run(&data, &mut ctx, m, &f, &cu(PredictionMode::NewMv), false);
+                assert!(!warp, "seed {seed}: {label}");
+                assert_eq!(bits, after_obmc, "seed {seed}: {label} reads use_obmc");
+            }
+        }
+        assert!(
+            warp_seen && simple_seen,
+            "seeds must decode both warp and non-warp"
+        );
+    }
+
+    #[test]
+    fn every_gate_that_fails_reads_nothing() {
+        use crate::frame_header_full::GM_TYPE_TRANSLATION;
+        let data = noise(4, 64);
+        let none = untouched(&data);
+        let m = mi(4, 4);
+        let ok_cu = cu(PredictionMode::NewMv);
+
+        // Sanity: the baseline does read.
+        assert_ne!(
+            run(
+                &data,
+                &mut tile(true, REF0),
+                m,
+                &frame(true, true),
+                &ok_cu,
+                false
+            )
+            .1,
+            none
+        );
+
+        let mut rotzoom = frame(true, true);
+        rotzoom.inter_mode_flags.gm_type[RefFrame::Last as usize] = GM_TYPE_TRANSLATION + 1;
+        let cases: Vec<(
+            &str,
+            TileContext,
+            MiRect,
+            FrameCodingParams,
+            CodingUnit,
+            bool,
+        )> = vec![
+            (
+                "not switchable",
+                tile(true, REF0),
+                m,
+                frame(false, true),
+                ok_cu.clone(),
+                false,
+            ),
+            (
+                "interintra",
+                tile(true, REF0),
+                m,
+                frame(true, true),
+                ok_cu.clone(),
+                true,
+            ),
+            (
+                "global motion forces simple",
+                tile(true, REF0),
+                m,
+                rotzoom,
+                cu(PredictionMode::GlobalMv),
+                false,
+            ),
+            (
+                "4 px wide",
+                tile(true, REF0),
+                mi(1, 4),
+                frame(true, true),
+                ok_cu.clone(),
+                false,
+            ),
+            (
+                "4 px tall",
+                tile(true, REF0),
+                mi(4, 1),
+                frame(true, true),
+                ok_cu.clone(),
+                false,
+            ),
+            (
+                "only intra neighbours",
+                tile(false, REF0),
+                m,
+                frame(true, true),
+                ok_cu.clone(),
+                false,
+            ),
+        ];
+        for (label, mut ctx, m, f, c, interintra) in cases {
+            let (warp, bits) = run(&data, &mut ctx, m, &f, &c, interintra);
+            assert!(!warp, "{label}");
+            assert_eq!(bits, none, "{label}: no symbol");
+        }
+    }
+
+    #[test]
+    fn a_block_shape_without_a_motion_mode_cdf_reads_nothing_even_when_eligible() {
+        // 128x32 (32 x 8 units) passes every gate but is not an AV1 block size, so no per-size CDF
+        // exists: neither the warp nor the OBMC read can be made.
+        let data = noise(6, 64);
+        let none = untouched(&data);
+        for allow_warp in [true, false] {
+            let (warp, bits) = run(
+                &data,
+                &mut tile(true, REF0),
+                mi(32, 8),
+                &frame(true, allow_warp),
+                &cu(PredictionMode::NewMv),
+                false,
+            );
+            assert!(!warp, "allow_warp {allow_warp}");
+            assert_eq!(bits, none, "allow_warp {allow_warp}");
+        }
+        assert_eq!(motion_mode_size_index(32, 8), None);
+        assert_eq!(motion_mode_size_index(8, 2), Some(15));
+        assert_eq!(motion_mode_size_index(2, 2), Some(0));
+    }
+
+    #[test]
+    fn a_single_overlappable_neighbour_on_either_edge_is_enough() {
+        let m = mi(4, 4);
+        let data = noise(8, 64);
+        let none = untouched(&data);
+        // Only the row above is inter.
+        let mut above_only = TileContext::new(64, 64);
+        above_only.set_frame_extent(256, 256);
+        above_only.set_tile_extent(0, 64, 0, 64);
+        above_only.set_intra_flag(9, 7, 1, 1, false); // x4 + 1: the odd offset the scan checks
+        let (_, bits) = run(
+            &data,
+            &mut above_only,
+            m,
+            &frame(true, false),
+            &cu(PredictionMode::NewMv),
+            false,
+        );
+        assert_ne!(bits, none, "above neighbour at the odd offset");
+
+        // Only the column to the left.
+        let mut left_only = TileContext::new(64, 64);
+        left_only.set_frame_extent(256, 256);
+        left_only.set_tile_extent(0, 64, 0, 64);
+        left_only.set_intra_flag(7, 9, 1, 1, false);
+        let (_, bits) = run(
+            &data,
+            &mut left_only,
+            m,
+            &frame(true, false),
+            &cu(PredictionMode::NewMv),
+            false,
+        );
+        assert_ne!(bits, none, "left neighbour at the odd offset");
+
+        // An inter cell at an even offset is not looked at.
+        let mut even = TileContext::new(64, 64);
+        even.set_frame_extent(256, 256);
+        even.set_tile_extent(0, 64, 0, 64);
+        even.set_intra_flag(8, 7, 1, 1, false);
+        even.set_intra_flag(7, 8, 1, 1, false);
+        let (_, bits) = run(
+            &data,
+            &mut even,
+            m,
+            &frame(true, false),
+            &cu(PredictionMode::NewMv),
+            false,
+        );
+        assert_eq!(bits, none, "only odd-offset cells count");
+    }
 }

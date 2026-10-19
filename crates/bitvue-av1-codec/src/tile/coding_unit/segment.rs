@@ -174,4 +174,256 @@ mod tests {
         assert_eq!(neg_deinterleave(4, 5, 8), 3); // diff<=4, even: ref - diff/2
         assert_eq!(neg_deinterleave(5, 5, 8), 2); // diff>4: max - (diff+1)
     }
+
+    // ---- the three entry points ---------------------------------------------------------
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    fn seg(update_map: bool, pre_skip: bool, temporal: bool, last_active: u8) -> SegmentationInfo {
+        SegmentationInfo {
+            enabled: true,
+            update_map,
+            temporal_update: temporal,
+            seg_id_pre_skip: pre_skip,
+            last_active_seg_id: last_active,
+            ..SegmentationInfo::default()
+        }
+    }
+
+    fn mi(x4: u32, y4: u32) -> MiRect {
+        MiRect {
+            x4,
+            y4,
+            width: 2,
+            height: 2,
+        }
+    }
+
+    fn bits(decoder: &mut SymbolDecoder) -> u32 {
+        decoder.read_bools_n(24).unwrap()
+    }
+
+    #[test]
+    fn disabled_segmentation_reads_nothing_at_either_position() {
+        let data = noise(1, 32);
+        let untouched = bits(&mut SymbolDecoder::new(&data).unwrap());
+        let off = SegmentationInfo::default();
+        for skip in [false, true] {
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(16, 16);
+            assert_eq!(
+                read_pre_skip(&mut d, &mut ctx, mi(0, 0), off).unwrap(),
+                None
+            );
+            assert_eq!(
+                read_post_skip(&mut d, &mut ctx, mi(0, 0), off, skip).unwrap(),
+                None
+            );
+            assert_eq!(bits(&mut d), untouched);
+        }
+    }
+
+    #[test]
+    fn without_update_map_the_id_is_zero_and_nothing_is_read() {
+        let data = noise(2, 32);
+        let untouched = bits(&mut SymbolDecoder::new(&data).unwrap());
+        let s = seg(false, true, true, 7);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let mut ctx = TileContext::new(16, 16);
+        // Pre-skip reports 0 and records it; post-skip leaves the id alone.
+        assert_eq!(
+            read_pre_skip(&mut d, &mut ctx, mi(4, 4), s).unwrap(),
+            Some(0)
+        );
+        assert_eq!(
+            read_post_skip(&mut d, &mut ctx, mi(4, 4), s, false).unwrap(),
+            None
+        );
+        // The 0 is recorded: with the left and above-left cells written and the cell above not,
+        // exactly one pair agrees (context 1); with nothing recorded all three would agree (2).
+        assert_eq!(ctx.segment_id_context(6, 5).0, 1);
+        assert_eq!(bits(&mut d), untouched);
+        assert_eq!(ctx.segment_id_context(5, 4).1, 0);
+    }
+
+    #[test]
+    fn the_read_happens_before_skip_only_when_seg_id_pre_skip_is_set() {
+        let data = noise(3, 32);
+        let untouched = bits(&mut SymbolDecoder::new(&data).unwrap());
+
+        // seg_id_pre_skip: pre-skip reads, post-skip does not.
+        let s = seg(true, true, false, 7);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let mut ctx = TileContext::new(16, 16);
+        assert!(read_pre_skip(&mut d, &mut ctx, mi(0, 0), s)
+            .unwrap()
+            .is_some());
+        let after_read = bits(&mut d);
+        assert_ne!(after_read, untouched, "a symbol was consumed");
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        assert_eq!(
+            read_post_skip(&mut d, &mut ctx, mi(0, 0), s, false).unwrap(),
+            None
+        );
+        assert_eq!(bits(&mut d), untouched);
+
+        // !seg_id_pre_skip: the other way round.
+        let s = seg(true, false, false, 7);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let mut ctx = TileContext::new(16, 16);
+        assert_eq!(read_pre_skip(&mut d, &mut ctx, mi(0, 0), s).unwrap(), None);
+        assert_eq!(bits(&mut d), untouched);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        assert!(read_post_skip(&mut d, &mut ctx, mi(0, 0), s, false)
+            .unwrap()
+            .is_some());
+        assert_eq!(
+            bits(&mut d),
+            after_read,
+            "same symbol, same position in the stream"
+        );
+    }
+
+    #[test]
+    fn a_decoded_id_is_the_deinterleaved_difference_against_the_neighbour_prediction() {
+        let s = seg(true, true, false, 7);
+        let mut seen = std::collections::BTreeSet::new();
+        for seed in 1..=64u64 {
+            let data = noise(seed, 48);
+            let (ctx0, pred) = TileContext::new(16, 16).segment_id_context(0, 0);
+            assert_eq!((ctx0, pred), (0, 0), "no neighbours");
+            let diff = SymbolDecoder::new(&data)
+                .unwrap()
+                .read_segment_id_diff(0)
+                .unwrap();
+            let expected = neg_deinterleave(diff as i32, 0, 8);
+
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(16, 16);
+            let id = read_pre_skip(&mut d, &mut ctx, mi(0, 0), s)
+                .unwrap()
+                .unwrap();
+            assert_eq!(id as i32, expected, "seed {seed}");
+            // The id is recorded for the neighbours' prediction.
+            assert_eq!(ctx.segment_id_context(2, 0).1, id, "seed {seed}");
+            seen.insert(id);
+        }
+        assert!(seen.len() >= 3, "seeds should decode several ids: {seen:?}");
+    }
+
+    #[test]
+    fn an_id_beyond_last_active_seg_id_is_reported_as_zero() {
+        // last_active_seg_id = 0: only id 0 exists, any non-zero difference decodes out of range.
+        let s = seg(true, true, false, 0);
+        let mut out_of_range = 0;
+        for seed in 1..=64u64 {
+            let data = noise(seed, 48);
+            let diff = SymbolDecoder::new(&data)
+                .unwrap()
+                .read_segment_id_diff(0)
+                .unwrap();
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(16, 16);
+            let id = read_pre_skip(&mut d, &mut ctx, mi(0, 0), s)
+                .unwrap()
+                .unwrap();
+            assert_eq!(id, 0, "seed {seed} diff {diff}");
+            // The id is still consumed from the stream and recorded as 0.
+            assert_eq!(ctx.segment_id_context(2, 0).1, 0);
+            out_of_range += usize::from(diff != 0);
+        }
+        assert!(
+            out_of_range > 0,
+            "some seed must decode a non-zero difference"
+        );
+
+        // And with last_active_seg_id = 2 the largest valid id is 2, never 3..=7.
+        let s = seg(true, true, false, 2);
+        for seed in 1..=64u64 {
+            let data = noise(seed, 48);
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(16, 16);
+            let id = read_pre_skip(&mut d, &mut ctx, mi(0, 0), s)
+                .unwrap()
+                .unwrap();
+            assert!(id <= 2, "seed {seed}: {id}");
+        }
+    }
+
+    #[test]
+    fn a_skipped_block_takes_the_predicted_id_without_reading_the_difference() {
+        let s = seg(true, false, false, 7);
+        for seed in 1..=16u64 {
+            let data = noise(seed, 48);
+            let untouched = bits(&mut SymbolDecoder::new(&data).unwrap());
+            let mut ctx = TileContext::new(16, 16);
+            // Give the left neighbour id 3 so the prediction is not trivially 0.
+            ctx.set_segment_id(0, 0, 2, 2, 3);
+            let (_, pred) = ctx.segment_id_context(2, 0);
+            assert_eq!(pred, 3);
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let id = read_post_skip(&mut d, &mut ctx, mi(2, 0), s, true)
+                .unwrap()
+                .unwrap();
+            assert_eq!(id, 3);
+            assert_eq!(bits(&mut d), untouched, "skip: no segment_id_diff symbol");
+        }
+    }
+
+    #[test]
+    fn temporal_update_reads_seg_pred_and_a_predicted_block_reports_zero() {
+        let s = seg(true, true, true, 7);
+        let (mut predicted, mut explicit) = (0, 0);
+        for seed in 1..=64u64 {
+            let data = noise(seed, 48);
+            let mut r = SymbolDecoder::new(&data).unwrap();
+            let seg_pred = r.read_seg_pred(0).unwrap();
+
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(16, 16);
+            let id = read_pre_skip(&mut d, &mut ctx, mi(0, 0), s)
+                .unwrap()
+                .unwrap();
+            if seg_pred {
+                predicted += 1;
+                assert_eq!(id, 0, "seed {seed}: temporal prediction reports 0");
+                assert_eq!(
+                    bits(&mut d),
+                    bits(&mut r),
+                    "seed {seed}: no difference symbol"
+                );
+            } else {
+                explicit += 1;
+                let diff = r.read_segment_id_diff(0).unwrap();
+                assert_eq!(
+                    id as i32,
+                    neg_deinterleave(diff as i32, 0, 8),
+                    "seed {seed}"
+                );
+            }
+        }
+        assert!(
+            predicted > 0 && explicit > 0,
+            "{predicted} predicted / {explicit} explicit"
+        );
+
+        // A skipped block never reads seg_pred: post-skip with skip == true consumes nothing.
+        let data = noise(7, 48);
+        let untouched = bits(&mut SymbolDecoder::new(&data).unwrap());
+        let s = seg(true, false, true, 7);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let mut ctx = TileContext::new(16, 16);
+        read_post_skip(&mut d, &mut ctx, mi(0, 0), s, true).unwrap();
+        assert_eq!(bits(&mut d), untouched);
+    }
 }

@@ -287,4 +287,140 @@ mod tests {
         }
         assert!(compound_mode_from_symbol(8).is_err());
     }
+
+    // ---- read_compound_drl_idx ----------------------------------------------------------
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    /// Spec 5.11.23's DRL loop, written out for the two mode families. `ctx` is the context every
+    /// position gets from an all-zero-weight stack.
+    fn spec_drl(decoder: &mut SymbolDecoder, new_new: bool, near: bool, n_mvs: usize) -> usize {
+        let stack = [CompoundMvStackEntry::default(); 8];
+        let ctx = |idx| crate::tile::context::get_compound_drl_context(&stack, idx);
+        let mut ref_mv_idx = 0;
+        if new_new {
+            for idx in 0..2 {
+                if n_mvs > idx + 1 {
+                    if decoder.read_drl_bit(ctx(idx)).unwrap() {
+                        ref_mv_idx = idx + 1;
+                    } else {
+                        ref_mv_idx = idx;
+                        break;
+                    }
+                }
+            }
+        } else if near {
+            ref_mv_idx = 1;
+            for idx in 1..3 {
+                if n_mvs > idx + 1 {
+                    if decoder.read_drl_bit(ctx(idx)).unwrap() {
+                        ref_mv_idx = idx + 1;
+                    } else {
+                        ref_mv_idx = idx;
+                        break;
+                    }
+                }
+            }
+        }
+        ref_mv_idx
+    }
+
+    #[test]
+    fn the_compound_drl_index_follows_the_specs_loop_for_every_candidate_count() {
+        use MvKind::{Global, Near, Nearest, New};
+        let stack = [CompoundMvStackEntry::default(); 8];
+        // (L0 kind, L1 kind, new_new, has_nearmv)
+        let kinds = [
+            (New, New, true, false),
+            (Near, Near, false, true),
+            (Near, New, false, true),
+            (New, Near, false, true),
+            (Nearest, Nearest, false, false),
+            (Nearest, New, false, false),
+            (New, Nearest, false, false),
+            (Global, Global, false, false),
+        ];
+        let mut results = std::collections::BTreeSet::new();
+        for seed in 1..=24u64 {
+            let data = noise(seed, 64);
+            for (l0, l1, new_new, near) in kinds {
+                for n_mvs in 0..=8usize {
+                    let mut d = SymbolDecoder::new(&data).unwrap();
+                    let got =
+                        read_compound_drl_idx(&mut d, &stack, n_mvs, Some(l0), Some(l1)).unwrap();
+                    let mut r = SymbolDecoder::new(&data).unwrap();
+                    let want = spec_drl(&mut r, new_new, near, n_mvs);
+                    assert_eq!(got, want, "seed {seed} {l0:?}/{l1:?} n_mvs {n_mvs}");
+                    assert_eq!(
+                        d.read_bools_n(24).unwrap(),
+                        r.read_bools_n(24).unwrap(),
+                        "seed {seed} {l0:?}/{l1:?} n_mvs {n_mvs}: same bits consumed"
+                    );
+                    results.insert((new_new, near, n_mvs, got));
+                }
+            }
+        }
+        // NEW_NEW reaches 0, 1 and 2; NEAR reaches 1, 2 and 3 once the list is long enough.
+        for want in [
+            (true, false, 3, 0),
+            (true, false, 3, 1),
+            (true, false, 3, 2),
+        ] {
+            assert!(results.contains(&want), "{want:?} never produced");
+        }
+        for want in [
+            (false, true, 4, 1),
+            (false, true, 4, 2),
+            (false, true, 4, 3),
+        ] {
+            assert!(results.contains(&want), "{want:?} never produced");
+        }
+    }
+
+    #[test]
+    fn a_single_candidate_means_no_drl_symbols_at_all() {
+        let stack = [CompoundMvStackEntry::default(); 8];
+        let data = noise(1, 64);
+        let untouched = SymbolDecoder::new(&data).unwrap().read_bools_n(24).unwrap();
+        for n_mvs in 0..=1usize {
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let idx =
+                read_compound_drl_idx(&mut d, &stack, n_mvs, Some(MvKind::New), Some(MvKind::New))
+                    .unwrap();
+            assert_eq!(idx, 0);
+            assert_eq!(
+                d.read_bools_n(24).unwrap(),
+                untouched,
+                "NEW_NEW with {n_mvs} candidates"
+            );
+        }
+        // NEAR starts at index 1 and needs more than two candidates to read anything.
+        for n_mvs in 0..=2usize {
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let idx = read_compound_drl_idx(
+                &mut d,
+                &stack,
+                n_mvs,
+                Some(MvKind::Near),
+                Some(MvKind::Near),
+            )
+            .unwrap();
+            assert_eq!(idx, 1);
+            assert_eq!(
+                d.read_bools_n(24).unwrap(),
+                untouched,
+                "NEAR with {n_mvs} candidates"
+            );
+        }
+    }
 }

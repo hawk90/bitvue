@@ -219,4 +219,114 @@ mod tests {
             RefFrame::Golden
         ));
     }
+
+    // ---- needs_interp_filter ------------------------------------------------------------
+
+    #[test]
+    fn global_modes_read_a_filter_only_for_minimal_blocks_or_translation_motion() {
+        use crate::frame_header_full::{GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION};
+        let gm = |last: u8, golden: u8| {
+            let mut g = [GM_TYPE_IDENTITY; 8];
+            g[RefFrame::Last as usize] = last;
+            g[RefFrame::Golden as usize] = golden;
+            g
+        };
+        let (last, golden) = (RefFrame::Last, RefFrame::Golden);
+        let rotzoom = GM_TYPE_TRANSLATION + 1;
+
+        // Every other mode always reads, whatever the global motion says.
+        for mode in [
+            PredictionMode::NewMv,
+            PredictionMode::NearestMv,
+            PredictionMode::NearMv,
+            PredictionMode::NewNewMv,
+            PredictionMode::NearNearMv,
+        ] {
+            assert!(
+                needs_interp_filter(mode, 4, 4, &gm(rotzoom, rotzoom), last, golden),
+                "{mode:?}"
+            );
+        }
+
+        // GLOBALMV: minimal-size block, or TRANSLATION on its (first) reference.
+        let g = PredictionMode::GlobalMv;
+        assert!(
+            needs_interp_filter(g, 1, 4, &gm(rotzoom, rotzoom), last, golden),
+            "4xN is minimal"
+        );
+        assert!(
+            needs_interp_filter(g, 4, 1, &gm(rotzoom, rotzoom), last, golden),
+            "Nx4 is minimal"
+        );
+        assert!(needs_interp_filter(
+            g,
+            4,
+            4,
+            &gm(GM_TYPE_TRANSLATION, rotzoom),
+            last,
+            golden
+        ));
+        assert!(
+            !needs_interp_filter(
+                g,
+                4,
+                4,
+                &gm(GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION),
+                last,
+                golden
+            ),
+            "only ref0 counts for GLOBALMV"
+        );
+        assert!(!needs_interp_filter(
+            g,
+            4,
+            4,
+            &gm(rotzoom, rotzoom),
+            last,
+            golden
+        ));
+        assert!(
+            !needs_interp_filter(g, 2, 2, &gm(rotzoom, rotzoom), last, golden),
+            "8x8 is not minimal"
+        );
+
+        // GLOBAL_GLOBALMV: minimal, or TRANSLATION on either reference.
+        let gg = PredictionMode::GlobalGlobalMv;
+        assert!(
+            needs_interp_filter(gg, 1, 8, &gm(rotzoom, rotzoom), last, golden),
+            "minimal alone is enough"
+        );
+        assert!(needs_interp_filter(
+            gg,
+            8,
+            1,
+            &gm(rotzoom, rotzoom),
+            last,
+            golden
+        ));
+        assert!(
+            needs_interp_filter(gg, 4, 4, &gm(GM_TYPE_TRANSLATION, rotzoom), last, golden),
+            "ref0"
+        );
+        assert!(
+            needs_interp_filter(gg, 4, 4, &gm(rotzoom, GM_TYPE_TRANSLATION), last, golden),
+            "ref1"
+        );
+        assert!(!needs_interp_filter(
+            gg,
+            4,
+            4,
+            &gm(rotzoom, GM_TYPE_IDENTITY),
+            last,
+            golden
+        ));
+        assert!(!needs_interp_filter(
+            gg,
+            4,
+            4,
+            &gm(GM_TYPE_IDENTITY, GM_TYPE_IDENTITY),
+            last,
+            golden
+        ));
+    }
 }

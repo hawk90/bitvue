@@ -185,4 +185,205 @@ mod tests {
         .unwrap();
         assert_eq!(sb.cdef_idx, [-1; 4]);
     }
+
+    // ---- read_delta_q_lf ----------------------------------------------------------------
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    fn params(delta_q: bool, lf: bool, multi: bool, mono: bool) -> FrameCodingParams {
+        let mut f = FrameCodingParams::for_tests();
+        f.delta_q_enabled = delta_q;
+        f.delta_lf_present = lf;
+        f.delta_lf_multi = multi;
+        f.tx_type_flags.mono_chrome = mono;
+        f
+    }
+
+    /// What the decoder yields next, as a fingerprint of how many symbols were consumed so far.
+    fn next_bits(decoder: &mut SymbolDecoder) -> u32 {
+        decoder.read_bools_n(24).unwrap()
+    }
+
+    /// `read_delta_q_lf` against a decoder that performs the spec reads by hand: one `delta_q`,
+    /// then `lf_indices` (the `delta_lf` CDF index of every component read).
+    fn assert_matches_manual_reads(
+        data: &[u8],
+        frame: &FrameCodingParams,
+        lf_indices: &[usize],
+        current_qp: i16,
+    ) {
+        let sb = SuperblockCtx::new(0, 0, 64);
+        let mut got = SymbolDecoder::new(data).unwrap();
+        let qp = read_delta_q_lf(&mut got, &sb, mi(0, 0, 4, 4), false, frame, current_qp);
+
+        let mut want = SymbolDecoder::new(data).unwrap();
+        let delta = want.read_delta_q().unwrap();
+        for &i in lf_indices {
+            want.read_delta_lf(i).unwrap();
+        }
+        assert_eq!(qp, (current_qp + delta).clamp(0, 255), "{lf_indices:?}");
+        assert_eq!(next_bits(&mut got), next_bits(&mut want), "{lf_indices:?}");
+    }
+
+    #[test]
+    fn delta_q_is_read_only_for_the_first_block_of_a_superblock_that_is_not_a_skipped_full_one() {
+        let sb = SuperblockCtx::new(64, 64, 64); // x4 = y4 = 16, size4 = 16
+        let frame_on = params(true, false, false, false);
+        for seed in 1..=6u64 {
+            let data = noise(seed, 48);
+            let mut reference = SymbolDecoder::new(&data).unwrap();
+            let delta = reference.read_delta_q().unwrap();
+            let after_read = next_bits(&mut reference);
+            let untouched = next_bits(&mut SymbolDecoder::new(&data).unwrap());
+
+            // (mi, skip, frame, is read?)
+            let cases = [
+                (mi(16, 16, 16, 16), false, &frame_on, true), // whole superblock, coded
+                (mi(16, 16, 16, 16), true, &frame_on, false), // whole superblock, skipped
+                (mi(16, 16, 8, 8), true, &frame_on, true),    // smaller block: skip is irrelevant
+                (mi(16, 16, 16, 8), true, &frame_on, true),   // only one side is full-size
+                (mi(20, 16, 8, 8), false, &frame_on, false),  // not the first block
+                (mi(16, 20, 8, 8), false, &frame_on, false),
+                (
+                    mi(16, 16, 16, 16),
+                    false,
+                    &params(false, true, true, false),
+                    false,
+                ), // disabled
+            ];
+            for (n, (rect, skip, frame, read)) in cases.iter().enumerate() {
+                let mut d = SymbolDecoder::new(&data).unwrap();
+                let qp = read_delta_q_lf(&mut d, &sb, *rect, *skip, frame, 100);
+                if *read {
+                    assert_eq!(qp, (100 + delta).clamp(0, 255), "seed {seed} case {n}");
+                    assert_eq!(next_bits(&mut d), after_read, "seed {seed} case {n}");
+                } else {
+                    assert_eq!(qp, 100, "seed {seed} case {n}");
+                    assert_eq!(next_bits(&mut d), untouched, "seed {seed} case {n}");
+                }
+            }
+            assert_ne!(
+                after_read, untouched,
+                "seed {seed}: the read must be observable"
+            );
+        }
+    }
+
+    #[test]
+    fn delta_q_result_is_clamped_to_the_qindex_range() {
+        let (mut hit_low, mut hit_high) = (false, false);
+        for seed in 1..=64u64 {
+            let data = noise(seed, 48);
+            let delta = SymbolDecoder::new(&data).unwrap().read_delta_q().unwrap();
+            let sb = SuperblockCtx::new(0, 0, 64);
+            let frame = params(true, false, false, false);
+            for current in [0i16, 255] {
+                let mut d = SymbolDecoder::new(&data).unwrap();
+                let qp = read_delta_q_lf(&mut d, &sb, mi(0, 0, 4, 4), false, &frame, current);
+                assert!((0..=255).contains(&qp));
+                assert_eq!(qp, (current + delta).clamp(0, 255));
+                hit_low |= current + delta < 0;
+                hit_high |= current + delta > 255;
+            }
+        }
+        assert!(hit_low && hit_high, "the seeds must exercise both clamps");
+    }
+
+    #[test]
+    fn delta_lf_component_count_follows_multi_and_monochrome() {
+        // (delta_lf_multi, mono_chrome) -> the delta_lf CDF indices spec 5.11.38 reads.
+        let cases: [(bool, bool, &[usize]); 4] = [
+            (false, false, &[0]),
+            (false, true, &[0]),
+            (true, false, &[1, 2, 3, 4]),
+            (true, true, &[1, 2]),
+        ];
+        for seed in 1..=4u64 {
+            let data = noise(seed, 64);
+            for (multi, mono, indices) in cases {
+                let frame = params(true, true, multi, mono);
+                assert_matches_manual_reads(&data, &frame, indices, 100);
+            }
+            // The fingerprint tells the counts apart: reading one component fewer or more
+            // leaves the decoder somewhere else.
+            let bits = |lf: &[usize]| {
+                let mut d = SymbolDecoder::new(&data).unwrap();
+                d.read_delta_q().unwrap();
+                for &i in lf {
+                    d.read_delta_lf(i).unwrap();
+                }
+                next_bits(&mut d)
+            };
+            assert_ne!(bits(&[1, 2]), bits(&[1, 2, 3, 4]), "seed {seed}");
+            // Each index owns its own adapting CDF: four reads of one CDF drift away from one read of
+            // each of four.
+            assert_ne!(bits(&[0, 0, 0, 0]), bits(&[1, 2, 3, 4]), "seed {seed}");
+        }
+    }
+
+    #[test]
+    fn delta_lf_is_not_read_without_delta_lf_present() {
+        let data = noise(3, 48);
+        let frame = params(true, false, true, false);
+        assert_matches_manual_reads(&data, &frame, &[], 100);
+    }
+
+    #[test]
+    fn a_broken_delta_q_cdf_keeps_the_current_qp_and_the_delta_lf_reads_still_run() {
+        let data = noise(5, 48);
+        let sb = SuperblockCtx::new(0, 0, 64);
+        let frame = params(true, true, false, false);
+
+        let mut got = SymbolDecoder::new(&data).unwrap();
+        got.cdf_context.get_delta_q_cdf_mut().fill(32768);
+        assert!(
+            got.read_delta_q().is_err(),
+            "the injected CDF must overrun the alphabet"
+        );
+        let mut got = SymbolDecoder::new(&data).unwrap();
+        got.cdf_context.get_delta_q_cdf_mut().fill(32768);
+        let qp = read_delta_q_lf(&mut got, &sb, mi(0, 0, 4, 4), false, &frame, 77);
+        assert_eq!(qp, 77);
+
+        // The failed read consumed nothing, so the single delta_lf read starts at the beginning.
+        let mut want = SymbolDecoder::new(&data).unwrap();
+        want.read_delta_lf(0).unwrap();
+        assert_eq!(next_bits(&mut got), next_bits(&mut want));
+    }
+
+    #[test]
+    fn a_broken_delta_lf_cdf_stops_the_remaining_components_but_keeps_the_qp() {
+        let data = noise(9, 64);
+        let sb = SuperblockCtx::new(0, 0, 64);
+        let frame = params(true, true, true, false);
+
+        let mut got = SymbolDecoder::new(&data).unwrap();
+        got.cdf_context.get_delta_lf_cdf_mut(2).fill(32768); // the second component
+        let qp = read_delta_q_lf(&mut got, &sb, mi(0, 0, 4, 4), false, &frame, 100);
+
+        // delta_q, component 1 (index 1) read normally; component 2 fails and ends the loop.
+        let mut want = SymbolDecoder::new(&data).unwrap();
+        let delta = want.read_delta_q().unwrap();
+        want.read_delta_lf(1).unwrap();
+        assert_eq!(
+            qp,
+            (100 + delta).clamp(0, 255),
+            "the qp survives a delta_lf failure"
+        );
+        assert_eq!(
+            next_bits(&mut got),
+            next_bits(&mut want),
+            "components 3 and 4 are skipped"
+        );
+    }
 }

@@ -182,4 +182,217 @@ mod tests {
         assert_eq!(blocks.len(), 1);
         assert_eq!((blocks[0].x4, blocks[0].y4), (0, 0));
     }
+
+    // ---- read_intra_tx_size -------------------------------------------------------------
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    fn rects(w: u32, h: u32) -> (BlockRect, MiRect) {
+        (
+            BlockRect {
+                x: 0,
+                y: 0,
+                width: w,
+                height: h,
+            },
+            MiRect {
+                x4: 0,
+                y4: 0,
+                width: w / 4,
+                height: h / 4,
+            },
+        )
+    }
+
+    fn frame_with(mode: TxfmMode, coded_lossless: bool) -> FrameCodingParams {
+        let mut f = FrameCodingParams::for_tests();
+        f.tx_type_flags.txfm_mode = mode;
+        f.tx_type_flags.coded_lossless = coded_lossless;
+        f.mi_cols = 64;
+        f.mi_rows = 64;
+        f
+    }
+
+    /// Runs `read_intra_tx_size` on a fresh context; returns the unit, the context and the next 24
+    /// raw bits the decoder yields (a fingerprint of how many symbols were consumed).
+    fn run(
+        data: &[u8],
+        w: u32,
+        h: u32,
+        frame: &FrameCodingParams,
+    ) -> (CodingUnit, TileContext, u32) {
+        let (rect, mi) = rects(w, h);
+        let mut decoder = SymbolDecoder::new(data).unwrap();
+        let mut ctx = TileContext::new(64, 64);
+        let mut cu = CodingUnit::new(0, 0, w, h);
+        read_intra_tx_size(&mut decoder, &mut ctx, rect, mi, frame, &mut cu).unwrap();
+        let bits = decoder.read_bools_n(24).unwrap();
+        (cu, ctx, bits)
+    }
+
+    fn dims(cu: &CodingUnit) -> Vec<(u32, u32)> {
+        let blocks = cu.tx_blocks.as_ref().expect("tx_blocks is always set");
+        blocks.iter().map(|b| (b.width_px, b.height_px)).collect()
+    }
+
+    #[test]
+    fn lossless_and_only_4x4_modes_use_4x4_transforms_without_reading_a_symbol() {
+        let data = noise(1, 32);
+        let untouched = SymbolDecoder::new(&data).unwrap().read_bools_n(24).unwrap();
+        for (mode, lossless) in [
+            (TxfmMode::Switchable, true), // lossless wins over any txfm_mode
+            (TxfmMode::Largest, true),
+            (TxfmMode::Only4x4, false),
+        ] {
+            let (cu, _, bits) = run(&data, 16, 8, &frame_with(mode, lossless));
+            assert_eq!(cu.tx_size, TxSize::Tx4x4, "{mode:?} {lossless}");
+            assert_eq!(dims(&cu), vec![(4, 4); 8], "16x8 block = 4x2 tiles of 4x4");
+            assert_eq!(bits, untouched, "{mode:?} {lossless}: nothing was read");
+        }
+    }
+
+    #[test]
+    fn largest_mode_uses_the_block_capped_at_64_without_reading_a_symbol() {
+        let data = noise(2, 32);
+        let untouched = SymbolDecoder::new(&data).unwrap().read_bools_n(24).unwrap();
+        let frame = frame_with(TxfmMode::Largest, false);
+        // (block w, h) -> (transform w, h, number of transforms)
+        let cases = [
+            (16, 8, 16, 8, 1),
+            (8, 32, 8, 32, 1),
+            (64, 64, 64, 64, 1),
+            (128, 64, 64, 64, 2),
+            (128, 128, 64, 64, 4),
+        ];
+        for (w, h, tw, th, n) in cases {
+            let (cu, _, bits) = run(&data, w, h, &frame);
+            assert_eq!(dims(&cu), vec![(tw, th); n], "{w}x{h}");
+            assert_eq!(
+                cu.tx_size,
+                TxSize::from_class(tx_size_class(tw.max(th)) as u8),
+                "{w}x{h}"
+            );
+            assert_eq!(bits, untouched, "{w}x{h}: nothing was read");
+        }
+    }
+
+    #[test]
+    fn switchable_mode_reads_a_depth_and_halves_the_larger_side_that_many_times() {
+        let frame = frame_with(TxfmMode::Switchable, false);
+        let mut seen_depths = std::collections::BTreeSet::new();
+        for seed in 1..=64u64 {
+            let data = noise(seed, 48);
+            // Reference: what the decoder reads for a fresh context.
+            let (w, h) = (32u32, 16u32);
+            let max_class = tx_size_class(w.max(h)) as u8;
+            let mut reference = SymbolDecoder::new(&data).unwrap();
+            let ctx = TileContext::new(64, 64).tx_size_context(
+                0,
+                0,
+                tx_size_class(w) as u8,
+                tx_size_class(h) as u8,
+            );
+            let depth = max_class - reference.read_tx_size(max_class, ctx).unwrap();
+            let after_symbol = reference.read_bools_n(24).unwrap();
+
+            let (cu, _, bits) = run(&data, w, h, &frame);
+            let (mut tw, mut th) = (w, h);
+            for _ in 0..depth {
+                (tw, th) = split_tx(tw, th);
+            }
+            assert_eq!(dims(&cu)[0], (tw, th), "seed {seed} depth {depth}");
+            assert_eq!(
+                bits, after_symbol,
+                "seed {seed}: exactly one symbol is read"
+            );
+            seen_depths.insert(depth);
+        }
+        assert!(
+            seen_depths.len() >= 2,
+            "seeds must produce different depths: {seen_depths:?}"
+        );
+    }
+
+    #[test]
+    fn a_4x4_block_in_switchable_mode_has_nothing_to_choose_and_reads_nothing() {
+        let data = noise(3, 32);
+        let untouched = SymbolDecoder::new(&data).unwrap().read_bools_n(24).unwrap();
+        let (cu, _, bits) = run(&data, 4, 4, &frame_with(TxfmMode::Switchable, false));
+        assert_eq!(cu.tx_size, TxSize::Tx4x4);
+        assert_eq!(dims(&cu), vec![(4, 4)]);
+        assert_eq!(bits, untouched);
+    }
+
+    #[test]
+    fn a_zero_sized_block_falls_back_to_4x4_instead_of_stepping_by_zero() {
+        let data = noise(4, 32);
+        for (w, h) in [(0, 16), (16, 0), (0, 0)] {
+            let (rect, mi) = rects(16, 16);
+            let rect = BlockRect {
+                width: w,
+                height: h,
+                ..rect
+            };
+            let mut decoder = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(64, 64);
+            let mut cu = CodingUnit::new(0, 0, 16, 16);
+            read_intra_tx_size(
+                &mut decoder,
+                &mut ctx,
+                rect,
+                mi,
+                &frame_with(TxfmMode::Largest, false),
+                &mut cu,
+            )
+            .unwrap();
+            assert_eq!(cu.tx_size, TxSize::Tx4x4, "{w}x{h}");
+            assert!(
+                cu.tx_blocks.as_ref().unwrap().is_empty(),
+                "{w}x{h}: no area, no blocks"
+            );
+        }
+    }
+
+    #[test]
+    fn the_chosen_size_is_written_to_the_tx_and_var_tx_contexts_of_later_blocks() {
+        let data = noise(5, 32);
+        let frame = frame_with(TxfmMode::Largest, false);
+        let (_, ctx, _) = run(&data, 16, 8, &frame); // 16x8 transform: width class 2, height class 1
+
+        // Above (width) is compared with x4 in 0..4, left (height) with y4 in 0..2.
+        assert_eq!(ctx.tx_size_context(0, 0, 2, 1), 2);
+        assert_eq!(ctx.tx_size_context(3, 1, 2, 1), 2);
+        assert_eq!(
+            ctx.tx_size_context(0, 0, 3, 1),
+            1,
+            "wider than the above neighbour"
+        );
+        assert_eq!(
+            ctx.tx_size_context(0, 0, 2, 2),
+            1,
+            "taller than the left neighbour"
+        );
+        assert_eq!(ctx.tx_size_context(0, 0, 3, 2), 0);
+        assert_eq!(
+            ctx.tx_size_context(4, 2, 0, 0),
+            0,
+            "outside the block: unwritten"
+        );
+
+        // The same sizes feed the later inter block's txfm_split context (a, l = neighbour is
+        // smaller than the candidate).
+        assert_eq!(ctx.var_tx_context(0, 0, 2, 1), (0, 0));
+        assert_eq!(ctx.var_tx_context(0, 0, 3, 2), (1, 1));
+        assert_eq!(ctx.var_tx_context(4, 2, 0, 0), (0, 0));
+    }
 }

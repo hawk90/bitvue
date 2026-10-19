@@ -268,3 +268,379 @@ fn read_var_tx_size(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame_header::TxfmMode;
+    use crate::tile::TileContext;
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    struct Run {
+        leaves: Option<Vec<TxBlock>>,
+        ctx: TileContext,
+        next_bits: u32,
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run(
+        data: &[u8],
+        (x, y): (u32, u32),
+        (w, h): (u32, u32),
+        skip: bool,
+        lossless: bool,
+        mode: TxfmMode,
+        (mi_rows, mi_cols): (u32, u32),
+    ) -> Run {
+        let mut decoder = SymbolDecoder::new(data).unwrap();
+        let mut ctx = TileContext::new(64, 64);
+        let leaves = compute_inter_tx_blocks(
+            &mut decoder,
+            &mut ctx,
+            x,
+            y,
+            w,
+            h,
+            skip,
+            lossless,
+            mode,
+            mi_rows,
+            mi_cols,
+        )
+        .unwrap();
+        Run {
+            leaves,
+            ctx,
+            next_bits: decoder.read_bools_n(24).unwrap(),
+        }
+    }
+
+    fn untouched_bits(data: &[u8]) -> u32 {
+        SymbolDecoder::new(data).unwrap().read_bools_n(24).unwrap()
+    }
+
+    fn origins(leaves: &[TxBlock]) -> Vec<(u32, u32)> {
+        leaves.iter().map(|b| (b.x4, b.y4)).collect()
+    }
+
+    #[test]
+    fn block_sizes_outside_4_to_128_are_ignored_entirely() {
+        let data = noise(1, 32);
+        let untouched = untouched_bits(&data);
+        for (w, h) in [
+            (0, 16),
+            (16, 0),
+            (2, 16),
+            (16, 3),
+            (132, 16),
+            (16, 256),
+            (0, 0),
+        ] {
+            let r = run(
+                &data,
+                (0, 0),
+                (w, h),
+                false,
+                false,
+                TxfmMode::Switchable,
+                (64, 64),
+            );
+            assert!(r.leaves.is_none(), "{w}x{h}");
+            assert_eq!(r.next_bits, untouched, "{w}x{h}: no symbol");
+            // An unwritten neighbour reads as the largest class (4): a smaller write would show as (1, 1).
+            assert_eq!(
+                r.ctx.var_tx_context(0, 0, 4, 4),
+                (0, 0),
+                "{w}x{h}: no context write"
+            );
+        }
+        // The limits themselves are valid.
+        for (w, h) in [(4, 4), (128, 128), (4, 128), (128, 4)] {
+            let r = run(
+                &data,
+                (0, 0),
+                (w, h),
+                false,
+                false,
+                TxfmMode::Largest,
+                (64, 64),
+            );
+            assert!(r.leaves.is_some(), "{w}x{h}");
+        }
+    }
+
+    #[test]
+    fn a_skipped_block_has_no_transform_blocks_but_still_records_its_natural_size() {
+        let data = noise(2, 32);
+        let r = run(
+            &data,
+            (8, 4),
+            (32, 16),
+            true,
+            false,
+            TxfmMode::Switchable,
+            (64, 64),
+        );
+        assert!(r.leaves.is_none());
+        assert_eq!(r.next_bits, untouched_bits(&data), "skip reads nothing");
+        // x4 = 2..10 got width class 3 (32px), y4 = 1..5 got height class 2 (16px).
+        assert_eq!(r.ctx.var_tx_context(2, 1, 3, 2), (0, 0));
+        assert_eq!(r.ctx.var_tx_context(9, 4, 4, 3), (1, 1));
+        assert_eq!(
+            r.ctx.var_tx_context(10, 5, 4, 4),
+            (0, 0),
+            "outside the block: unwritten"
+        );
+        assert_eq!(
+            r.ctx.var_tx_context(1, 0, 4, 4),
+            (0, 0),
+            "left of the block: unwritten"
+        );
+
+        // A 128-wide skipped block records its 64-capped size.
+        let r = run(
+            &data,
+            (0, 0),
+            (128, 64),
+            true,
+            false,
+            TxfmMode::Switchable,
+            (64, 64),
+        );
+        assert_eq!(r.ctx.var_tx_context(31, 15, 4, 4), (0, 0));
+        assert_eq!(r.ctx.var_tx_context(31, 15, 5, 5), (1, 1));
+    }
+
+    #[test]
+    fn non_switchable_modes_tile_the_block_uniformly_without_reading() {
+        let data = noise(3, 32);
+        let untouched = untouched_bits(&data);
+
+        // Lossless overrides even Switchable; Only4x4 does the same without the flag.
+        for (mode, lossless) in [
+            (TxfmMode::Switchable, true),
+            (TxfmMode::Largest, true),
+            (TxfmMode::Only4x4, false),
+        ] {
+            let r = run(&data, (16, 8), (16, 8), false, lossless, mode, (64, 64));
+            let leaves = r.leaves.unwrap();
+            assert_eq!(leaves.len(), 8, "{mode:?} {lossless}");
+            assert!(leaves.iter().all(|b| (b.width_px, b.height_px) == (4, 4)));
+            assert_eq!(
+                origins(&leaves),
+                vec![
+                    (4, 2),
+                    (5, 2),
+                    (6, 2),
+                    (7, 2),
+                    (4, 3),
+                    (5, 3),
+                    (6, 3),
+                    (7, 3)
+                ]
+            );
+            assert_eq!(r.next_bits, untouched);
+            assert_eq!(
+                r.ctx.var_tx_context(4, 2, 0, 0),
+                (0, 0),
+                "a 4x4 leaf is not smaller than 4x4"
+            );
+            assert_eq!(r.ctx.var_tx_context(4, 2, 1, 1), (1, 1), "4x4 recorded");
+        }
+
+        // Largest: one transform per 64x64 tile of the block, raster order.
+        let r = run(
+            &data,
+            (0, 0),
+            (128, 64),
+            false,
+            false,
+            TxfmMode::Largest,
+            (64, 64),
+        );
+        let leaves = r.leaves.unwrap();
+        assert_eq!(origins(&leaves), vec![(0, 0), (16, 0)]);
+        assert!(leaves.iter().all(|b| (b.width_px, b.height_px) == (64, 64)));
+        let r = run(
+            &data,
+            (0, 0),
+            (16, 8),
+            false,
+            false,
+            TxfmMode::Largest,
+            (64, 64),
+        );
+        let leaves = r.leaves.unwrap();
+        assert_eq!(leaves.len(), 1);
+        assert_eq!((leaves[0].width_px, leaves[0].height_px), (16, 8));
+        assert_eq!(r.next_bits, untouched);
+    }
+
+    /// Every 4x4 unit of the block that lies inside the frame is covered by exactly one leaf, and no
+    /// leaf starts outside the frame or the block.
+    fn assert_exact_cover(
+        leaves: &[TxBlock],
+        (x, y): (u32, u32),
+        (w, h): (u32, u32),
+        (rows, cols): (u32, u32),
+    ) {
+        let (x4, y4, w4, h4) = (x / 4, y / 4, w / 4, h / 4);
+        let mut hits = std::collections::BTreeMap::new();
+        for b in leaves {
+            assert!(
+                b.x4 < cols && b.y4 < rows,
+                "leaf {b:?} starts outside the frame"
+            );
+            assert!(
+                b.x4 >= x4 && b.y4 >= y4 && b.x4 < x4 + w4 && b.y4 < y4 + h4,
+                "{b:?}"
+            );
+            assert!(b.width_px >= 4 && b.height_px >= 4 && b.width_px <= 64 && b.height_px <= 64);
+            for yy in b.y4..b.y4 + b.height_px / 4 {
+                for xx in b.x4..b.x4 + b.width_px / 4 {
+                    *hits.entry((xx, yy)).or_insert(0) += 1;
+                }
+            }
+        }
+        for yy in y4..(y4 + h4).min(rows) {
+            for xx in x4..(x4 + w4).min(cols) {
+                assert_eq!(hits.get(&(xx, yy)), Some(&1), "unit ({xx},{yy}) in {w}x{h}");
+            }
+        }
+        assert!(hits.values().all(|&n| n == 1), "overlapping leaves");
+    }
+
+    #[test]
+    fn switchable_trees_cover_every_in_frame_unit_exactly_once_and_depend_on_the_symbols() {
+        let sizes = [
+            (64, 64),
+            (32, 16),
+            (16, 32),
+            (64, 16),
+            (8, 8),
+            (16, 16),
+            (128, 128),
+            (128, 64),
+        ];
+        let mut shapes = std::collections::BTreeSet::new();
+        for seed in 1..=40u64 {
+            let data = noise(seed, 96);
+            for &(w, h) in &sizes {
+                let r = run(
+                    &data,
+                    (0, 0),
+                    (w, h),
+                    false,
+                    false,
+                    TxfmMode::Switchable,
+                    (64, 64),
+                );
+                let leaves = r.leaves.unwrap();
+                assert_exact_cover(&leaves, (0, 0), (w, h), (64, 64));
+                // The tree is at most two splits deep: each side shrinks to a quarter at most.
+                let (start_w, start_h) = (w.min(64), h.min(64));
+                assert!(
+                    leaves
+                        .iter()
+                        .all(|b| b.width_px >= start_w / 4 && b.height_px >= start_h / 4),
+                    "seed {seed} {w}x{h}: a leaf is more than two splits below {start_w}x{start_h}"
+                );
+                shapes.insert((w, h, leaves.len()));
+            }
+        }
+        // Different symbols give different trees for at least one block size.
+        let per_size = |w, h| shapes.iter().filter(|s| s.0 == w && s.1 == h).count();
+        assert!(
+            per_size(64, 64) >= 3,
+            "64x64 should show several leaf counts: {shapes:?}"
+        );
+        assert_eq!(
+            per_size(8, 8),
+            2,
+            "8x8: one 8x8 leaf or four forced 4x4 leaves"
+        );
+    }
+
+    #[test]
+    fn leaves_whose_origin_is_outside_the_frame_are_not_coded() {
+        // 64x64 block in a frame 12 units (48 px) wide and 6 units (24 px) tall.
+        let frame = (6, 12);
+        let mut fewer_than_full = false;
+        for seed in 1..=40u64 {
+            let data = noise(seed, 96);
+            let r = run(
+                &data,
+                (0, 0),
+                (64, 64),
+                false,
+                false,
+                TxfmMode::Switchable,
+                frame,
+            );
+            let leaves = r.leaves.unwrap();
+            assert_exact_cover(&leaves, (0, 0), (64, 64), frame);
+            let full = run(
+                &data,
+                (0, 0),
+                (64, 64),
+                false,
+                false,
+                TxfmMode::Switchable,
+                (64, 64),
+            );
+            fewer_than_full |= leaves.len() < full.leaves.unwrap().len();
+        }
+        assert!(
+            fewer_than_full,
+            "some seed must split into children beyond the frame edge"
+        );
+    }
+
+    #[test]
+    fn a_leaf_starting_exactly_on_the_frame_edge_is_not_coded() {
+        // Splitting the 64x64 tile puts children at unit 8 (and 16): frames 8 units tall and/or
+        // wide end exactly there.
+        let mut dropped = false;
+        for frame in [(8, 16), (16, 8), (8, 8)] {
+            for seed in 1..=40u64 {
+                let data = noise(seed, 96);
+                let r = run(
+                    &data,
+                    (0, 0),
+                    (64, 64),
+                    false,
+                    false,
+                    TxfmMode::Switchable,
+                    frame,
+                );
+                let leaves = r.leaves.unwrap();
+                assert_exact_cover(&leaves, (0, 0), (64, 64), frame);
+                let full = run(
+                    &data,
+                    (0, 0),
+                    (64, 64),
+                    false,
+                    false,
+                    TxfmMode::Switchable,
+                    (64, 64),
+                );
+                dropped |= leaves.len() < full.leaves.unwrap().len();
+            }
+        }
+        assert!(
+            dropped,
+            "some seed must split into children that start on the edge"
+        );
+    }
+}

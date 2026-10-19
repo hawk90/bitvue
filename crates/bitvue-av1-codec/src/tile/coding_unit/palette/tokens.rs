@@ -194,3 +194,228 @@ pub(in crate::tile::coding_unit) fn read_palette_tokens(
 
     Ok((y_map, uv_map))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    /// Spec 7.11.4 `get_palette_color_context` for the pixel at `(r, c)`, over the full 8-colour
+    /// alphabet: returns `(ColorOrder, ColorContext)`.
+    fn spec_context(map: &[u8], stride: usize, r: usize, c: usize) -> ([u8; 8], u8) {
+        const MULTIPLIERS: [u32; 3] = [1, 2, 2];
+        const CONTEXT: [i8; 9] = [-1, -1, 0, -1, -1, 4, 3, 2, 1];
+        let mut scores = [0u32; 8];
+        let mut order: [u8; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
+        if c > 0 {
+            scores[map[r * stride + c - 1] as usize] += 2;
+        }
+        if r > 0 && c > 0 {
+            scores[map[(r - 1) * stride + c - 1] as usize] += 1;
+        }
+        if r > 0 {
+            scores[map[(r - 1) * stride + c] as usize] += 2;
+        }
+        for i in 0..3 {
+            let (mut best, mut best_idx) = (scores[i], i);
+            for (j, &score) in scores.iter().enumerate().skip(i + 1) {
+                if score > best {
+                    best = score;
+                    best_idx = j;
+                }
+            }
+            if best_idx != i {
+                let (s, o) = (scores[best_idx], order[best_idx]);
+                for k in (i + 1..=best_idx).rev() {
+                    scores[k] = scores[k - 1];
+                    order[k] = order[k - 1];
+                }
+                scores[i] = s;
+                order[i] = o;
+            }
+        }
+        let hash: u32 = (0..3).map(|i| scores[i] * MULTIPLIERS[i]).sum();
+        (order, CONTEXT[hash as usize] as u8)
+    }
+
+    fn random_map(seed: u64, len: usize, alphabet: u8) -> Vec<u8> {
+        noise(seed, len).iter().map(|b| b % alphabet).collect()
+    }
+
+    #[test]
+    fn order_palette_matches_the_specs_colour_context_for_every_pixel() {
+        let mut contexts = std::collections::BTreeSet::new();
+        // (width, height, stride): square, wide, tall, and a stride wider than the block.
+        for &(w, h, stride) in &[
+            (8usize, 8usize, 8usize),
+            (16, 4, 16),
+            (4, 16, 4),
+            (8, 8, 11),
+            (4, 4, 4),
+        ] {
+            for alphabet in [2u8, 3, 8] {
+                for seed in 1..=6u64 {
+                    let map = random_map(seed * 31 + alphabet as u64, stride * h, alphabet);
+                    for i in 1..(w + h - 1) {
+                        let first = i.min(w - 1);
+                        let last = i.saturating_sub(h - 1);
+                        let (order, ctx) = order_palette(&map, stride, i, first, last);
+                        assert_eq!(order.len(), first - last + 1);
+                        for (n, j) in (last..=first).rev().enumerate() {
+                            let (want_order, want_ctx) = spec_context(&map, stride, i - j, j);
+                            assert_eq!(ctx[n], want_ctx, "{w}x{h}/{stride} diag {i} col {j}");
+                            assert_eq!(order[n], want_order, "{w}x{h}/{stride} diag {i} col {j}");
+                            contexts.insert(ctx[n]);
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            contexts.into_iter().collect::<Vec<_>>(),
+            vec![0, 1, 2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn order_palette_puts_the_only_available_neighbour_first() {
+        // Column 0 has only a top neighbour, row 0 only a left one: context 0 either way.
+        let map: Vec<u8> = (0..16).map(|i| (i % 8) as u8).collect(); // 4x4, stride 4
+        let (order, ctx) = order_palette(&map, 4, 1, 1, 0);
+        // Diagonal 1: j = 1 (row 0, left neighbour map[0]) then j = 0 (row 1, top neighbour map[0]).
+        assert_eq!(ctx, vec![0, 0]);
+        assert_eq!(order[0][0], map[0]);
+        assert_eq!(order[1][0], map[0]);
+        for row in &order {
+            let mut sorted = *row;
+            sorted.sort_unstable();
+            assert_eq!(
+                sorted,
+                [0, 1, 2, 3, 4, 5, 6, 7],
+                "each row is a permutation"
+            );
+        }
+    }
+
+    #[test]
+    fn read_pal_indices_decodes_through_the_specs_orders_and_contexts() {
+        for &(pal_sz, w4, h4, bw4) in &[
+            (2u8, 2u32, 2u32, 2u32),
+            (8, 3, 2, 4),
+            (5, 1, 3, 1),
+            (3, 4, 4, 4),
+        ] {
+            for seed in 1..=8u64 {
+                let data = noise(seed, 1024);
+                let mut d = SymbolDecoder::new(&data).unwrap();
+                let got = read_pal_indices(&mut d, 0, pal_sz, w4, h4, bw4).unwrap();
+                let (w, h) = ((w4 * 4) as usize, (h4 * 4) as usize);
+                assert_eq!(got.len(), w * h);
+                assert!(
+                    got.iter().all(|&c| c < pal_sz),
+                    "indices stay inside the palette"
+                );
+
+                // Reference decode with the spec's contexts, into a scratch map with the
+                // nominal stride.
+                let stride = ((bw4 * 4) as usize).max(w);
+                let mut r = SymbolDecoder::new(&data).unwrap();
+                let mut map = vec![0u8; stride * h];
+                map[0] = r.read_uniform(pal_sz as u32).unwrap() as u8;
+                for i in 1..(w + h - 1) {
+                    let first = i.min(w - 1);
+                    let last = i.saturating_sub(h - 1);
+                    for j in (last..=first).rev() {
+                        let (order, ctx) = spec_context(&map, stride, i - j, j);
+                        let k = r.read_color_map_index(0, pal_sz, ctx).unwrap();
+                        map[(i - j) * stride + j] = order[k as usize];
+                    }
+                }
+                let want: Vec<u8> = (0..h)
+                    .flat_map(|y| map[y * stride..y * stride + w].to_vec())
+                    .collect();
+                assert_eq!(got, want, "pal {pal_sz} {w4}x{h4} bw4 {bw4} seed {seed}");
+                assert_eq!(
+                    d.read_bools_n(24).unwrap(),
+                    r.read_bools_n(24).unwrap(),
+                    "same number of symbols consumed"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_one_pixel_wide_map_is_only_the_first_uniform_read_plus_the_column() {
+        // w4 = h4 = 1 is the smallest block: a 4x4 map, every pixel after the first via color_map.
+        let data = noise(9, 256);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let map = read_pal_indices(&mut d, 1, 4, 1, 1, 1).unwrap();
+        assert_eq!(map.len(), 16);
+        assert!(map.iter().all(|&c| c < 4));
+    }
+
+    fn palette(y: u8, uv: u8) -> PaletteInfo {
+        PaletteInfo {
+            y_size: y,
+            uv_size: uv,
+            ..PaletteInfo::default()
+        }
+    }
+
+    #[test]
+    fn tokens_are_read_per_plane_and_only_for_planes_with_a_palette() {
+        let data = noise(13, 2048);
+        let untouched = SymbolDecoder::new(&data).unwrap().read_bools_n(24).unwrap();
+        let run = |p: &PaletteInfo, chroma: bool| {
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let maps = read_palette_tokens(&mut d, 0, 0, 4, 4, chroma, p, 16, 16).unwrap();
+            (maps, d.read_bools_n(24).unwrap())
+        };
+        let ((y, uv), bits) = run(&palette(0, 0), true);
+        assert!(y.is_none() && uv.is_none());
+        assert_eq!(bits, untouched, "no palette, no symbols");
+
+        let ((y, uv), _) = run(&palette(4, 0), true);
+        assert_eq!(y.unwrap().len(), 16 * 16);
+        assert!(uv.is_none(), "uv_size 0");
+
+        let ((y, uv), _) = run(&palette(0, 3), true);
+        assert!(y.is_none());
+        assert_eq!(uv.unwrap().len(), 8 * 8, "4:2:0 chroma is half size");
+
+        let ((y, uv), _) = run(&palette(4, 3), false);
+        assert!(y.is_some() && uv.is_none(), "no chroma for this block");
+    }
+
+    #[test]
+    fn the_visible_area_is_clamped_to_the_frame_and_chroma_rounds_up() {
+        let data = noise(17, 4096);
+        // 16x16-unit block at x4 = 13 in a frame 16 units wide, 9 rows tall at y4 = 6: 3 x 3 visible.
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let (y, uv) =
+            read_palette_tokens(&mut d, 13, 6, 16, 16, true, &palette(4, 4), 9, 16).unwrap();
+        assert_eq!(y.unwrap().len(), 12 * 12, "3x3 units of 4 px");
+        assert_eq!(
+            uv.unwrap().len(),
+            8 * 8,
+            "ceil(3/2) = 2 units of 4 px per side"
+        );
+
+        // A block starting at or past the edge still decodes the minimum 1x1 unit.
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let (y, _) =
+            read_palette_tokens(&mut d, 20, 30, 4, 4, false, &palette(2, 0), 9, 16).unwrap();
+        assert_eq!(y.unwrap().len(), 16);
+    }
+}

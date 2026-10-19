@@ -290,3 +290,109 @@ pub(super) fn clear_residual_contexts(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frame(sx: bool, sy: bool, mono: bool) -> FrameCodingParams {
+        let mut f = FrameCodingParams::for_tests();
+        f.tx_type_flags.subsampling_x = sx;
+        f.tx_type_flags.subsampling_y = sy;
+        f.tx_type_flags.mono_chrome = mono;
+        f
+    }
+
+    /// A tile whose luma and chroma residual contexts are dirty over the block at `mi`.
+    fn dirty(mi: MiRect) -> TileContext {
+        let mut ctx = TileContext::new(32, 32);
+        ctx.set_residual_ctx(mi.x4, mi.y4, mi.width, mi.height, 9, Some(1));
+        for plane in 0..2 {
+            ctx.set_residual_ctx_chroma(
+                plane,
+                mi.x4 >> 1,
+                mi.y4 >> 1,
+                (mi.width + 1) >> 1,
+                (mi.height + 1) >> 1,
+                9,
+                Some(1),
+            );
+        }
+        ctx
+    }
+
+    /// `txb_skip` context of the block against that of an untouched tile (an all-clear neighbourhood
+    /// already maps to a non-zero table entry, so compare rather than test for 0).
+    fn luma_dirty(ctx: &TileContext, mi: MiRect) -> bool {
+        let at = |c: &TileContext| c.txb_skip_context(mi.x4, mi.y4, mi.width, mi.height, false);
+        at(ctx) != at(&TileContext::new(32, 32))
+    }
+
+    fn chroma_dirty(ctx: &TileContext, mi: MiRect, plane: usize) -> bool {
+        ctx.txb_skip_context_chroma(
+            plane,
+            mi.x4 >> 1,
+            mi.y4 >> 1,
+            (mi.width + 1) >> 1,
+            (mi.height + 1) >> 1,
+            false,
+        ) != 0
+    }
+
+    #[test]
+    fn a_skipped_block_clears_luma_always_and_chroma_only_when_it_owns_420_chroma() {
+        let mi = MiRect {
+            x4: 4,
+            y4: 4,
+            width: 4,
+            height: 4,
+        };
+        // (subsampling_x, subsampling_y, mono, chroma cleared?)
+        for (sx, sy, mono, chroma_cleared) in [
+            (true, true, false, true),
+            (true, false, false, false), // 4:2:2: this model keeps no chroma contexts for it
+            (false, true, false, false),
+            (false, false, false, false),
+            (true, true, true, false), // monochrome has no chroma
+        ] {
+            let mut ctx = dirty(mi);
+            assert!(luma_dirty(&ctx, mi) && chroma_dirty(&ctx, mi, 0) && chroma_dirty(&ctx, mi, 1));
+            clear_residual_contexts(&mut ctx, mi, &frame(sx, sy, mono));
+            let label = format!("sx {sx} sy {sy} mono {mono}");
+            assert!(!luma_dirty(&ctx, mi), "{label}: luma is always cleared");
+            for plane in 0..2 {
+                assert_eq!(
+                    !chroma_dirty(&ctx, mi, plane),
+                    chroma_cleared,
+                    "{label} plane {plane}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_narrow_block_that_shares_its_chroma_leaves_the_chroma_contexts_alone() {
+        // A 4x4 block at an even position does not own chroma (has_chroma is false).
+        let mi = MiRect {
+            x4: 4,
+            y4: 4,
+            width: 1,
+            height: 1,
+        };
+        let mut ctx = dirty(mi);
+        clear_residual_contexts(&mut ctx, mi, &frame(true, true, false));
+        assert!(!luma_dirty(&ctx, mi));
+        assert!(chroma_dirty(&ctx, mi, 0) && chroma_dirty(&ctx, mi, 1));
+
+        // At an odd position it does, and covers the rounded-up chroma footprint.
+        let mi = MiRect {
+            x4: 5,
+            y4: 5,
+            width: 1,
+            height: 1,
+        };
+        let mut ctx = dirty(mi);
+        clear_residual_contexts(&mut ctx, mi, &frame(true, true, false));
+        assert!(!chroma_dirty(&ctx, mi, 0) && !chroma_dirty(&ctx, mi, 1));
+    }
+}
