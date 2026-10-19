@@ -422,7 +422,9 @@ fn test_overlay_error_handling() {
 
     // Should handle invalid data gracefully
     let qp_result = overlay_extraction::extract_qp_grid(&invalid_data, 0, 26);
-    assert!(qp_result.is_ok() || qp_result.is_err());
+    // 0xFF bytes parse as one OBU without tile data, so there is nothing to decode
+    let e = qp_result.unwrap_err().to_string();
+    assert!(e.contains("frame has no decodable tile data"), "{e}");
 }
 
 #[test]
