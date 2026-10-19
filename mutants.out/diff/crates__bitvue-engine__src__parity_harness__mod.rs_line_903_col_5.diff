@@ -1,0 +1,56 @@
+--- crates/bitvue-engine/src/parity_harness/mod.rs
++++ replace compare_evidence_bundles -> EvidenceBundleDiffResult with Default::default()
+@@ -895,52 +895,17 @@
+ /// diffed -- an unlisted field never contributes an `EvidenceDifference`, matching the
+ /// documented contract (`docs/UX_PARITY_MATRIX.md` §7) that `timestamps`/`machine_hostname`/
+ /// `paths` are ignored by design, not merely omitted from this function's hardcoded checks.
+ pub fn compare_evidence_bundles(
+     a: &crate::export::EvidenceBundleManifest,
+     b: &crate::export::EvidenceBundleManifest,
+     config: &EvidenceDiffConfig,
+ ) -> EvidenceBundleDiffResult {
+-    let mut differences = Vec::new();
+-    let mut ignored_changes = Vec::new();
+-    let compares = |field: &str| config.compare_fields.iter().any(|f| f == field);
+-
+-    // Schema/ABI compatibility -- always checked, not gated by compare_fields. This isn't a
+-    // value comparison, it's a precondition for whether the rest of the diff is trustworthy: a
+-    // MAJOR-version mismatch means a field may have been removed/repurposed between the two
+-    // bundles' schemas, so a value-level diff below could silently miss or misreport it.
+-    diff_schema_version(a, b, &mut differences);
+-    if compares("order_type") {
+-        diff_order_type(a, b, &mut differences);
+-    }
+-    if compares("selection_state") {
+-        diff_selection_state(a, b, &mut differences);
+-    }
+-    if compares("backend_fingerprint") {
+-        diff_backend(a, b, &mut differences);
+-    }
+-    if compares("plugin_versions") {
+-        diff_plugin_versions(a, b, &mut differences, &mut ignored_changes);
+-    }
+-    if compares("warnings") {
+-        diff_warnings(a, b, &mut differences);
+-    }
+-
+-    // ABI compatibility: breaking if order_type differs
+-    let abi_compatible = !differences
+-        .iter()
+-        .any(|d| d.severity == DiffSeverity::Breaking);
+-
+-    EvidenceBundleDiffResult {
+-        matches: differences.is_empty(),
+-        abi_compatible,
+-        differences,
+-        ignored_changes,
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ type Manifest = crate::export::EvidenceBundleManifest;
+ 
+ fn diff_schema_version(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {
+     if let crate::export::BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major } =
+         crate::export::check_bundle_schema_compatibility(&a.bundle_version, &b.bundle_version)
+     {

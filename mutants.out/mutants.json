@@ -1,769 +1,673 @@
 [
   {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace parse_major_version -> Option<u32> with None\n@@ -34,17 +34,17 @@\n     /// Different MAJOR version -- a breaking schema change (field removal/repurposing) happened\n     /// between these versions.\n     IncompatibleMajorVersion { a_major: u32, b_major: u32 },\n     /// `bundle_version` wasn't parseable as `MAJOR.MINOR` (pre-versioning or corrupt bundle).\n     UnparseableVersion(String),\n }\n \n fn parse_major_version(version: &str) -> Option<u32> {\n-    version.split('.').next()?.parse::<u32>().ok()\n+    None /* ~ changed by cargo-mutants ~ */\n }\n \n /// Compares two `bundle_version` strings per this module's ABI policy. Pass\n /// [`CURRENT_BUNDLE_SCHEMA_VERSION`] as `b` to check a bundle against the running build's schema,\n /// or two real bundles' versions to check whether they're safe to diff against each other.\n pub fn check_bundle_schema_compatibility(a: &str, b: &str) -> BundleSchemaCompatibility {\n     let (Some(a_major), Some(b_major)) = (parse_major_version(a), parse_major_version(b)) else {\n         let bad = if parse_major_version(a).is_none() {\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace compare_evidence_bundles -> EvidenceBundleDiffResult with Default::default()\n@@ -895,52 +895,17 @@\n /// diffed -- an unlisted field never contributes an `EvidenceDifference`, matching the\n /// documented contract (`docs/UX_PARITY_MATRIX.md` §7) that `timestamps`/`machine_hostname`/\n /// `paths` are ignored by design, not merely omitted from this function's hardcoded checks.\n pub fn compare_evidence_bundles(\n     a: &crate::export::EvidenceBundleManifest,\n     b: &crate::export::EvidenceBundleManifest,\n     config: &EvidenceDiffConfig,\n ) -> EvidenceBundleDiffResult {\n-    let mut differences = Vec::new();\n-    let mut ignored_changes = Vec::new();\n-    let compares = |field: &str| config.compare_fields.iter().any(|f| f == field);\n-\n-    // Schema/ABI compatibility -- always checked, not gated by compare_fields. This isn't a\n-    // value comparison, it's a precondition for whether the rest of the diff is trustworthy: a\n-    // MAJOR-version mismatch means a field may have been removed/repurposed between the two\n-    // bundles' schemas, so a value-level diff below could silently miss or misreport it.\n-    diff_schema_version(a, b, &mut differences);\n-    if compares(\"order_type\") {\n-        diff_order_type(a, b, &mut differences);\n-    }\n-    if compares(\"selection_state\") {\n-        diff_selection_state(a, b, &mut differences);\n-    }\n-    if compares(\"backend_fingerprint\") {\n-        diff_backend(a, b, &mut differences);\n-    }\n-    if compares(\"plugin_versions\") {\n-        diff_plugin_versions(a, b, &mut differences, &mut ignored_changes);\n-    }\n-    if compares(\"warnings\") {\n-        diff_warnings(a, b, &mut differences);\n-    }\n-\n-    // ABI compatibility: breaking if order_type differs\n-    let abi_compatible = !differences\n-        .iter()\n-        .any(|d| d.severity == DiffSeverity::Breaking);\n-\n-    EvidenceBundleDiffResult {\n-        matches: differences.is_empty(),\n-        abi_compatible,\n-        differences,\n-        ignored_changes,\n-    }\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n \n type Manifest = crate::export::EvidenceBundleManifest;\n \n fn diff_schema_version(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n     if let crate::export::BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major } =\n         crate::export::check_bundle_schema_compatibility(&a.bundle_version, &b.bundle_version)\n     {\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
     "function": {
-      "function_name": "parse_major_version",
-      "return_type": "-> Option<u32>",
+      "function_name": "compare_evidence_bundles",
+      "return_type": "-> EvidenceBundleDiffResult",
       "span": {
         "end": {
           "column": 2,
-          "line": 43
+          "line": 939
         },
         "start": {
           "column": 1,
-          "line": 41
+          "line": 894
         }
       }
     },
     "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with None",
-    "package": "bitvue-engine",
-    "replacement": "None",
-    "span": {
-      "end": {
-        "column": 51,
-        "line": 42
-      },
-      "start": {
-        "column": 5,
-        "line": 42
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace parse_major_version -> Option<u32> with Some(0)\n@@ -34,17 +34,17 @@\n     /// Different MAJOR version -- a breaking schema change (field removal/repurposing) happened\n     /// between these versions.\n     IncompatibleMajorVersion { a_major: u32, b_major: u32 },\n     /// `bundle_version` wasn't parseable as `MAJOR.MINOR` (pre-versioning or corrupt bundle).\n     UnparseableVersion(String),\n }\n \n fn parse_major_version(version: &str) -> Option<u32> {\n-    version.split('.').next()?.parse::<u32>().ok()\n+    Some(0) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Compares two `bundle_version` strings per this module's ABI policy. Pass\n /// [`CURRENT_BUNDLE_SCHEMA_VERSION`] as `b` to check a bundle against the running build's schema,\n /// or two real bundles' versions to check whether they're safe to diff against each other.\n pub fn check_bundle_schema_compatibility(a: &str, b: &str) -> BundleSchemaCompatibility {\n     let (Some(a_major), Some(b_major)) = (parse_major_version(a), parse_major_version(b)) else {\n         let bad = if parse_major_version(a).is_none() {\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "parse_major_version",
-      "return_type": "-> Option<u32>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 43
-        },
-        "start": {
-          "column": 1,
-          "line": 41
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with Some(0)",
-    "package": "bitvue-engine",
-    "replacement": "Some(0)",
-    "span": {
-      "end": {
-        "column": 51,
-        "line": 42
-      },
-      "start": {
-        "column": 5,
-        "line": 42
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace parse_major_version -> Option<u32> with Some(1)\n@@ -34,17 +34,17 @@\n     /// Different MAJOR version -- a breaking schema change (field removal/repurposing) happened\n     /// between these versions.\n     IncompatibleMajorVersion { a_major: u32, b_major: u32 },\n     /// `bundle_version` wasn't parseable as `MAJOR.MINOR` (pre-versioning or corrupt bundle).\n     UnparseableVersion(String),\n }\n \n fn parse_major_version(version: &str) -> Option<u32> {\n-    version.split('.').next()?.parse::<u32>().ok()\n+    Some(1) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Compares two `bundle_version` strings per this module's ABI policy. Pass\n /// [`CURRENT_BUNDLE_SCHEMA_VERSION`] as `b` to check a bundle against the running build's schema,\n /// or two real bundles' versions to check whether they're safe to diff against each other.\n pub fn check_bundle_schema_compatibility(a: &str, b: &str) -> BundleSchemaCompatibility {\n     let (Some(a_major), Some(b_major)) = (parse_major_version(a), parse_major_version(b)) else {\n         let bad = if parse_major_version(a).is_none() {\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "parse_major_version",
-      "return_type": "-> Option<u32>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 43
-        },
-        "start": {
-          "column": 1,
-          "line": 41
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with Some(1)",
-    "package": "bitvue-engine",
-    "replacement": "Some(1)",
-    "span": {
-      "end": {
-        "column": 51,
-        "line": 42
-      },
-      "start": {
-        "column": 5,
-        "line": 42
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace check_bundle_schema_compatibility -> BundleSchemaCompatibility with Default::default()\n@@ -41,29 +41,17 @@\n fn parse_major_version(version: &str) -> Option<u32> {\n     version.split('.').next()?.parse::<u32>().ok()\n }\n \n /// Compares two `bundle_version` strings per this module's ABI policy. Pass\n /// [`CURRENT_BUNDLE_SCHEMA_VERSION`] as `b` to check a bundle against the running build's schema,\n /// or two real bundles' versions to check whether they're safe to diff against each other.\n pub fn check_bundle_schema_compatibility(a: &str, b: &str) -> BundleSchemaCompatibility {\n-    let (Some(a_major), Some(b_major)) = (parse_major_version(a), parse_major_version(b)) else {\n-        let bad = if parse_major_version(a).is_none() {\n-            a\n-        } else {\n-            b\n-        };\n-        return BundleSchemaCompatibility::UnparseableVersion(bad.to_string());\n-    };\n-    if a_major == b_major {\n-        BundleSchemaCompatibility::Compatible\n-    } else {\n-        BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major }\n-    }\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n \n /// Evidence bundle manifest (per export_evidence_bundle.schema.json)\n ///\n /// `#[serde(default)]` (container-level, backed by this struct's `Default` impl below) means a\n /// bundle missing a field a newer schema added deserializes fine instead of hard-failing -- see\n /// [`CURRENT_BUNDLE_SCHEMA_VERSION`]'s doc for the full ABI policy this implements.\n #[derive(Debug, Clone, Serialize, Deserialize)]\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "check_bundle_schema_compatibility",
-      "return_type": "-> BundleSchemaCompatibility",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 62
-        },
-        "start": {
-          "column": 1,
-          "line": 45
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:49:5: replace check_bundle_schema_compatibility -> BundleSchemaCompatibility with Default::default()",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:903:5: replace compare_evidence_bundles -> EvidenceBundleDiffResult with Default::default()",
     "package": "bitvue-engine",
     "replacement": "Default::default()",
     "span": {
       "end": {
         "column": 6,
-        "line": 61
+        "line": 938
       },
       "start": {
         "column": 5,
-        "line": 49
+        "line": 903
       }
     }
   },
   {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace == with != in check_bundle_schema_compatibility\n@@ -49,17 +49,17 @@\n     let (Some(a_major), Some(b_major)) = (parse_major_version(a), parse_major_version(b)) else {\n         let bad = if parse_major_version(a).is_none() {\n             a\n         } else {\n             b\n         };\n         return BundleSchemaCompatibility::UnparseableVersion(bad.to_string());\n     };\n-    if a_major == b_major {\n+    if a_major != /* ~ changed by cargo-mutants ~ */ b_major {\n         BundleSchemaCompatibility::Compatible\n     } else {\n         BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major }\n     }\n }\n \n /// Evidence bundle manifest (per export_evidence_bundle.schema.json)\n ///\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace == with != in compare_evidence_bundles\n@@ -897,17 +897,17 @@\n /// `paths` are ignored by design, not merely omitted from this function's hardcoded checks.\n pub fn compare_evidence_bundles(\n     a: &crate::export::EvidenceBundleManifest,\n     b: &crate::export::EvidenceBundleManifest,\n     config: &EvidenceDiffConfig,\n ) -> EvidenceBundleDiffResult {\n     let mut differences = Vec::new();\n     let mut ignored_changes = Vec::new();\n-    let compares = |field: &str| config.compare_fields.iter().any(|f| f == field);\n+    let compares = |field: &str| config.compare_fields.iter().any(|f| f != /* ~ changed by cargo-mutants ~ */ field);\n \n     // Schema/ABI compatibility -- always checked, not gated by compare_fields. This isn't a\n     // value comparison, it's a precondition for whether the rest of the diff is trustworthy: a\n     // MAJOR-version mismatch means a field may have been removed/repurposed between the two\n     // bundles' schemas, so a value-level diff below could silently miss or misreport it.\n     diff_schema_version(a, b, &mut differences);\n     if compares(\"order_type\") {\n         diff_order_type(a, b, &mut differences);\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
     "function": {
-      "function_name": "check_bundle_schema_compatibility",
-      "return_type": "-> BundleSchemaCompatibility",
+      "function_name": "compare_evidence_bundles",
+      "return_type": "-> EvidenceBundleDiffResult",
       "span": {
         "end": {
           "column": 2,
-          "line": 62
+          "line": 939
         },
         "start": {
           "column": 1,
-          "line": 45
+          "line": 894
         }
       }
     },
     "genre": "BinaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:57:16: replace == with != in check_bundle_schema_compatibility",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:905:73: replace == with != in compare_evidence_bundles",
     "package": "bitvue-engine",
     "replacement": "!=",
     "span": {
       "end": {
-        "column": 18,
-        "line": 57
+        "column": 75,
+        "line": 905
       },
       "start": {
+        "column": 73,
+        "line": 905
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ delete ! in compare_evidence_bundles\n@@ -921,17 +921,17 @@\n     if compares(\"plugin_versions\") {\n         diff_plugin_versions(a, b, &mut differences, &mut ignored_changes);\n     }\n     if compares(\"warnings\") {\n         diff_warnings(a, b, &mut differences);\n     }\n \n     // ABI compatibility: breaking if order_type differs\n-    let abi_compatible = !differences\n+    let abi_compatible =  /* ~ changed by cargo-mutants ~ */differences\n         .iter()\n         .any(|d| d.severity == DiffSeverity::Breaking);\n \n     EvidenceBundleDiffResult {\n         matches: differences.is_empty(),\n         abi_compatible,\n         differences,\n         ignored_changes,\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "compare_evidence_bundles",
+      "return_type": "-> EvidenceBundleDiffResult",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 939
+        },
+        "start": {
+          "column": 1,
+          "line": 894
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:929:26: delete ! in compare_evidence_bundles",
+    "package": "bitvue-engine",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 27,
+        "line": 929
+      },
+      "start": {
+        "column": 26,
+        "line": 929
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace == with != in compare_evidence_bundles\n@@ -923,17 +923,17 @@\n     }\n     if compares(\"warnings\") {\n         diff_warnings(a, b, &mut differences);\n     }\n \n     // ABI compatibility: breaking if order_type differs\n     let abi_compatible = !differences\n         .iter()\n-        .any(|d| d.severity == DiffSeverity::Breaking);\n+        .any(|d| d.severity != /* ~ changed by cargo-mutants ~ */ DiffSeverity::Breaking);\n \n     EvidenceBundleDiffResult {\n         matches: differences.is_empty(),\n         abi_compatible,\n         differences,\n         ignored_changes,\n     }\n }\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "compare_evidence_bundles",
+      "return_type": "-> EvidenceBundleDiffResult",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 939
+        },
+        "start": {
+          "column": 1,
+          "line": 894
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:931:29: replace == with != in compare_evidence_bundles",
+    "package": "bitvue-engine",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 31,
+        "line": 931
+      },
+      "start": {
+        "column": 29,
+        "line": 931
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace diff_schema_version with ()\n@@ -936,26 +936,17 @@\n         differences,\n         ignored_changes,\n     }\n }\n \n type Manifest = crate::export::EvidenceBundleManifest;\n \n fn diff_schema_version(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n-    if let crate::export::BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major } =\n-        crate::export::check_bundle_schema_compatibility(&a.bundle_version, &b.bundle_version)\n-    {\n-        out.push(EvidenceDifference {\n-            field: \"bundle_version\".to_string(),\n-            a_value: format!(\"{} (schema major {a_major})\", a.bundle_version),\n-            b_value: format!(\"{} (schema major {b_major})\", b.bundle_version),\n-            severity: DiffSeverity::Breaking,\n-        });\n-    }\n+    () /* ~ changed by cargo-mutants ~ */\n }\n \n /// Order type must match (critical).\n fn diff_order_type(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n     if a.order_type != b.order_type {\n         out.push(EvidenceDifference {\n             field: \"order_type\".to_string(),\n             a_value: format!(\"{:?}\", a.order_type),\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_schema_version",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 954
+        },
+        "start": {
+          "column": 1,
+          "line": 943
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:944:5: replace diff_schema_version with ()",
+    "package": "bitvue-engine",
+    "replacement": "()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 953
+      },
+      "start": {
+        "column": 5,
+        "line": 944
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace diff_order_type with ()\n@@ -950,24 +950,17 @@\n             b_value: format!(\"{} (schema major {b_major})\", b.bundle_version),\n             severity: DiffSeverity::Breaking,\n         });\n     }\n }\n \n /// Order type must match (critical).\n fn diff_order_type(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n-    if a.order_type != b.order_type {\n-        out.push(EvidenceDifference {\n-            field: \"order_type\".to_string(),\n-            a_value: format!(\"{:?}\", a.order_type),\n-            b_value: format!(\"{:?}\", b.order_type),\n-            severity: DiffSeverity::Breaking,\n-        });\n-    }\n+    () /* ~ changed by cargo-mutants ~ */\n }\n \n fn diff_selection_state(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n     let a_sel = serde_json::to_string(&a.selection_state).unwrap_or_default();\n     let b_sel = serde_json::to_string(&b.selection_state).unwrap_or_default();\n     if a_sel != b_sel {\n         out.push(EvidenceDifference {\n             field: \"selection_state\".to_string(),\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_order_type",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 966
+        },
+        "start": {
+          "column": 1,
+          "line": 956
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:958:5: replace diff_order_type with ()",
+    "package": "bitvue-engine",
+    "replacement": "()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 965
+      },
+      "start": {
+        "column": 5,
+        "line": 958
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace != with == in diff_order_type\n@@ -950,17 +950,17 @@\n             b_value: format!(\"{} (schema major {b_major})\", b.bundle_version),\n             severity: DiffSeverity::Breaking,\n         });\n     }\n }\n \n /// Order type must match (critical).\n fn diff_order_type(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n-    if a.order_type != b.order_type {\n+    if a.order_type == /* ~ changed by cargo-mutants ~ */ b.order_type {\n         out.push(EvidenceDifference {\n             field: \"order_type\".to_string(),\n             a_value: format!(\"{:?}\", a.order_type),\n             b_value: format!(\"{:?}\", b.order_type),\n             severity: DiffSeverity::Breaking,\n         });\n     }\n }\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_order_type",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 966
+        },
+        "start": {
+          "column": 1,
+          "line": 956
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:958:21: replace != with == in diff_order_type",
+    "package": "bitvue-engine",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 23,
+        "line": 958
+      },
+      "start": {
+        "column": 21,
+        "line": 958
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace diff_selection_state with ()\n@@ -961,26 +961,17 @@\n             a_value: format!(\"{:?}\", a.order_type),\n             b_value: format!(\"{:?}\", b.order_type),\n             severity: DiffSeverity::Breaking,\n         });\n     }\n }\n \n fn diff_selection_state(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n-    let a_sel = serde_json::to_string(&a.selection_state).unwrap_or_default();\n-    let b_sel = serde_json::to_string(&b.selection_state).unwrap_or_default();\n-    if a_sel != b_sel {\n-        out.push(EvidenceDifference {\n-            field: \"selection_state\".to_string(),\n-            a_value: a_sel,\n-            b_value: b_sel,\n-            severity: DiffSeverity::Warning,\n-        });\n-    }\n+    () /* ~ changed by cargo-mutants ~ */\n }\n \n fn diff_backend(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n     if a.backend != b.backend {\n         out.push(EvidenceDifference {\n             field: \"backend_fingerprint\".to_string(),\n             a_value: a.backend.clone(),\n             b_value: b.backend.clone(),\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_selection_state",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 979
+        },
+        "start": {
+          "column": 1,
+          "line": 968
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:969:5: replace diff_selection_state with ()",
+    "package": "bitvue-engine",
+    "replacement": "()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 978
+      },
+      "start": {
+        "column": 5,
+        "line": 969
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace != with == in diff_selection_state\n@@ -963,17 +963,17 @@\n             severity: DiffSeverity::Breaking,\n         });\n     }\n }\n \n fn diff_selection_state(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n     let a_sel = serde_json::to_string(&a.selection_state).unwrap_or_default();\n     let b_sel = serde_json::to_string(&b.selection_state).unwrap_or_default();\n-    if a_sel != b_sel {\n+    if a_sel == /* ~ changed by cargo-mutants ~ */ b_sel {\n         out.push(EvidenceDifference {\n             field: \"selection_state\".to_string(),\n             a_value: a_sel,\n             b_value: b_sel,\n             severity: DiffSeverity::Warning,\n         });\n     }\n }\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_selection_state",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 979
+        },
+        "start": {
+          "column": 1,
+          "line": 968
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:971:14: replace != with == in diff_selection_state",
+    "package": "bitvue-engine",
+    "replacement": "==",
+    "span": {
+      "end": {
         "column": 16,
-        "line": 57
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace EvidenceBundleExportResult::success -> Self with Default::default()\n@@ -194,23 +194,17 @@\n     pub total_bytes: usize,\n     /// Error message (if any)\n     pub error: Option<String>,\n }\n \n impl EvidenceBundleExportResult {\n     /// Create success result\n     pub fn success(bundle_path: String, files: Vec<String>, bytes: usize) -> Self {\n-        Self {\n-            success: true,\n-            bundle_path: Some(bundle_path),\n-            files_created: files,\n-            total_bytes: bytes,\n-            error: None,\n-        }\n+        Default::default() /* ~ changed by cargo-mutants ~ */\n     }\n \n     /// Create error result\n     pub fn error(message: &str) -> Self {\n         Self {\n             success: false,\n             bundle_path: None,\n             files_created: Vec::new(),\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "EvidenceBundleExportResult::success",
-      "return_type": "-> Self",
-      "span": {
-        "end": {
-          "column": 6,
-          "line": 209
-        },
-        "start": {
-          "column": 5,
-          "line": 200
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:202:9: replace EvidenceBundleExportResult::success -> Self with Default::default()",
-    "package": "bitvue-engine",
-    "replacement": "Default::default()",
-    "span": {
-      "end": {
-        "column": 10,
-        "line": 208
+        "line": 971
       },
       "start": {
-        "column": 9,
-        "line": 202
+        "column": 14,
+        "line": 971
       }
     }
   },
   {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace EvidenceBundleExportResult::error -> Self with Default::default()\n@@ -205,23 +205,17 @@\n             files_created: files,\n             total_bytes: bytes,\n             error: None,\n         }\n     }\n \n     /// Create error result\n     pub fn error(message: &str) -> Self {\n-        Self {\n-            success: false,\n-            bundle_path: None,\n-            files_created: Vec::new(),\n-            total_bytes: 0,\n-            error: Some(message.to_string()),\n-        }\n+        Default::default() /* ~ changed by cargo-mutants ~ */\n     }\n }\n \n /// Export evidence bundle to directory\n ///\n /// Creates a bundle directory containing:\n /// - bundle_manifest.json\n /// - env.json\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace diff_backend with ()\n@@ -974,24 +974,17 @@\n             a_value: a_sel,\n             b_value: b_sel,\n             severity: DiffSeverity::Warning,\n         });\n     }\n }\n \n fn diff_backend(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n-    if a.backend != b.backend {\n-        out.push(EvidenceDifference {\n-            field: \"backend_fingerprint\".to_string(),\n-            a_value: a.backend.clone(),\n-            b_value: b.backend.clone(),\n-            severity: DiffSeverity::Info,\n-        });\n-    }\n+    () /* ~ changed by cargo-mutants ~ */\n }\n \n /// A changed version is Info, a plugin missing from `b` a Warning; a plugin only in `b` is noted\n /// in `ignored` and is not a difference.\n fn diff_plugin_versions(\n     a: &Manifest,\n     b: &Manifest,\n     out: &mut Vec<EvidenceDifference>,\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
     "function": {
-      "function_name": "EvidenceBundleExportResult::error",
-      "return_type": "-> Self",
-      "span": {
-        "end": {
-          "column": 6,
-          "line": 220
-        },
-        "start": {
-          "column": 5,
-          "line": 211
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:213:9: replace EvidenceBundleExportResult::error -> Self with Default::default()",
-    "package": "bitvue-engine",
-    "replacement": "Default::default()",
-    "span": {
-      "end": {
-        "column": 10,
-        "line": 219
-      },
-      "start": {
-        "column": 9,
-        "line": 213
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace export_evidence_bundle -> EvidenceBundleExportResult with Default::default()\n@@ -240,40 +240,17 @@\n /// `screenshots` is raw PNG bytes, one entry per captured image -- decoding a base64/data-URL\n /// screenshot (e.g. from Electron's `capturePage()`) is the caller's job, matching how\n /// `render_snapshots` is likewise already-decoded data by the time it reaches this function.\n pub fn export_evidence_bundle(\n     request: &EvidenceBundleExportRequest,\n     render_snapshots: &[RenderSnapshot],\n     screenshots: &[Vec<u8>],\n ) -> EvidenceBundleExportResult {\n-    let timestamp = chrono::Utc::now().format(\"%Y%m%d_%H%M%S\").to_string();\n-    let bundle_name = format!(\"bitvue_evidence_{}\", timestamp);\n-    let bundle_dir = request.output_dir.join(&bundle_name);\n-\n-    if let Err(e) = std::fs::create_dir_all(&bundle_dir) {\n-        return EvidenceBundleExportResult::error(&format!(\n-            \"Failed to create bundle directory: {}\",\n-            e\n-        ));\n-    }\n-\n-    let manifest = build_manifest(request);\n-    let mut writer = BundleWriter::new(&bundle_dir);\n-    let written = write_metadata_files(&mut writer, request, &manifest)\n-        .and_then(|()| write_screenshots(&mut writer, request, screenshots))\n-        .and_then(|()| write_render_snapshots(&mut writer, request, render_snapshots));\n-    match written {\n-        Ok(()) => EvidenceBundleExportResult::success(\n-            bundle_dir.to_string_lossy().to_string(),\n-            writer.files,\n-            writer.total_bytes,\n-        ),\n-        Err(message) => EvidenceBundleExportResult::error(&message),\n-    }\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n \n /// Manifest for this build and request. `warnings`/`artifacts` start empty; the export does not\n /// collect any.\n fn build_manifest(request: &EvidenceBundleExportRequest) -> EvidenceBundleManifest {\n     EvidenceBundleManifest {\n         bundle_version: \"1.0\".to_string(),\n         app_version: env!(\"CARGO_PKG_VERSION\").to_string(),\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "export_evidence_bundle",
-      "return_type": "-> EvidenceBundleExportResult",
+      "function_name": "diff_backend",
+      "return_type": "",
       "span": {
         "end": {
           "column": 2,
-          "line": 272
+          "line": 990
         },
         "start": {
           "column": 1,
-          "line": 223
+          "line": 981
         }
       }
     },
     "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:248:5: replace export_evidence_bundle -> EvidenceBundleExportResult with Default::default()",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:982:5: replace diff_backend with ()",
     "package": "bitvue-engine",
-    "replacement": "Default::default()",
+    "replacement": "()",
     "span": {
       "end": {
         "column": 6,
-        "line": 271
+        "line": 989
       },
       "start": {
         "column": 5,
-        "line": 248
+        "line": 982
       }
     }
   },
   {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace build_manifest -> EvidenceBundleManifest with Default::default()\n@@ -269,39 +269,17 @@\n         ),\n         Err(message) => EvidenceBundleExportResult::error(&message),\n     }\n }\n \n /// Manifest for this build and request. `warnings`/`artifacts` start empty; the export does not\n /// collect any.\n fn build_manifest(request: &EvidenceBundleExportRequest) -> EvidenceBundleManifest {\n-    EvidenceBundleManifest {\n-        bundle_version: \"1.0\".to_string(),\n-        app_version: env!(\"CARGO_PKG_VERSION\").to_string(),\n-        git_commit: option_env!(\"GIT_COMMIT\").unwrap_or(\"unknown\").to_string(),\n-        build_profile: if cfg!(debug_assertions) {\n-            \"debug\"\n-        } else {\n-            \"release\"\n-        }\n-        .to_string(),\n-        os: std::env::consts::OS.to_string(),\n-        gpu: \"unknown\".to_string(),\n-        cpu: std::env::consts::ARCH.to_string(),\n-        backend: \"dav1d\".to_string(),\n-        plugin_versions: HashMap::new(),\n-        stream_fingerprint: request.stream_fingerprint.clone(),\n-        order_type: request.order_type,\n-        selection_state: request.selection_state.clone(),\n-        workspace: request.workspace.clone(),\n-        mode: request.mode.clone(),\n-        warnings: Vec::new(),\n-        artifacts: Vec::new(),\n-    }\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n \n /// Files written into a bundle directory so far, and their combined size.\n struct BundleWriter<'a> {\n     dir: &'a Path,\n     files: Vec<String>,\n     total_bytes: usize,\n }\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace != with == in diff_backend\n@@ -974,17 +974,17 @@\n             a_value: a_sel,\n             b_value: b_sel,\n             severity: DiffSeverity::Warning,\n         });\n     }\n }\n \n fn diff_backend(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n-    if a.backend != b.backend {\n+    if a.backend == /* ~ changed by cargo-mutants ~ */ b.backend {\n         out.push(EvidenceDifference {\n             field: \"backend_fingerprint\".to_string(),\n             a_value: a.backend.clone(),\n             b_value: b.backend.clone(),\n             severity: DiffSeverity::Info,\n         });\n     }\n }\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
     "function": {
-      "function_name": "build_manifest",
-      "return_type": "-> EvidenceBundleManifest",
+      "function_name": "diff_backend",
+      "return_type": "",
       "span": {
         "end": {
           "column": 2,
-          "line": 300
+          "line": 990
         },
         "start": {
           "column": 1,
-          "line": 274
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:277:5: replace build_manifest -> EvidenceBundleManifest with Default::default()",
-    "package": "bitvue-engine",
-    "replacement": "Default::default()",
-    "span": {
-      "end": {
-        "column": 6,
-        "line": 299
-      },
-      "start": {
-        "column": 5,
-        "line": 277
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace BundleWriter<'a>::json -> Result<(), String> with Ok(())\n@@ -317,21 +317,17 @@\n \n     /// Writes `data` as pretty JSON to `relative_path`; `what` names the file in the error.\n     fn json<T: Serialize>(\n         &mut self,\n         relative_path: &str,\n         data: &T,\n         what: &str,\n     ) -> Result<(), String> {\n-        let bytes = write_json_file(&self.dir.join(relative_path), data)\n-            .map_err(|e| format!(\"Failed to write {}: {}\", what, e))?;\n-        self.files.push(relative_path.to_string());\n-        self.total_bytes += bytes;\n-        Ok(())\n+        Ok(()) /* ~ changed by cargo-mutants ~ */\n     }\n \n     fn create_dir(&self, name: &str, what: &str) -> Result<std::path::PathBuf, String> {\n         let dir = self.dir.join(name);\n         std::fs::create_dir_all(&dir)\n             .map_err(|e| format!(\"Failed to create {} directory: {}\", what, e))?;\n         Ok(dir)\n     }\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "BundleWriter<'a>::json",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 6,
-          "line": 330
-        },
-        "start": {
-          "column": 5,
-          "line": 318
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:325:9: replace BundleWriter<'a>::json -> Result<(), String> with Ok(())",
-    "package": "bitvue-engine",
-    "replacement": "Ok(())",
-    "span": {
-      "end": {
-        "column": 15,
-        "line": 329
-      },
-      "start": {
-        "column": 9,
-        "line": 325
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace += with -= in BundleWriter<'a>::json\n@@ -320,17 +320,17 @@\n         &mut self,\n         relative_path: &str,\n         data: &T,\n         what: &str,\n     ) -> Result<(), String> {\n         let bytes = write_json_file(&self.dir.join(relative_path), data)\n             .map_err(|e| format!(\"Failed to write {}: {}\", what, e))?;\n         self.files.push(relative_path.to_string());\n-        self.total_bytes += bytes;\n+        self.total_bytes -= /* ~ changed by cargo-mutants ~ */ bytes;\n         Ok(())\n     }\n \n     fn create_dir(&self, name: &str, what: &str) -> Result<std::path::PathBuf, String> {\n         let dir = self.dir.join(name);\n         std::fs::create_dir_all(&dir)\n             .map_err(|e| format!(\"Failed to create {} directory: {}\", what, e))?;\n         Ok(dir)\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "BundleWriter<'a>::json",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 6,
-          "line": 330
-        },
-        "start": {
-          "column": 5,
-          "line": 318
+          "line": 981
         }
       }
     },
     "genre": "BinaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:328:26: replace += with -= in BundleWriter<'a>::json",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:982:18: replace != with == in diff_backend",
     "package": "bitvue-engine",
-    "replacement": "-=",
+    "replacement": "==",
     "span": {
       "end": {
-        "column": 28,
-        "line": 328
+        "column": 20,
+        "line": 982
       },
       "start": {
-        "column": 26,
-        "line": 328
+        "column": 18,
+        "line": 982
       }
     }
   },
   {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace += with *= in BundleWriter<'a>::json\n@@ -320,17 +320,17 @@\n         &mut self,\n         relative_path: &str,\n         data: &T,\n         what: &str,\n     ) -> Result<(), String> {\n         let bytes = write_json_file(&self.dir.join(relative_path), data)\n             .map_err(|e| format!(\"Failed to write {}: {}\", what, e))?;\n         self.files.push(relative_path.to_string());\n-        self.total_bytes += bytes;\n+        self.total_bytes *= /* ~ changed by cargo-mutants ~ */ bytes;\n         Ok(())\n     }\n \n     fn create_dir(&self, name: &str, what: &str) -> Result<std::path::PathBuf, String> {\n         let dir = self.dir.join(name);\n         std::fs::create_dir_all(&dir)\n             .map_err(|e| format!(\"Failed to create {} directory: {}\", what, e))?;\n         Ok(dir)\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace diff_plugin_versions with ()\n@@ -992,43 +992,17 @@\n /// A changed version is Info, a plugin missing from `b` a Warning; a plugin only in `b` is noted\n /// in `ignored` and is not a difference.\n fn diff_plugin_versions(\n     a: &Manifest,\n     b: &Manifest,\n     out: &mut Vec<EvidenceDifference>,\n     ignored: &mut Vec<String>,\n ) {\n-    for (key, a_ver) in &a.plugin_versions {\n-        match b.plugin_versions.get(key) {\n-            Some(b_ver) if a_ver != b_ver => {\n-                out.push(EvidenceDifference {\n-                    field: format!(\"plugin_versions.{}\", key),\n-                    a_value: a_ver.clone(),\n-                    b_value: b_ver.clone(),\n-                    severity: DiffSeverity::Info,\n-                });\n-            }\n-            None => {\n-                out.push(EvidenceDifference {\n-                    field: format!(\"plugin_versions.{}\", key),\n-                    a_value: a_ver.clone(),\n-                    b_value: \"(missing)\".to_string(),\n-                    severity: DiffSeverity::Warning,\n-                });\n-            }\n-            _ => {}\n-        }\n-    }\n-\n-    for key in b.plugin_versions.keys() {\n-        if !a.plugin_versions.contains_key(key) {\n-            ignored.push(format!(\"New plugin in b: {}\", key));\n-        }\n-    }\n+    () /* ~ changed by cargo-mutants ~ */\n }\n \n /// Compared as sorted lists, so order does not matter but duplicates do.\n fn diff_warnings(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n     let mut a_warnings = a.warnings.clone();\n     let mut b_warnings = b.warnings.clone();\n     a_warnings.sort();\n     b_warnings.sort();\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
     "function": {
-      "function_name": "BundleWriter<'a>::json",
-      "return_type": "-> Result<(), String>",
+      "function_name": "diff_plugin_versions",
+      "return_type": "",
       "span": {
         "end": {
-          "column": 6,
-          "line": 330
+          "column": 2,
+          "line": 1027
         },
         "start": {
-          "column": 5,
-          "line": 318
-        }
-      }
-    },
-    "genre": "BinaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:328:26: replace += with *= in BundleWriter<'a>::json",
-    "package": "bitvue-engine",
-    "replacement": "*=",
-    "span": {
-      "end": {
-        "column": 28,
-        "line": 328
-      },
-      "start": {
-        "column": 26,
-        "line": 328
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace BundleWriter<'a>::create_dir -> Result<std::path::PathBuf, String> with Ok(Default::default())\n@@ -325,20 +325,17 @@\n         let bytes = write_json_file(&self.dir.join(relative_path), data)\n             .map_err(|e| format!(\"Failed to write {}: {}\", what, e))?;\n         self.files.push(relative_path.to_string());\n         self.total_bytes += bytes;\n         Ok(())\n     }\n \n     fn create_dir(&self, name: &str, what: &str) -> Result<std::path::PathBuf, String> {\n-        let dir = self.dir.join(name);\n-        std::fs::create_dir_all(&dir)\n-            .map_err(|e| format!(\"Failed to create {} directory: {}\", what, e))?;\n-        Ok(dir)\n+        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n     }\n }\n \n /// The seven fixed files, in the order they appear in `files_created`.\n fn write_metadata_files(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     manifest: &EvidenceBundleManifest,\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "BundleWriter<'a>::create_dir",
-      "return_type": "-> Result<std::path::PathBuf, String>",
-      "span": {
-        "end": {
-          "column": 6,
-          "line": 337
-        },
-        "start": {
-          "column": 5,
-          "line": 332
+          "column": 1,
+          "line": 992
         }
       }
     },
     "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:333:9: replace BundleWriter<'a>::create_dir -> Result<std::path::PathBuf, String> with Ok(Default::default())",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1000:5: replace diff_plugin_versions with ()",
+    "package": "bitvue-engine",
+    "replacement": "()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 1026
+      },
+      "start": {
+        "column": 5,
+        "line": 1000
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ delete match arm None in diff_plugin_versions\n@@ -1002,24 +1002,17 @@\n             Some(b_ver) if a_ver != b_ver => {\n                 out.push(EvidenceDifference {\n                     field: format!(\"plugin_versions.{}\", key),\n                     a_value: a_ver.clone(),\n                     b_value: b_ver.clone(),\n                     severity: DiffSeverity::Info,\n                 });\n             }\n-            None => {\n-                out.push(EvidenceDifference {\n-                    field: format!(\"plugin_versions.{}\", key),\n-                    a_value: a_ver.clone(),\n-                    b_value: \"(missing)\".to_string(),\n-                    severity: DiffSeverity::Warning,\n-                });\n-            }\n+             /* ~ changed by cargo-mutants ~ */\n             _ => {}\n         }\n     }\n \n     for key in b.plugin_versions.keys() {\n         if !a.plugin_versions.contains_key(key) {\n             ignored.push(format!(\"New plugin in b: {}\", key));\n         }\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_plugin_versions",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 1027
+        },
+        "start": {
+          "column": 1,
+          "line": 992
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1010:13: delete match arm None in diff_plugin_versions",
+    "package": "bitvue-engine",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 14,
+        "line": 1017
+      },
+      "start": {
+        "column": 13,
+        "line": 1010
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace match guard a_ver != b_ver with true in diff_plugin_versions\n@@ -994,17 +994,17 @@\n fn diff_plugin_versions(\n     a: &Manifest,\n     b: &Manifest,\n     out: &mut Vec<EvidenceDifference>,\n     ignored: &mut Vec<String>,\n ) {\n     for (key, a_ver) in &a.plugin_versions {\n         match b.plugin_versions.get(key) {\n-            Some(b_ver) if a_ver != b_ver => {\n+            Some(b_ver) if true /* ~ changed by cargo-mutants ~ */ => {\n                 out.push(EvidenceDifference {\n                     field: format!(\"plugin_versions.{}\", key),\n                     a_value: a_ver.clone(),\n                     b_value: b_ver.clone(),\n                     severity: DiffSeverity::Info,\n                 });\n             }\n             None => {\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_plugin_versions",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 1027
+        },
+        "start": {
+          "column": 1,
+          "line": 992
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1002:28: replace match guard a_ver != b_ver with true in diff_plugin_versions",
+    "package": "bitvue-engine",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 42,
+        "line": 1002
+      },
+      "start": {
+        "column": 28,
+        "line": 1002
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace match guard a_ver != b_ver with false in diff_plugin_versions\n@@ -994,17 +994,17 @@\n fn diff_plugin_versions(\n     a: &Manifest,\n     b: &Manifest,\n     out: &mut Vec<EvidenceDifference>,\n     ignored: &mut Vec<String>,\n ) {\n     for (key, a_ver) in &a.plugin_versions {\n         match b.plugin_versions.get(key) {\n-            Some(b_ver) if a_ver != b_ver => {\n+            Some(b_ver) if false /* ~ changed by cargo-mutants ~ */ => {\n                 out.push(EvidenceDifference {\n                     field: format!(\"plugin_versions.{}\", key),\n                     a_value: a_ver.clone(),\n                     b_value: b_ver.clone(),\n                     severity: DiffSeverity::Info,\n                 });\n             }\n             None => {\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_plugin_versions",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 1027
+        },
+        "start": {
+          "column": 1,
+          "line": 992
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1002:28: replace match guard a_ver != b_ver with false in diff_plugin_versions",
+    "package": "bitvue-engine",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 42,
+        "line": 1002
+      },
+      "start": {
+        "column": 28,
+        "line": 1002
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace != with == in diff_plugin_versions\n@@ -994,17 +994,17 @@\n fn diff_plugin_versions(\n     a: &Manifest,\n     b: &Manifest,\n     out: &mut Vec<EvidenceDifference>,\n     ignored: &mut Vec<String>,\n ) {\n     for (key, a_ver) in &a.plugin_versions {\n         match b.plugin_versions.get(key) {\n-            Some(b_ver) if a_ver != b_ver => {\n+            Some(b_ver) if a_ver == /* ~ changed by cargo-mutants ~ */ b_ver => {\n                 out.push(EvidenceDifference {\n                     field: format!(\"plugin_versions.{}\", key),\n                     a_value: a_ver.clone(),\n                     b_value: b_ver.clone(),\n                     severity: DiffSeverity::Info,\n                 });\n             }\n             None => {\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_plugin_versions",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 1027
+        },
+        "start": {
+          "column": 1,
+          "line": 992
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1002:34: replace != with == in diff_plugin_versions",
+    "package": "bitvue-engine",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 36,
+        "line": 1002
+      },
+      "start": {
+        "column": 34,
+        "line": 1002
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ delete ! in diff_plugin_versions\n@@ -1015,17 +1015,17 @@\n                     severity: DiffSeverity::Warning,\n                 });\n             }\n             _ => {}\n         }\n     }\n \n     for key in b.plugin_versions.keys() {\n-        if !a.plugin_versions.contains_key(key) {\n+        if  /* ~ changed by cargo-mutants ~ */a.plugin_versions.contains_key(key) {\n             ignored.push(format!(\"New plugin in b: {}\", key));\n         }\n     }\n }\n \n /// Compared as sorted lists, so order does not matter but duplicates do.\n fn diff_warnings(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n     let mut a_warnings = a.warnings.clone();\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_plugin_versions",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 1027
+        },
+        "start": {
+          "column": 1,
+          "line": 992
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1023:12: delete ! in diff_plugin_versions",
+    "package": "bitvue-engine",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 13,
+        "line": 1023
+      },
+      "start": {
+        "column": 12,
+        "line": 1023
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace diff_warnings with ()\n@@ -1023,28 +1023,17 @@\n         if !a.plugin_versions.contains_key(key) {\n             ignored.push(format!(\"New plugin in b: {}\", key));\n         }\n     }\n }\n \n /// Compared as sorted lists, so order does not matter but duplicates do.\n fn diff_warnings(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n-    let mut a_warnings = a.warnings.clone();\n-    let mut b_warnings = b.warnings.clone();\n-    a_warnings.sort();\n-    b_warnings.sort();\n-    if a_warnings != b_warnings {\n-        out.push(EvidenceDifference {\n-            field: \"warnings\".to_string(),\n-            a_value: a_warnings.join(\", \"),\n-            b_value: b_warnings.join(\", \"),\n-            severity: DiffSeverity::Warning,\n-        });\n-    }\n+    () /* ~ changed by cargo-mutants ~ */\n }\n \n /// Loads `bundle_manifest.json` from an evidence bundle directory (as produced by\n /// `export_evidence_bundle`).\n pub fn load_evidence_bundle_manifest(\n     bundle_dir: &std::path::Path,\n ) -> Result<crate::export::EvidenceBundleManifest, String> {\n     let path = bundle_dir.join(\"bundle_manifest.json\");\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_warnings",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 1043
+        },
+        "start": {
+          "column": 1,
+          "line": 1029
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1031:5: replace diff_warnings with ()",
+    "package": "bitvue-engine",
+    "replacement": "()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 1042
+      },
+      "start": {
+        "column": 5,
+        "line": 1031
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace != with == in diff_warnings\n@@ -1027,17 +1027,17 @@\n }\n \n /// Compared as sorted lists, so order does not matter but duplicates do.\n fn diff_warnings(a: &Manifest, b: &Manifest, out: &mut Vec<EvidenceDifference>) {\n     let mut a_warnings = a.warnings.clone();\n     let mut b_warnings = b.warnings.clone();\n     a_warnings.sort();\n     b_warnings.sort();\n-    if a_warnings != b_warnings {\n+    if a_warnings == /* ~ changed by cargo-mutants ~ */ b_warnings {\n         out.push(EvidenceDifference {\n             field: \"warnings\".to_string(),\n             a_value: a_warnings.join(\", \"),\n             b_value: b_warnings.join(\", \"),\n             severity: DiffSeverity::Warning,\n         });\n     }\n }\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "diff_warnings",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 1043
+        },
+        "start": {
+          "column": 1,
+          "line": 1029
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1035:19: replace != with == in diff_warnings",
+    "package": "bitvue-engine",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 21,
+        "line": 1035
+      },
+      "start": {
+        "column": 19,
+        "line": 1035
+      }
+    }
+  },
+  {
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace load_evidence_bundle_manifest -> Result<crate::export::EvidenceBundleManifest, String> with Ok(Default::default())\n@@ -1042,20 +1042,17 @@\n     }\n }\n \n /// Loads `bundle_manifest.json` from an evidence bundle directory (as produced by\n /// `export_evidence_bundle`).\n pub fn load_evidence_bundle_manifest(\n     bundle_dir: &std::path::Path,\n ) -> Result<crate::export::EvidenceBundleManifest, String> {\n-    let path = bundle_dir.join(\"bundle_manifest.json\");\n-    let data = std::fs::read_to_string(&path)\n-        .map_err(|e| format!(\"failed to read {}: {e}\", path.display()))?;\n-    serde_json::from_str(&data).map_err(|e| format!(\"failed to parse {}: {e}\", path.display()))\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Loads and compares two evidence bundle directories' manifests. This is the entry point real\n /// callers (CLI, future UI) should use -- `compare_evidence_bundles` itself only operates on\n /// already-parsed manifests.\n pub fn compare_evidence_bundle_dirs(\n     dir_a: &std::path::Path,\n     dir_b: &std::path::Path,\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
+    "function": {
+      "function_name": "load_evidence_bundle_manifest",
+      "return_type": "-> Result<crate::export::EvidenceBundleManifest, String>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 1054
+        },
+        "start": {
+          "column": 1,
+          "line": 1045
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1050:5: replace load_evidence_bundle_manifest -> Result<crate::export::EvidenceBundleManifest, String> with Ok(Default::default())",
     "package": "bitvue-engine",
     "replacement": "Ok(Default::default())",
     "span": {
       "end": {
-        "column": 16,
-        "line": 336
+        "column": 96,
+        "line": 1053
       },
       "start": {
-        "column": 9,
-        "line": 333
+        "column": 5,
+        "line": 1050
       }
     }
   },
   {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace write_metadata_files -> Result<(), String> with Ok(())\n@@ -338,56 +338,17 @@\n }\n \n /// The seven fixed files, in the order they appear in `files_created`.\n fn write_metadata_files(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     manifest: &EvidenceBundleManifest,\n ) -> Result<(), String> {\n-    writer.json(\"bundle_manifest.json\", manifest, \"manifest\")?;\n-\n-    let env_info = EnvInfo {\n-        os: manifest.os.clone(),\n-        arch: manifest.cpu.clone(),\n-        gpu: manifest.gpu.clone(),\n-        timestamp: chrono::Utc::now().to_rfc3339(),\n-    };\n-    writer.json(\"env.json\", &env_info, \"env.json\")?;\n-\n-    let version_info = VersionInfo {\n-        app_version: manifest.app_version.clone(),\n-        git_commit: manifest.git_commit.clone(),\n-        build_profile: manifest.build_profile.clone(),\n-        bundle_version: manifest.bundle_version.clone(),\n-    };\n-    writer.json(\"version.json\", &version_info, \"version.json\")?;\n-\n-    writer.json(\n-        \"selection_state.json\",\n-        &request.selection_state,\n-        \"selection_state.json\",\n-    )?;\n-\n-    let order_type_info = OrderTypeInfo {\n-        order_type: request.order_type,\n-    };\n-    writer.json(\"order_type.json\", &order_type_info, \"order_type.json\")?;\n-\n-    let backend_info = BackendInfo {\n-        backend: manifest.backend.clone(),\n-        plugin_versions: manifest.plugin_versions.clone(),\n-    };\n-    writer.json(\n-        \"backend_fingerprint.json\",\n-        &backend_info,\n-        \"backend_fingerprint.json\",\n-    )?;\n-\n-    writer.json(\"warnings.json\", &manifest.warnings, \"warnings.json\")\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// `screenshots/screenshot_NNNN.png`, only when requested and non-empty.\n fn write_screenshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     screenshots: &[Vec<u8>],\n ) -> Result<(), String> {\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
+    "diff": "--- crates/bitvue-engine/src/parity_harness/mod.rs\n+++ replace compare_evidence_bundle_dirs -> Result<EvidenceBundleDiffResult, String> with Ok(Default::default())\n@@ -1056,19 +1056,17 @@\n /// Loads and compares two evidence bundle directories' manifests. This is the entry point real\n /// callers (CLI, future UI) should use -- `compare_evidence_bundles` itself only operates on\n /// already-parsed manifests.\n pub fn compare_evidence_bundle_dirs(\n     dir_a: &std::path::Path,\n     dir_b: &std::path::Path,\n     config: &EvidenceDiffConfig,\n ) -> Result<EvidenceBundleDiffResult, String> {\n-    let a = load_evidence_bundle_manifest(dir_a)?;\n-    let b = load_evidence_bundle_manifest(dir_b)?;\n-    Ok(compare_evidence_bundles(&a, &b, config))\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n // =============================================================================\n // COMPARE ALIGNMENT (per compare_alignment_contracts.json)\n // =============================================================================\n \n /// Alignment axis type\n #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]\n",
+    "file": "crates/bitvue-engine/src/parity_harness/mod.rs",
     "function": {
-      "function_name": "write_metadata_files",
-      "return_type": "-> Result<(), String>",
+      "function_name": "compare_evidence_bundle_dirs",
+      "return_type": "-> Result<EvidenceBundleDiffResult, String>",
       "span": {
         "end": {
           "column": 2,
-          "line": 386
+          "line": 1067
         },
         "start": {
           "column": 1,
-          "line": 340
+          "line": 1056
         }
       }
     },
     "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:346:5: replace write_metadata_files -> Result<(), String> with Ok(())",
+    "name": "crates/bitvue-engine/src/parity_harness/mod.rs:1064:5: replace compare_evidence_bundle_dirs -> Result<EvidenceBundleDiffResult, String> with Ok(Default::default())",
     "package": "bitvue-engine",
-    "replacement": "Ok(())",
+    "replacement": "Ok(Default::default())",
     "span": {
       "end": {
-        "column": 70,
-        "line": 385
+        "column": 49,
+        "line": 1066
       },
       "start": {
         "column": 5,
-        "line": 346
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace write_screenshots -> Result<(), String> with Ok(())\n@@ -386,29 +386,17 @@\n }\n \n /// `screenshots/screenshot_NNNN.png`, only when requested and non-empty.\n fn write_screenshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     screenshots: &[Vec<u8>],\n ) -> Result<(), String> {\n-    if !request.include_screenshots || screenshots.is_empty() {\n-        return Ok(());\n-    }\n-    let dir = writer.create_dir(\"screenshots\", \"screenshots\")?;\n-    for (idx, png_bytes) in screenshots.iter().enumerate() {\n-        std::fs::write(dir.join(format!(\"screenshot_{:04}.png\", idx)), png_bytes)\n-            .map_err(|e| format!(\"Failed to write screenshot: {}\", e))?;\n-        writer\n-            .files\n-            .push(format!(\"screenshots/screenshot_{:04}.png\", idx));\n-        writer.total_bytes += png_bytes.len();\n-    }\n-    Ok(())\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// `render_snapshots/snapshot_NNNN.json`, only when requested and non-empty.\n fn write_render_snapshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     render_snapshots: &[RenderSnapshot],\n ) -> Result<(), String> {\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_screenshots",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 407
-        },
-        "start": {
-          "column": 1,
-          "line": 388
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:394:5: replace write_screenshots -> Result<(), String> with Ok(())",
-    "package": "bitvue-engine",
-    "replacement": "Ok(())",
-    "span": {
-      "end": {
-        "column": 11,
-        "line": 406
-      },
-      "start": {
-        "column": 5,
-        "line": 394
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace || with && in write_screenshots\n@@ -386,17 +386,17 @@\n }\n \n /// `screenshots/screenshot_NNNN.png`, only when requested and non-empty.\n fn write_screenshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     screenshots: &[Vec<u8>],\n ) -> Result<(), String> {\n-    if !request.include_screenshots || screenshots.is_empty() {\n+    if !request.include_screenshots && /* ~ changed by cargo-mutants ~ */ screenshots.is_empty() {\n         return Ok(());\n     }\n     let dir = writer.create_dir(\"screenshots\", \"screenshots\")?;\n     for (idx, png_bytes) in screenshots.iter().enumerate() {\n         std::fs::write(dir.join(format!(\"screenshot_{:04}.png\", idx)), png_bytes)\n             .map_err(|e| format!(\"Failed to write screenshot: {}\", e))?;\n         writer\n             .files\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_screenshots",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 407
-        },
-        "start": {
-          "column": 1,
-          "line": 388
-        }
-      }
-    },
-    "genre": "BinaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:394:37: replace || with && in write_screenshots",
-    "package": "bitvue-engine",
-    "replacement": "&&",
-    "span": {
-      "end": {
-        "column": 39,
-        "line": 394
-      },
-      "start": {
-        "column": 37,
-        "line": 394
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ delete ! in write_screenshots\n@@ -386,17 +386,17 @@\n }\n \n /// `screenshots/screenshot_NNNN.png`, only when requested and non-empty.\n fn write_screenshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     screenshots: &[Vec<u8>],\n ) -> Result<(), String> {\n-    if !request.include_screenshots || screenshots.is_empty() {\n+    if  /* ~ changed by cargo-mutants ~ */request.include_screenshots || screenshots.is_empty() {\n         return Ok(());\n     }\n     let dir = writer.create_dir(\"screenshots\", \"screenshots\")?;\n     for (idx, png_bytes) in screenshots.iter().enumerate() {\n         std::fs::write(dir.join(format!(\"screenshot_{:04}.png\", idx)), png_bytes)\n             .map_err(|e| format!(\"Failed to write screenshot: {}\", e))?;\n         writer\n             .files\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_screenshots",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 407
-        },
-        "start": {
-          "column": 1,
-          "line": 388
-        }
-      }
-    },
-    "genre": "UnaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:394:8: delete ! in write_screenshots",
-    "package": "bitvue-engine",
-    "replacement": "",
-    "span": {
-      "end": {
-        "column": 9,
-        "line": 394
-      },
-      "start": {
-        "column": 8,
-        "line": 394
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace += with -= in write_screenshots\n@@ -396,17 +396,17 @@\n     }\n     let dir = writer.create_dir(\"screenshots\", \"screenshots\")?;\n     for (idx, png_bytes) in screenshots.iter().enumerate() {\n         std::fs::write(dir.join(format!(\"screenshot_{:04}.png\", idx)), png_bytes)\n             .map_err(|e| format!(\"Failed to write screenshot: {}\", e))?;\n         writer\n             .files\n             .push(format!(\"screenshots/screenshot_{:04}.png\", idx));\n-        writer.total_bytes += png_bytes.len();\n+        writer.total_bytes -= /* ~ changed by cargo-mutants ~ */ png_bytes.len();\n     }\n     Ok(())\n }\n \n /// `render_snapshots/snapshot_NNNN.json`, only when requested and non-empty.\n fn write_render_snapshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_screenshots",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 407
-        },
-        "start": {
-          "column": 1,
-          "line": 388
-        }
-      }
-    },
-    "genre": "BinaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:404:28: replace += with -= in write_screenshots",
-    "package": "bitvue-engine",
-    "replacement": "-=",
-    "span": {
-      "end": {
-        "column": 30,
-        "line": 404
-      },
-      "start": {
-        "column": 28,
-        "line": 404
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace += with *= in write_screenshots\n@@ -396,17 +396,17 @@\n     }\n     let dir = writer.create_dir(\"screenshots\", \"screenshots\")?;\n     for (idx, png_bytes) in screenshots.iter().enumerate() {\n         std::fs::write(dir.join(format!(\"screenshot_{:04}.png\", idx)), png_bytes)\n             .map_err(|e| format!(\"Failed to write screenshot: {}\", e))?;\n         writer\n             .files\n             .push(format!(\"screenshots/screenshot_{:04}.png\", idx));\n-        writer.total_bytes += png_bytes.len();\n+        writer.total_bytes *= /* ~ changed by cargo-mutants ~ */ png_bytes.len();\n     }\n     Ok(())\n }\n \n /// `render_snapshots/snapshot_NNNN.json`, only when requested and non-empty.\n fn write_render_snapshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_screenshots",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 407
-        },
-        "start": {
-          "column": 1,
-          "line": 388
-        }
-      }
-    },
-    "genre": "BinaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:404:28: replace += with *= in write_screenshots",
-    "package": "bitvue-engine",
-    "replacement": "*=",
-    "span": {
-      "end": {
-        "column": 30,
-        "line": 404
-      },
-      "start": {
-        "column": 28,
-        "line": 404
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace write_render_snapshots -> Result<(), String> with Ok(())\n@@ -407,25 +407,17 @@\n }\n \n /// `render_snapshots/snapshot_NNNN.json`, only when requested and non-empty.\n fn write_render_snapshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     render_snapshots: &[RenderSnapshot],\n ) -> Result<(), String> {\n-    if !request.include_render_snapshots || render_snapshots.is_empty() {\n-        return Ok(());\n-    }\n-    writer.create_dir(\"render_snapshots\", \"snapshots\")?;\n-    for (idx, snapshot) in render_snapshots.iter().enumerate() {\n-        let relative = format!(\"render_snapshots/snapshot_{:04}.json\", idx);\n-        writer.json(&relative, snapshot, \"snapshot\")?;\n-    }\n-    Ok(())\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Environment info for evidence bundle\n #[derive(Debug, Clone, Serialize, Deserialize)]\n struct EnvInfo {\n     os: String,\n     arch: String,\n     gpu: String,\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_render_snapshots",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 424
-        },
-        "start": {
-          "column": 1,
-          "line": 409
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:415:5: replace write_render_snapshots -> Result<(), String> with Ok(())",
-    "package": "bitvue-engine",
-    "replacement": "Ok(())",
-    "span": {
-      "end": {
-        "column": 11,
-        "line": 423
-      },
-      "start": {
-        "column": 5,
-        "line": 415
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace || with && in write_render_snapshots\n@@ -407,17 +407,17 @@\n }\n \n /// `render_snapshots/snapshot_NNNN.json`, only when requested and non-empty.\n fn write_render_snapshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     render_snapshots: &[RenderSnapshot],\n ) -> Result<(), String> {\n-    if !request.include_render_snapshots || render_snapshots.is_empty() {\n+    if !request.include_render_snapshots && /* ~ changed by cargo-mutants ~ */ render_snapshots.is_empty() {\n         return Ok(());\n     }\n     writer.create_dir(\"render_snapshots\", \"snapshots\")?;\n     for (idx, snapshot) in render_snapshots.iter().enumerate() {\n         let relative = format!(\"render_snapshots/snapshot_{:04}.json\", idx);\n         writer.json(&relative, snapshot, \"snapshot\")?;\n     }\n     Ok(())\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_render_snapshots",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 424
-        },
-        "start": {
-          "column": 1,
-          "line": 409
-        }
-      }
-    },
-    "genre": "BinaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:415:42: replace || with && in write_render_snapshots",
-    "package": "bitvue-engine",
-    "replacement": "&&",
-    "span": {
-      "end": {
-        "column": 44,
-        "line": 415
-      },
-      "start": {
-        "column": 42,
-        "line": 415
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ delete ! in write_render_snapshots\n@@ -407,17 +407,17 @@\n }\n \n /// `render_snapshots/snapshot_NNNN.json`, only when requested and non-empty.\n fn write_render_snapshots(\n     writer: &mut BundleWriter,\n     request: &EvidenceBundleExportRequest,\n     render_snapshots: &[RenderSnapshot],\n ) -> Result<(), String> {\n-    if !request.include_render_snapshots || render_snapshots.is_empty() {\n+    if  /* ~ changed by cargo-mutants ~ */request.include_render_snapshots || render_snapshots.is_empty() {\n         return Ok(());\n     }\n     writer.create_dir(\"render_snapshots\", \"snapshots\")?;\n     for (idx, snapshot) in render_snapshots.iter().enumerate() {\n         let relative = format!(\"render_snapshots/snapshot_{:04}.json\", idx);\n         writer.json(&relative, snapshot, \"snapshot\")?;\n     }\n     Ok(())\n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_render_snapshots",
-      "return_type": "-> Result<(), String>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 424
-        },
-        "start": {
-          "column": 1,
-          "line": 409
-        }
-      }
-    },
-    "genre": "UnaryOperator",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:415:8: delete ! in write_render_snapshots",
-    "package": "bitvue-engine",
-    "replacement": "",
-    "span": {
-      "end": {
-        "column": 9,
-        "line": 415
-      },
-      "start": {
-        "column": 8,
-        "line": 415
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace write_json_file -> std::io::Result<usize> with Ok(0)\n@@ -451,19 +451,17 @@\n #[derive(Debug, Clone, Serialize, Deserialize)]\n struct BackendInfo {\n     backend: String,\n     plugin_versions: HashMap<String, String>,\n }\n \n /// Helper to write JSON file\n fn write_json_file<T: Serialize>(path: &Path, data: &T) -> std::io::Result<usize> {\n-    let json = serde_json::to_string_pretty(data).map_err(std::io::Error::other)?;\n-    std::fs::write(path, &json)?;\n-    Ok(json.len())\n+    Ok(0) /* ~ changed by cargo-mutants ~ */\n }\n \n #[cfg(test)]\n mod tests {\n     use super::*;\n     use crate::parity_harness::{EntityRef, ViewportState};\n     use std::path::PathBuf;\n \n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_json_file",
-      "return_type": "-> std::io::Result<usize>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 462
-        },
-        "start": {
-          "column": 1,
-          "line": 457
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:459:5: replace write_json_file -> std::io::Result<usize> with Ok(0)",
-    "package": "bitvue-engine",
-    "replacement": "Ok(0)",
-    "span": {
-      "end": {
-        "column": 19,
-        "line": 461
-      },
-      "start": {
-        "column": 5,
-        "line": 459
-      }
-    }
-  },
-  {
-    "diff": "--- crates/bitvue-engine/src/export/evidence.rs\n+++ replace write_json_file -> std::io::Result<usize> with Ok(1)\n@@ -451,19 +451,17 @@\n #[derive(Debug, Clone, Serialize, Deserialize)]\n struct BackendInfo {\n     backend: String,\n     plugin_versions: HashMap<String, String>,\n }\n \n /// Helper to write JSON file\n fn write_json_file<T: Serialize>(path: &Path, data: &T) -> std::io::Result<usize> {\n-    let json = serde_json::to_string_pretty(data).map_err(std::io::Error::other)?;\n-    std::fs::write(path, &json)?;\n-    Ok(json.len())\n+    Ok(1) /* ~ changed by cargo-mutants ~ */\n }\n \n #[cfg(test)]\n mod tests {\n     use super::*;\n     use crate::parity_harness::{EntityRef, ViewportState};\n     use std::path::PathBuf;\n \n",
-    "file": "crates/bitvue-engine/src/export/evidence.rs",
-    "function": {
-      "function_name": "write_json_file",
-      "return_type": "-> std::io::Result<usize>",
-      "span": {
-        "end": {
-          "column": 2,
-          "line": 462
-        },
-        "start": {
-          "column": 1,
-          "line": 457
-        }
-      }
-    },
-    "genre": "FnValue",
-    "name": "crates/bitvue-engine/src/export/evidence.rs:459:5: replace write_json_file -> std::io::Result<usize> with Ok(1)",
-    "package": "bitvue-engine",
-    "replacement": "Ok(1)",
-    "span": {
-      "end": {
-        "column": 19,
-        "line": 461
-      },
-      "start": {
-        "column": 5,
-        "line": 459
+        "line": 1064
       }
     }
   }

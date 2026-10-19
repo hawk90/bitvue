@@ -1,20 +1,19 @@
-crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with None
-crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with Some(1)
-crates/bitvue-engine/src/export/evidence.rs:42:5: replace parse_major_version -> Option<u32> with Some(0)
-crates/bitvue-engine/src/export/evidence.rs:57:16: replace == with != in check_bundle_schema_compatibility
-crates/bitvue-engine/src/export/evidence.rs:277:5: replace build_manifest -> EvidenceBundleManifest with Default::default()
-crates/bitvue-engine/src/export/evidence.rs:325:9: replace BundleWriter<'a>::json -> Result<(), String> with Ok(())
-crates/bitvue-engine/src/export/evidence.rs:328:26: replace += with -= in BundleWriter<'a>::json
-crates/bitvue-engine/src/export/evidence.rs:328:26: replace += with *= in BundleWriter<'a>::json
-crates/bitvue-engine/src/export/evidence.rs:333:9: replace BundleWriter<'a>::create_dir -> Result<std::path::PathBuf, String> with Ok(Default::default())
-crates/bitvue-engine/src/export/evidence.rs:346:5: replace write_metadata_files -> Result<(), String> with Ok(())
-crates/bitvue-engine/src/export/evidence.rs:394:5: replace write_screenshots -> Result<(), String> with Ok(())
-crates/bitvue-engine/src/export/evidence.rs:394:37: replace || with && in write_screenshots
-crates/bitvue-engine/src/export/evidence.rs:404:28: replace += with -= in write_screenshots
-crates/bitvue-engine/src/export/evidence.rs:394:8: delete ! in write_screenshots
-crates/bitvue-engine/src/export/evidence.rs:404:28: replace += with *= in write_screenshots
-crates/bitvue-engine/src/export/evidence.rs:415:5: replace write_render_snapshots -> Result<(), String> with Ok(())
-crates/bitvue-engine/src/export/evidence.rs:415:42: replace || with && in write_render_snapshots
-crates/bitvue-engine/src/export/evidence.rs:415:8: delete ! in write_render_snapshots
-crates/bitvue-engine/src/export/evidence.rs:459:5: replace write_json_file -> std::io::Result<usize> with Ok(0)
-crates/bitvue-engine/src/export/evidence.rs:459:5: replace write_json_file -> std::io::Result<usize> with Ok(1)
+crates/bitvue-engine/src/parity_harness/mod.rs:929:26: delete ! in compare_evidence_bundles
+crates/bitvue-engine/src/parity_harness/mod.rs:931:29: replace == with != in compare_evidence_bundles
+crates/bitvue-engine/src/parity_harness/mod.rs:944:5: replace diff_schema_version with ()
+crates/bitvue-engine/src/parity_harness/mod.rs:905:73: replace == with != in compare_evidence_bundles
+crates/bitvue-engine/src/parity_harness/mod.rs:958:5: replace diff_order_type with ()
+crates/bitvue-engine/src/parity_harness/mod.rs:958:21: replace != with == in diff_order_type
+crates/bitvue-engine/src/parity_harness/mod.rs:971:14: replace != with == in diff_selection_state
+crates/bitvue-engine/src/parity_harness/mod.rs:969:5: replace diff_selection_state with ()
+crates/bitvue-engine/src/parity_harness/mod.rs:982:5: replace diff_backend with ()
+crates/bitvue-engine/src/parity_harness/mod.rs:982:18: replace != with == in diff_backend
+crates/bitvue-engine/src/parity_harness/mod.rs:1000:5: replace diff_plugin_versions with ()
+crates/bitvue-engine/src/parity_harness/mod.rs:1010:13: delete match arm None in diff_plugin_versions
+crates/bitvue-engine/src/parity_harness/mod.rs:1002:28: replace match guard a_ver != b_ver with true in diff_plugin_versions
+crates/bitvue-engine/src/parity_harness/mod.rs:1002:28: replace match guard a_ver != b_ver with false in diff_plugin_versions
+crates/bitvue-engine/src/parity_harness/mod.rs:1002:34: replace != with == in diff_plugin_versions
+crates/bitvue-engine/src/parity_harness/mod.rs:1023:12: delete ! in diff_plugin_versions
+crates/bitvue-engine/src/parity_harness/mod.rs:1031:5: replace diff_warnings with ()
+crates/bitvue-engine/src/parity_harness/mod.rs:1035:19: replace != with == in diff_warnings
+crates/bitvue-engine/src/parity_harness/mod.rs:1050:5: replace load_evidence_bundle_manifest -> Result<crate::export::EvidenceBundleManifest, String> with Ok(Default::default())
