@@ -47,4 +47,8 @@ if [[ $status -ne 0 ]]; then
   exit "$status"
 fi
 
-cargo check --bins --locked
+# No --locked: fuzz/Cargo.lock only matters for reproducing a fuzz run, and it goes stale on its own. The
+# workspace crates' version floors (serde_json, ...) are bumped by Renovate, but Renovate refreshes
+# fuzz/Cargo.lock only when fuzz/Cargo.toml's own dependencies change (#156 did, #252 did not), so
+# `--locked` failed every such PR for a reason unrelated to the targets compiling.
+cargo check --bins
