@@ -1052,3 +1052,711 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+/// Box-level tests: files and boxes are assembled by hand so every table parser, limit and error path runs.
+#[cfg(test)]
+mod box_tests {
+    use super::*;
+
+    fn bx(t: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+        let mut v = ((payload.len() + 8) as u32).to_be_bytes().to_vec();
+        v.extend_from_slice(t);
+        v.extend_from_slice(payload);
+        v
+    }
+
+    fn full(t: &[u8; 4], version: u8, payload: &[u8]) -> Vec<u8> {
+        let mut p = vec![version, 0, 0, 0];
+        p.extend_from_slice(payload);
+        bx(t, &p)
+    }
+
+    fn be(vals: &[u32]) -> Vec<u8> {
+        vals.iter().flat_map(|v| v.to_be_bytes()).collect()
+    }
+
+    fn be64(vals: &[u64]) -> Vec<u8> {
+        vals.iter().flat_map(|v| v.to_be_bytes()).collect()
+    }
+
+    fn stsd(codec: &[u8; 4]) -> Vec<u8> {
+        let mut p = be(&[1]);
+        p.extend(bx(codec, &[0u8; 78]));
+        full(b"stsd", 0, &p)
+    }
+
+    fn stts(entries: &[(u32, u32)]) -> Vec<u8> {
+        let mut p = be(&[entries.len() as u32]);
+        for &(c, d) in entries {
+            p.extend(be(&[c, d]));
+        }
+        full(b"stts", 0, &p)
+    }
+
+    fn stsz(sizes: &[u32]) -> Vec<u8> {
+        let mut p = be(&[0, sizes.len() as u32]);
+        p.extend(be(sizes));
+        full(b"stsz", 0, &p)
+    }
+
+    fn stco(offsets: &[u32]) -> Vec<u8> {
+        let mut p = be(&[offsets.len() as u32]);
+        p.extend(be(offsets));
+        full(b"stco", 0, &p)
+    }
+
+    fn mdhd_v0(timescale: u32) -> Vec<u8> {
+        let mut p = be(&[0, 0, timescale, 0]);
+        p.extend_from_slice(&[0x55, 0xC4, 0, 0]);
+        full(b"mdhd", 0, &p)
+    }
+
+    fn ftyp() -> Vec<u8> {
+        let mut p = b"isom".to_vec();
+        p.extend(be(&[512]));
+        p.extend_from_slice(b"isomav01");
+        bx(b"ftyp", &p)
+    }
+
+    /// A one-track file. `per_chunk_one` puts every sample in its own chunk, otherwise all in one chunk.
+    fn file(
+        codec: &[u8; 4],
+        samples: &[&[u8]],
+        per_chunk_one: bool,
+        extra_stbl: &[Vec<u8>],
+    ) -> Vec<u8> {
+        let sizes: Vec<u32> = samples.iter().map(|s| s.len() as u32).collect();
+        let moov_with = |offsets: &[u32]| {
+            let mut stbl = stsd(codec);
+            stbl.extend(stts(&[(samples.len() as u32, 1000)]));
+            stbl.extend(stsz(&sizes));
+            stbl.extend(stco(offsets));
+            for e in extra_stbl {
+                stbl.extend(e);
+            }
+            let mut minf = bx(b"stbl", &stbl);
+            minf = bx(b"minf", &minf);
+            let mut mdia = mdhd_v0(90000);
+            mdia.extend(minf);
+            bx(b"moov", &bx(b"trak", &bx(b"mdia", &mdia)))
+        };
+        let n = if per_chunk_one { samples.len() } else { 1 };
+        let moov_len = moov_with(&vec![0; n]).len();
+        let mdat_start = (ftyp().len() + moov_len + 8) as u32;
+        let offsets: Vec<u32> = if per_chunk_one {
+            let mut acc = mdat_start;
+            sizes
+                .iter()
+                .map(|s| {
+                    let o = acc;
+                    acc += s;
+                    o
+                })
+                .collect()
+        } else {
+            vec![mdat_start]
+        };
+        let mut f = ftyp();
+        f.extend(moov_with(&offsets));
+        f.extend(bx(b"mdat", &samples.concat()));
+        f
+    }
+
+    /// Run a leaf parser on a box and return its result and the filled-in info.
+    fn run<F>(boxed: &[u8], f: F) -> (Result<(), BitvueError>, Mp4Info)
+    where
+        F: FnOnce(&mut Cursor<&[u8]>, &BoxHeader, &mut Mp4Info) -> Result<(), BitvueError>,
+    {
+        let mut c = Cursor::new(boxed);
+        let h = BoxHeader::parse(&mut c).unwrap();
+        let mut info = Mp4Info::default();
+        let r = f(&mut c, &h, &mut info);
+        (r, info)
+    }
+
+    fn invalid(r: Result<(), BitvueError>, needle: &str) {
+        let e = r.unwrap_err().to_string();
+        assert!(e.contains(needle), "{e}");
+    }
+
+    // ---- BoxHeader ----
+
+    #[test]
+    fn box_header_forms() {
+        let b = bx(b"free", &[1, 2, 3]);
+        let h = BoxHeader::parse(&mut Cursor::new(&b[..])).unwrap();
+        assert_eq!((h.size, h.data_offset, h.data_size()), (11, 8, 3));
+        assert_eq!(h.box_type_str(), "free");
+
+        // 64-bit size: header is 16 bytes
+        let mut big = vec![0, 0, 0, 1];
+        big.extend_from_slice(b"mdat");
+        big.extend(be64(&[(u32::MAX as u64) + 100]));
+        let h = BoxHeader::parse(&mut Cursor::new(&big[..])).unwrap();
+        assert_eq!((h.size, h.data_offset), ((u32::MAX as u64) + 100, 16));
+        assert_eq!(h.data_size(), (u32::MAX as u64) + 100 - 16);
+
+        // size 0: extends to the end of the data, counted from the box start
+        let mut z = vec![9u8; 5];
+        z.extend(be(&[0]));
+        z.extend_from_slice(b"mdat");
+        z.extend_from_slice(&[7; 10]);
+        let mut c = Cursor::new(&z[..]);
+        c.set_position(5);
+        let h = BoxHeader::parse(&mut c).unwrap();
+        assert_eq!((h.size, h.data_offset, h.data_size()), (18, 13, 10));
+    }
+
+    #[test]
+    fn box_header_rejects_bad_sizes_and_truncation() {
+        let mut small = be(&[7]);
+        small.extend_from_slice(b"free");
+        let e = BoxHeader::parse(&mut Cursor::new(&small[..])).unwrap_err();
+        assert!(matches!(e, BitvueError::Parse { offset: 0, .. }), "{e}");
+        // 64-bit form announced, size field cut off
+        let mut cut = be(&[1]);
+        cut.extend_from_slice(b"free");
+        cut.extend_from_slice(&[0, 0, 0]);
+        assert!(matches!(
+            BoxHeader::parse(&mut Cursor::new(&cut[..])),
+            Err(BitvueError::UnexpectedEof(_))
+        ));
+        assert!(BoxHeader::parse(&mut Cursor::new(&[0u8, 0, 0][..])).is_err());
+        assert!(BoxHeader::parse(&mut Cursor::new(&[0u8, 0, 0, 8, b'a', b'b'][..])).is_err());
+        // 64-bit size smaller than its own header
+        let mut tiny = be(&[1]);
+        tiny.extend_from_slice(b"free");
+        tiny.extend(be64(&[12]));
+        assert!(BoxHeader::parse(&mut Cursor::new(&tiny[..])).is_err());
+    }
+
+    #[test]
+    fn box_type_str_handles_non_ascii() {
+        let h = BoxHeader {
+            box_type: [b'a', 0xA9, b'c', b'd'],
+            size: 8,
+            data_offset: 8,
+        };
+        assert_eq!(h.box_type_str(), "a\u{FFFD}cd");
+        let h = BoxHeader {
+            box_type: *b"moov",
+            size: 8,
+            data_offset: 8,
+        };
+        assert_eq!(h.box_type_str(), "moov");
+    }
+
+    #[test]
+    fn primitive_readers_fail_with_unexpected_eof() {
+        let d = [1u8, 2, 3];
+        let mut c = Cursor::new(&d[..]);
+        assert_eq!(read_u8(&mut c).unwrap(), 1);
+        assert!(matches!(
+            read_u32(&mut c),
+            Err(BitvueError::UnexpectedEof(_))
+        ));
+        let mut c = Cursor::new(&d[..]);
+        assert!(matches!(
+            read_u64(&mut c),
+            Err(BitvueError::UnexpectedEof(_))
+        ));
+        assert!(matches!(
+            read_box_type(&mut c),
+            Err(BitvueError::UnexpectedEof(_))
+        ));
+        let mut c = Cursor::new(&[][..]);
+        assert!(matches!(
+            read_u8(&mut c),
+            Err(BitvueError::UnexpectedEof(_))
+        ));
+        let mut c = Cursor::new(&[0u8, 0, 1, 2, 3, 4, 5, 6][..]);
+        assert_eq!(read_u64(&mut c).unwrap(), 0x0000_0102_0304_0506);
+    }
+
+    // ---- parse_mp4 on a whole file ----
+
+    #[test]
+    fn parse_mp4_reads_the_whole_sample_table() {
+        let s: [&[u8]; 3] = [&[1, 2, 3], &[4, 5], &[6]];
+        let ctts = full(
+            b"ctts",
+            0,
+            &[be(&[2]), be(&[2, 2000]), be(&[1, 0])].concat(),
+        );
+        let stss = full(b"stss", 0, &[be(&[2]), be(&[1, 3])].concat());
+        let f = file(b"avc1", &s, true, &[ctts, stss]);
+        let i = parse_mp4(&f).unwrap();
+        assert_eq!(i.brand.as_deref(), Some("isom"));
+        assert_eq!(i.compatible_brands, vec!["isom", "av01"]);
+        assert_eq!(i.codec.as_deref(), Some("avc1"));
+        assert_eq!(i.timescale, 90000);
+        assert_eq!(i.sample_count, 3);
+        assert_eq!(i.sample_sizes, vec![3, 2, 1]);
+        assert_eq!(i.sample_durations, vec![1000, 1000, 1000]);
+        assert_eq!(i.timestamps, vec![0, 1000, 2000]);
+        assert_eq!(i.composition_offsets, vec![2000, 2000, 0]);
+        assert_eq!(i.presentation_timestamps, vec![2000, 3000, 2000]);
+        assert_eq!(i.key_frames, vec![1, 3]);
+        assert_eq!(i.sample_offsets.len(), 3);
+        assert_eq!(i.sample_offsets[1] - i.sample_offsets[0], 3);
+        assert_eq!(&f[i.sample_offsets[0] as usize..][..3], &[1, 2, 3]);
+    }
+
+    #[test]
+    fn parse_mp4_skips_unknown_boxes_and_stops_at_a_size_zero_box() {
+        let mut f = bx(b"free", &[0; 5]);
+        f.extend(ftyp());
+        f.extend(bx(b"skip", &[]));
+        // size 0 box: runs to the end of the data
+        f.extend(be(&[0]));
+        f.extend_from_slice(b"mdat");
+        f.extend_from_slice(&[1, 2, 3]);
+        let i = parse_mp4(&f).unwrap();
+        assert_eq!(i.brand.as_deref(), Some("isom"));
+        assert!(i.codec.is_none());
+    }
+
+    #[test]
+    fn parse_mp4_rejects_boxes_that_run_past_the_file() {
+        let mut f = ftyp();
+        let mut tail = bx(b"free", &[0; 8]);
+        tail.truncate(tail.len() - 4);
+        f.extend(tail);
+        let e = parse_mp4(&f).unwrap_err().to_string();
+        assert!(e.contains("extends beyond file"), "{e}");
+        assert!(parse_mp4(&[]).is_err());
+        assert!(parse_mp4(&[0, 0]).is_err());
+    }
+
+    #[test]
+    fn truncated_tables_are_errors() {
+        let f = file(b"avc1", &[&[1u8, 2][..]], true, &[]);
+        // chop the file inside moov: the declared box no longer fits
+        assert!(parse_mp4(&f[..ftyp().len() + 20]).is_err());
+    }
+
+    #[test]
+    fn child_box_end_beyond_data_is_an_error_not_a_panic() {
+        // a trak whose child declares more bytes than exist: seek/parse fails cleanly
+        let inner = {
+            let mut v = be(&[1000]);
+            v.extend_from_slice(b"mdia");
+            v
+        };
+        let moov = bx(b"moov", &bx(b"trak", &inner));
+        assert!(parse_mp4(&moov).is_err());
+    }
+
+    // ---- sample extraction ----
+
+    #[test]
+    fn extractors_return_borrowed_slices_for_chunk_per_sample_layout() {
+        let s: [&[u8]; 3] = [&[1, 2, 3], &[4, 5], &[6]];
+        let f = file(b"av01", &s, true, &[]);
+        let got = extract_av1_samples(&f).unwrap();
+        assert_eq!(got.len(), 3);
+        for (g, e) in got.iter().zip(s) {
+            assert_eq!(&g[..], e);
+            assert!(matches!(g, Cow::Borrowed(_)));
+        }
+        assert!(extract_avc_samples(&f).is_err());
+        assert!(extract_hevc_samples(&f).is_err());
+    }
+
+    #[test]
+    fn extractors_derive_offsets_when_samples_share_one_chunk() {
+        let s: [&[u8]; 3] = [&[1, 2, 3], &[4, 5], &[6]];
+        for (codec, which) in [(b"avc1", 0), (b"avc3", 0), (b"hev1", 1), (b"hvc1", 1)] {
+            let f = file(codec, &s, false, &[]);
+            let got = if which == 0 {
+                extract_avc_samples(&f)
+            } else {
+                extract_hevc_samples(&f)
+            }
+            .unwrap();
+            let bytes: Vec<&[u8]> = got.iter().map(|c| &c[..]).collect();
+            assert_eq!(bytes, s.to_vec(), "{}", String::from_utf8_lossy(codec));
+        }
+    }
+
+    #[test]
+    fn extractor_error_messages_name_the_codec() {
+        let f = file(b"vp09", &[&[1u8][..]], true, &[]);
+        let e = extract_av1_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("Not an AV1 file") && e.contains("vp09"), "{e}");
+        let e = extract_avc_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("H.264/AVC"), "{e}");
+        let e = extract_hevc_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("H.265/HEVC"), "{e}");
+        // no stsd at all
+        let e = extract_av1_samples(&ftyp()).unwrap_err().to_string();
+        assert!(e.contains("No codec information"), "{e}");
+    }
+
+    #[test]
+    fn extraction_validates_offsets_sizes_and_overlap() {
+        let sample_file = |sizes: &[u32], offsets: &[u32], mdat_len: usize| {
+            let mut stbl = stsd(b"av01");
+            stbl.extend(stts(&[(sizes.len() as u32, 1)]));
+            stbl.extend(stsz(sizes));
+            stbl.extend(stco(offsets));
+            let moov = bx(
+                b"moov",
+                &bx(b"trak", &bx(b"mdia", &bx(b"minf", &bx(b"stbl", &stbl)))),
+            );
+            let mut f = moov;
+            f.extend(vec![0u8; mdat_len]);
+            f
+        };
+        // sample runs past the end of the file
+        let f = sample_file(&[100_000], &[0], 10);
+        let e = extract_av1_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("exceeds file size"), "{e}");
+        // overlapping samples (one sample per chunk, sorted by offset)
+        let f = sample_file(&[10, 10], &[0, 5], 40);
+        let e = extract_av1_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("overlap"), "{e}");
+        // adjacent (touching) samples are fine
+        let f = sample_file(&[10, 10], &[0, 10], 40);
+        assert_eq!(extract_av1_samples(&f).unwrap().len(), 2);
+        // no chunk offsets at all
+        let mut stbl = stsd(b"av01");
+        stbl.extend(stsz(&[4]));
+        let f = bx(
+            b"moov",
+            &bx(b"trak", &bx(b"mdia", &bx(b"minf", &bx(b"stbl", &stbl)))),
+        );
+        let e = extract_av1_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("No chunk offsets"), "{e}");
+    }
+
+    #[test]
+    fn extraction_rejects_huge_samples_and_sample_counts() {
+        let mut stbl = stsd(b"av01");
+        stbl.extend(stsz(&[(MAX_SAMPLE_SIZE as u32) + 1]));
+        stbl.extend(stco(&[0]));
+        let f = bx(
+            b"moov",
+            &bx(b"trak", &bx(b"mdia", &bx(b"minf", &bx(b"stbl", &stbl)))),
+        );
+        let e = extract_av1_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("exceeds maximum allowed"), "{e}");
+
+        let mut stbl = stsd(b"av01");
+        let mut p = be(&[1, (MAX_TOTAL_SAMPLES as u32) + 1]); // fixed size 1, too many samples
+        p.truncate(8);
+        stbl.extend(full(b"stsz", 0, &p));
+        stbl.extend(stco(&[0]));
+        let f = bx(
+            b"moov",
+            &bx(b"trak", &bx(b"mdia", &bx(b"minf", &bx(b"stbl", &stbl)))),
+        );
+        let e = extract_av1_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("Sample count"), "{e}");
+    }
+
+    // ---- leaf parsers ----
+
+    #[test]
+    fn stsd_reads_the_first_codec_and_limits_entries() {
+        let (r, i) = run(&stsd(b"hev1"), |c, h, i| parse_stsd(c, h, i, 0));
+        r.unwrap();
+        assert_eq!(i.codec.as_deref(), Some("hev1"));
+        let (r, i) = run(&full(b"stsd", 0, &be(&[0])), |c, h, i| {
+            parse_stsd(c, h, i, 0)
+        });
+        r.unwrap();
+        assert!(i.codec.is_none());
+        let (r, _) = run(&full(b"stsd", 0, &be(&[MAX_ENTRY_COUNT + 1])), |c, h, i| {
+            parse_stsd(c, h, i, 0)
+        });
+        invalid(r, "Entry count");
+        let (r, _) = run(&full(b"stsd", 0, &be(&[MAX_ENTRY_COUNT])), |c, h, i| {
+            parse_stsd(c, h, i, 0)
+        });
+        assert!(r.is_err()); // exactly at the limit is accepted by the check; the entry itself is missing
+        let (r, _) = run(&full(b"stsd", 0, &be(&[1, 20])), |c, h, i| {
+            parse_stsd(c, h, i, 0)
+        });
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn stco_and_co64_read_offsets() {
+        let (r, i) = run(&stco(&[10, 0xFFFF_FFFF]), parse_stco);
+        r.unwrap();
+        assert_eq!(i.sample_offsets, vec![10, 0xFFFF_FFFF]);
+        let mut p = be(&[2]);
+        p.extend(be64(&[5, 1 << 40]));
+        let (r, i) = run(&full(b"co64", 0, &p), parse_co64);
+        r.unwrap();
+        assert_eq!(i.sample_offsets, vec![5, 1 << 40]);
+        for (name, parse) in [
+            (
+                "stco",
+                parse_stco
+                    as fn(&mut Cursor<&[u8]>, &BoxHeader, &mut Mp4Info) -> Result<(), BitvueError>,
+            ),
+            ("co64", parse_co64),
+        ] {
+            let (r, _) = run(
+                &full(
+                    name.as_bytes().try_into().unwrap(),
+                    0,
+                    &be(&[MAX_ENTRY_COUNT + 1]),
+                ),
+                parse,
+            );
+            invalid(r, "Entry count");
+            let (r, _) = run(
+                &full(name.as_bytes().try_into().unwrap(), 0, &be(&[2, 1])),
+                parse,
+            );
+            assert!(r.is_err(), "{name} truncated");
+        }
+    }
+
+    #[test]
+    fn stsz_fixed_and_variable_sizes() {
+        let (r, i) = run(&stsz(&[5, 6, 7]), parse_stsz);
+        r.unwrap();
+        assert_eq!((i.sample_count, i.sample_sizes.clone()), (3, vec![5, 6, 7]));
+        let (r, i) = run(&full(b"stsz", 0, &be(&[9, 4])), parse_stsz);
+        r.unwrap();
+        assert_eq!((i.sample_count, i.sample_sizes), (4, vec![9, 9, 9, 9]));
+        let (r, _) = run(
+            &full(b"stsz", 0, &be(&[0, MAX_ENTRY_COUNT + 1])),
+            parse_stsz,
+        );
+        invalid(r, "Sample count");
+        let (r, _) = run(&full(b"stsz", 0, &be(&[0, 3, 1])), parse_stsz);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn mdhd_reads_the_timescale_for_both_versions() {
+        let (r, i) = run(&mdhd_v0(24000), parse_mdhd);
+        r.unwrap();
+        assert_eq!(i.timescale, 24000);
+        let mut p = be64(&[0, 0]);
+        p.extend(be(&[48000]));
+        p.extend(be64(&[0]));
+        let (r, i) = run(&full(b"mdhd", 1, &p), parse_mdhd);
+        r.unwrap();
+        assert_eq!(i.timescale, 48000);
+        let (r, _) = run(&full(b"mdhd", 0, &be(&[0, 0])), parse_mdhd);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn stts_expands_durations_and_enforces_limits() {
+        let (r, i) = run(&stts(&[(2, 100), (3, 50)]), parse_stts);
+        r.unwrap();
+        assert_eq!(i.sample_durations, vec![100, 100, 50, 50, 50]);
+        let (r, _) = run(&stts(&[(10_001, 1)]), parse_stts);
+        invalid(r, "per entry");
+        let (r, i) = run(&stts(&[(10_000, 1)]), parse_stts);
+        r.unwrap();
+        assert_eq!(i.sample_durations.len(), 10_000);
+        let ten: Vec<(u32, u32)> = vec![(10_000, 1); 11];
+        let (r, _) = run(&stts(&ten), parse_stts);
+        invalid(r, "Total sample count");
+        let ten: Vec<(u32, u32)> = vec![(10_000, 1); 10];
+        let (r, _) = run(&stts(&ten), parse_stts);
+        r.unwrap();
+        let (r, _) = run(&full(b"stts", 0, &be(&[MAX_ENTRY_COUNT + 1])), parse_stts);
+        invalid(r, "Entry count");
+        let (r, _) = run(&full(b"stts", 0, &be(&[1, 5])), parse_stts);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn ctts_reads_signed_offsets_in_both_versions() {
+        let body = [be(&[2]), be(&[1, 7]), be(&[2, 0xFFFF_FFFE])].concat(); // 7, then -2 twice
+        for version in [0u8, 1] {
+            let (r, i) = run(&full(b"ctts", version, &body), parse_ctts);
+            r.unwrap();
+            assert_eq!(i.composition_offsets, vec![7, -2, -2], "version {version}");
+        }
+        let (r, _) = run(&full(b"ctts", 0, &be(&[MAX_ENTRY_COUNT + 1])), parse_ctts);
+        invalid(r, "Entry count");
+        let (r, _) = run(&full(b"ctts", 0, &be(&[1, 1])), parse_ctts);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn stss_reads_sync_samples() {
+        let (r, i) = run(
+            &full(b"stss", 0, &[be(&[3]), be(&[1, 30, 60])].concat()),
+            parse_stss,
+        );
+        r.unwrap();
+        assert_eq!(i.key_frames, vec![1, 30, 60]);
+        let (r, _) = run(&full(b"stss", 0, &be(&[MAX_ENTRY_COUNT + 1])), parse_stss);
+        invalid(r, "Entry count");
+        let (r, _) = run(&full(b"stss", 0, &be(&[2, 1])), parse_stss);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn ftyp_without_compatible_brands() {
+        let mut p = b"mp42".to_vec();
+        p.extend(be(&[0]));
+        let (r, i) = run(&bx(b"ftyp", &p), parse_ftyp);
+        r.unwrap();
+        assert_eq!(i.brand.as_deref(), Some("mp42"));
+        assert!(i.compatible_brands.is_empty());
+        // trailing bytes that do not make a whole brand are ignored
+        p.extend_from_slice(b"isomXX");
+        let (_, i) = run(&bx(b"ftyp", &p), parse_ftyp);
+        assert_eq!(i.compatible_brands, vec!["isom"]);
+    }
+
+    // ---- timestamps ----
+
+    #[test]
+    fn presentation_timestamps_follow_composition_offsets() {
+        let mut i = Mp4Info {
+            sample_durations: vec![10, 10, 10, 10],
+            ..Default::default()
+        };
+        calculate_timestamps(&mut i);
+        assert_eq!(i.timestamps, vec![0, 10, 20, 30]);
+        calculate_presentation_timestamps(&mut i);
+        assert_eq!(i.presentation_timestamps, i.timestamps);
+
+        let mut i = Mp4Info {
+            sample_durations: vec![10; 4],
+            ..Default::default()
+        };
+        calculate_timestamps(&mut i);
+        // negative offset larger than the DTS saturates at 0; fewer offsets than samples default to 0
+        i.composition_offsets = vec![-5, 3, -100];
+        calculate_presentation_timestamps(&mut i);
+        assert_eq!(i.presentation_timestamps, vec![0, 13, 0, 30]);
+    }
+
+    // ---- nesting limit (the parsers recurse at most 5 deep on real files; the guard is reachable only directly) ----
+
+    #[test]
+    fn nesting_depth_limit_is_enforced_by_every_container_parser() {
+        let boxed = bx(b"moov", &[]);
+        let mut c = Cursor::new(&boxed[..]);
+        let h = BoxHeader::parse(&mut c).unwrap();
+        let mut info = Mp4Info::default();
+        let data = &boxed[..];
+        for depth in [MAX_BOX_DEPTH, MAX_BOX_DEPTH + 1] {
+            invalid(parse_moov(&mut c, &h, &mut info, data, depth), "depth");
+            invalid(parse_trak(&mut c, &h, &mut info, data, depth), "depth");
+            invalid(parse_mdia(&mut c, &h, &mut info, data, depth), "depth");
+            invalid(parse_minf(&mut c, &h, &mut info, data, depth), "depth");
+            invalid(parse_stbl(&mut c, &h, &mut info, depth), "depth");
+        }
+        // one below the limit is fine for an empty box
+        parse_moov(&mut c, &h, &mut info, data, MAX_BOX_DEPTH - 1).unwrap();
+        parse_trak(&mut c, &h, &mut info, data, MAX_BOX_DEPTH - 1).unwrap();
+        parse_mdia(&mut c, &h, &mut info, data, MAX_BOX_DEPTH - 1).unwrap();
+        parse_minf(&mut c, &h, &mut info, data, MAX_BOX_DEPTH - 1).unwrap();
+        parse_stbl(&mut c, &h, &mut info, MAX_BOX_DEPTH - 1).unwrap();
+    }
+
+    #[test]
+    fn limits_are_inclusive() {
+        // exactly at the limit passes the limit check: the error (if any) is the missing data, not the limit
+        let at = be(&[MAX_ENTRY_COUNT]);
+        type Leaf = fn(&mut Cursor<&[u8]>, &BoxHeader, &mut Mp4Info) -> Result<(), BitvueError>;
+        let leaves: [(&[u8; 4], Leaf); 6] = [
+            (b"stco", parse_stco),
+            (b"co64", parse_co64),
+            (b"stts", parse_stts),
+            (b"ctts", parse_ctts),
+            (b"stss", parse_stss),
+            (b"stsd", |c, h, i| parse_stsd(c, h, i, 0)),
+        ];
+        for (name, parse) in leaves {
+            let (r, _) = run(&full(name, 0, &at), parse);
+            let e = r.unwrap_err().to_string();
+            assert!(
+                !e.contains("exceeds maximum"),
+                "{}: {e}",
+                String::from_utf8_lossy(name)
+            );
+        }
+        let (r, _) = run(&full(b"stsz", 0, &be(&[0, MAX_ENTRY_COUNT])), parse_stsz);
+        assert!(!r.unwrap_err().to_string().contains("exceeds maximum"));
+
+        // sample table limits in the extractor: exactly MAX_TOTAL_SAMPLES samples / MAX_SAMPLE_SIZE bytes pass the check
+        let wrap = |stbl: Vec<u8>| {
+            bx(
+                b"moov",
+                &bx(b"trak", &bx(b"mdia", &bx(b"minf", &bx(b"stbl", &stbl)))),
+            )
+        };
+        let mut stbl = stsd(b"av01");
+        stbl.extend(full(b"stsz", 0, &be(&[1, MAX_TOTAL_SAMPLES as u32])));
+        stbl.extend(stco(&[0]));
+        let e = extract_av1_samples(&wrap(stbl)).unwrap_err().to_string();
+        assert!(e.contains("exceeds file size"), "{e}");
+        let mut stbl = stsd(b"av01");
+        stbl.extend(stsz(&[MAX_SAMPLE_SIZE as u32]));
+        stbl.extend(stco(&[0]));
+        let e = extract_av1_samples(&wrap(stbl)).unwrap_err().to_string();
+        assert!(e.contains("exceeds file size"), "{e}");
+    }
+
+    #[test]
+    fn co64_offsets_are_used_when_parsing_a_file() {
+        let mut co = be(&[1]);
+        co.extend(be64(&[0x1_0000_0010]));
+        let mut stbl = stsd(b"av01");
+        stbl.extend(stsz(&[4]));
+        stbl.extend(full(b"co64", 0, &co));
+        let f = bx(
+            b"moov",
+            &bx(b"trak", &bx(b"mdia", &bx(b"minf", &bx(b"stbl", &stbl)))),
+        );
+        assert_eq!(parse_mp4(&f).unwrap().sample_offsets, vec![0x1_0000_0010]);
+        // the extractor reports an offset that does not fit the file
+        let e = extract_av1_samples(&f).unwrap_err().to_string();
+        assert!(
+            e.contains("exceeds file size") || e.contains("address space"),
+            "{e}"
+        );
+    }
+
+    // ---- known bugs: fail until fixed ----
+
+    #[test]
+    #[ignore = "#265: the overlap check indexes the sorted list with the original index"]
+    fn chunk_offsets_out_of_file_order_are_not_an_overlap() {
+        let mut stbl = stsd(b"av01");
+        stbl.extend(stsz(&[2, 3]));
+        stbl.extend(stco(&[20, 0]));
+        let mut f = bx(
+            b"moov",
+            &bx(b"trak", &bx(b"mdia", &bx(b"minf", &bx(b"stbl", &stbl)))),
+        );
+        f.extend(vec![0u8; 40]);
+        assert_eq!(extract_av1_samples(&f).unwrap().len(), 2);
+    }
+
+    #[test]
+    #[ignore = "#264: header_size is guessed from the size"]
+    fn large_size_box_below_4gib_is_skipped_correctly() {
+        let mut f = be(&[1]);
+        f.extend_from_slice(b"free");
+        f.extend(be64(&[20]));
+        f.extend_from_slice(&[9, 9, 9, 9]);
+        f.extend(ftyp());
+        assert_eq!(parse_mp4(&f).unwrap().brand.as_deref(), Some("isom"));
+    }
+
+    #[test]
+    #[ignore = "#264: data_size() - 8 underflows"]
+    fn short_ftyp_followed_by_more_boxes_is_an_error_not_a_panic() {
+        let mut f = be(&[12]);
+        f.extend_from_slice(b"ftypisom");
+        f.extend(bx(b"free", &[]));
+        assert!(parse_mp4(&f).is_ok() || parse_mp4(&f).is_err());
+    }
+}
