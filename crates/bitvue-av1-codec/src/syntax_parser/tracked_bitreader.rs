@@ -198,4 +198,33 @@ mod tests {
         assert_eq!(range.start_bit, 1);
         assert_eq!(range.end_bit, 4);
     }
+
+    #[test]
+    fn the_remaining_counters_ignore_the_global_offset_and_follow_the_reads() {
+        let data = [0xA5, 0x5A, 0xFF];
+        let mut reader = TrackedBitReader::new(&data, 4096);
+        assert_eq!(reader.remaining_bits(), 24);
+        assert!(reader.has_more());
+        assert_eq!(reader.byte_position(), 0);
+        assert_eq!(reader.remaining_data(), &data[..]);
+        assert_eq!(reader.mark(), 4096, "mark is the absolute position");
+
+        reader.read_bits_tracked(11).unwrap();
+        assert_eq!(reader.remaining_bits(), 13);
+        assert_eq!(
+            reader.byte_position(),
+            1,
+            "11 bits = one byte and three more"
+        );
+        assert_eq!(reader.position(), 4096 + 11);
+        reader.byte_align();
+        assert_eq!(reader.remaining_data(), &data[2..]);
+        assert_eq!(reader.byte_position(), 2);
+
+        reader.skip_bits(8).unwrap();
+        assert!(!reader.has_more());
+        assert_eq!(reader.remaining_bits(), 0);
+        assert!(reader.remaining_data().is_empty());
+        assert!(reader.read_bit_tracked().is_err());
+    }
 }

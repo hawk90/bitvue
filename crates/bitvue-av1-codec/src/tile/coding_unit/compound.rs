@@ -423,4 +423,128 @@ mod tests {
             );
         }
     }
+
+    // ---- read_compound_mode_info ---------------------------------------------------------
+
+    use crate::tile::coding_unit::types::RefFrame;
+
+    /// Collects the `message` of every tracing event emitted on this thread while it is the
+    /// default subscriber.
+    #[derive(Clone, Default)]
+    struct Capture(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+
+    impl tracing::Subscriber for Capture {
+        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+            true
+        }
+        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+            tracing::span::Id::from_u64(1)
+        }
+        fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+        fn event(&self, event: &tracing::Event<'_>) {
+            struct Message(String);
+            impl tracing::field::Visit for Message {
+                fn record_debug(&mut self, field: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+                    if field.name() == "message" {
+                        self.0 = format!("{v:?}");
+                    }
+                }
+            }
+            let mut m = Message(String::new());
+            event.record(&mut m);
+            self.0.lock().unwrap().push(m.0);
+        }
+        fn enter(&self, _: &tracing::span::Id) {}
+        fn exit(&self, _: &tracing::span::Id) {}
+    }
+
+    fn compound_cu(skip_mode: bool) -> CodingUnit {
+        let mut cu = CodingUnit::new(16, 16, 16, 16);
+        cu.ref_frames = [RefFrame::Last, RefFrame::BwdRef];
+        cu.skip_mode = skip_mode;
+        cu
+    }
+
+    const RECT: BlockRect = BlockRect {
+        x: 16,
+        y: 32,
+        width: 16,
+        height: 16,
+    };
+    const MI: MiRect = MiRect {
+        x4: 4,
+        y4: 8,
+        width: 4,
+        height: 4,
+    };
+
+    fn read(data: &[u8], skip_mode: bool) -> (CodingUnit, Vec<String>, u32) {
+        let capture = Capture::default();
+        let mut d = SymbolDecoder::new(data).unwrap();
+        let mut ctx = TileContext::new(32, 32);
+        let mut mv_ctx = MvPredictorContext::new(8, 8);
+        let mut cu = compound_cu(skip_mode);
+        let frame = FrameCodingParams::for_tests();
+        tracing::subscriber::with_default(capture.clone(), || {
+            read_compound_mode_info(&mut d, &mut ctx, &mut mv_ctx, RECT, MI, &frame, &mut cu)
+                .unwrap();
+        });
+        let logs = capture.0.lock().unwrap().clone();
+        (cu, logs, d.read_bools_n(24).unwrap())
+    }
+
+    #[test]
+    fn a_compound_block_reads_its_mode_and_logs_the_result() {
+        let mut modes = std::collections::BTreeSet::new();
+        for seed in 1..=48u64 {
+            let data = noise(seed, 128);
+            let (cu, logs, _) = read(&data, false);
+
+            // The mode is the 8-symbol compound_mode() read in the block's context.
+            let mut r = SymbolDecoder::new(&data).unwrap();
+            let ctx = TileContext::new(32, 32).compound_mode_context(4, 8, 4, 4, 0, 4);
+            let want = compound_mode_from_symbol(r.read_compound_mode(ctx).unwrap()).unwrap();
+            assert_eq!(cu.mode, want, "seed {seed}");
+            modes.insert(format!("{want:?}"));
+
+            // Without neighbours every candidate is zero, so only NEW components can be
+            // non-zero (explicit residual on top of a zero predictor).
+            let (k0, k1) = (cu.mode.l0_mv_kind(), cu.mode.l1_mv_kind());
+            if k0 != Some(MvKind::New) {
+                assert_eq!(cu.mv[0], MotionVector::zero(), "seed {seed} {:?}", cu.mode);
+            }
+            if k1 != Some(MvKind::New) {
+                assert_eq!(cu.mv[1], MotionVector::zero(), "seed {seed} {:?}", cu.mode);
+            }
+
+            assert_eq!(
+                logs,
+                vec![format!(
+                    "Compound mode {:?} at (16, 32): mv0={:?}, mv1={:?}",
+                    cu.mode, cu.mv[0], cu.mv[1]
+                )],
+                "seed {seed}: exactly one debug line describing the result"
+            );
+        }
+        assert!(
+            modes.len() >= 4,
+            "seeds should produce several modes: {modes:?}"
+        );
+    }
+
+    #[test]
+    fn a_skip_mode_block_takes_nearest_nearest_without_reading_and_still_logs() {
+        let data = noise(3, 128);
+        let untouched = SymbolDecoder::new(&data).unwrap().read_bools_n(24).unwrap();
+        let (cu, logs, bits) = read(&data, true);
+        assert_eq!(cu.mode, PredictionMode::NearestNearestMv);
+        assert_eq!(bits, untouched, "skip_mode reads no symbol at all");
+        assert_eq!(logs.len(), 1);
+        assert!(
+            logs[0].starts_with("Compound mode NearestNearestMv at (16, 32)"),
+            "{}",
+            logs[0]
+        );
+    }
 }

@@ -226,4 +226,93 @@ mod tests {
         reader.read_bits(8).unwrap();
         assert!(reader.read_bit().is_err());
     }
+
+    #[test]
+    fn positions_and_remaining_counts_follow_the_bits_read() {
+        let data = [0xAB, 0xCD, 0xEF];
+        let mut r = BitReader::new(&data);
+        assert_eq!((r.position(), r.byte_position()), (0, 0));
+        assert_eq!((r.remaining_bits(), r.remaining_bytes()), (24, 3));
+        assert!(r.has_more());
+
+        r.read_bits(3).unwrap();
+        assert_eq!((r.position(), r.byte_position()), (3, 0));
+        assert_eq!(
+            (r.remaining_bits(), r.remaining_bytes()),
+            (21, 3),
+            "a partial byte counts"
+        );
+
+        r.skip_bits(13).unwrap();
+        assert_eq!((r.position(), r.remaining_bits()), (16, 8));
+        r.read_bits_u64(8).unwrap();
+        assert!(!r.has_more());
+        assert_eq!(r.remaining_bits(), 0);
+        assert!(r.skip_bits(1).is_err(), "nothing left to skip");
+    }
+
+    #[test]
+    fn read_bytes_fills_the_buffer_and_stops_at_the_end_of_the_data() {
+        let data = [1, 2, 3, 4];
+        let mut r = BitReader::new(&data);
+        let mut two = [0u8; 2];
+        r.read_bytes(&mut two).unwrap();
+        assert_eq!(two, [1, 2]);
+
+        // Not byte aligned: bytes are read across the boundary.
+        let mut r = BitReader::new(&data);
+        r.read_bits(4).unwrap();
+        let mut one = [0u8; 1];
+        r.read_bytes(&mut one).unwrap();
+        assert_eq!(one, [0x10]);
+
+        // Asking for more than is left is an error, and an empty request always succeeds.
+        let mut r = BitReader::new(&data);
+        let mut five = [0u8; 5];
+        assert!(r.read_bytes(&mut five).is_err());
+        assert!(BitReader::new(&[]).read_bytes(&mut []).is_ok());
+    }
+
+    #[test]
+    fn read_literal_is_read_bits_and_remaining_data_starts_at_the_current_byte() {
+        let data = [0b1010_1100, 0xFF, 0x00];
+        let mut a = BitReader::new(&data);
+        let mut b = BitReader::new(&data);
+        for n in [1u8, 3, 4, 8] {
+            assert_eq!(
+                a.read_literal(n).unwrap(),
+                b.read_bits(n).unwrap(),
+                "n = {n}"
+            );
+        }
+        assert!(a.read_literal(9).is_err());
+
+        let mut r = BitReader::new(&data);
+        assert_eq!(r.remaining_data(), &data[..]);
+        r.read_bits(3).unwrap();
+        assert_eq!(
+            r.remaining_data(),
+            &data[..],
+            "inside a byte: from the current byte"
+        );
+        r.byte_align();
+        assert_eq!(r.remaining_data(), &data[1..]);
+        r.read_byte().unwrap();
+        r.read_byte().unwrap();
+        assert!(r.remaining_data().is_empty());
+    }
+
+    #[test]
+    fn the_inner_reader_is_the_same_reader() {
+        let data = [0xF0, 0x0F];
+        let mut r = BitReader::new(&data);
+        assert_eq!(r.inner_mut().read_bits(4).unwrap(), 0xF);
+        assert_eq!(
+            r.position(),
+            4,
+            "a read through inner_mut moves the wrapper"
+        );
+        r.read_bits(4).unwrap();
+        assert_eq!(r.inner().position(), 8, "and the other way round");
+    }
 }
