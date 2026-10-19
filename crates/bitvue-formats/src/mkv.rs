@@ -712,3 +712,460 @@ mod tests {
         assert!(result.is_err()); // Should fail on parsing, not codec check
     }
 }
+
+/// Tests that do not depend on how element IDs are decoded (#248), plus spec-correct whole-file tests
+/// that are `#[ignore]`d until the ID/size decoding is fixed.
+#[cfg(test)]
+mod element_tests {
+    use super::*;
+
+    fn cur(d: &[u8]) -> Cursor<&[u8]> {
+        Cursor::new(d)
+    }
+
+    fn vint(d: &[u8]) -> Result<u64, BitvueError> {
+        read_vint(&mut cur(d))
+    }
+
+    fn invalid(r: Result<impl std::fmt::Debug, BitvueError>, needle: &str) {
+        let e = r.unwrap_err().to_string();
+        assert!(e.contains(needle), "{e}");
+    }
+
+    // ---- read_vint ----
+
+    #[test]
+    fn vint_widths_one_to_four_bytes() {
+        assert_eq!(vint(&[0x80]).unwrap(), 0);
+        assert_eq!(vint(&[0xFF]).unwrap(), 0x7F);
+        assert_eq!(vint(&[0x40, 0x00]).unwrap(), 0);
+        assert_eq!(vint(&[0x7F, 0xFF]).unwrap(), 0x3FFF);
+        assert_eq!(vint(&[0x20, 0x00, 0x00]).unwrap(), 0);
+        assert_eq!(vint(&[0x3F, 0xFF, 0xFF]).unwrap(), 0x1F_FFFF);
+        assert_eq!(vint(&[0x10, 0x00, 0x00, 0x00]).unwrap(), 0);
+        assert_eq!(vint(&[0x1F, 0xFF, 0xFF, 0xFF]).unwrap(), 0x0FFF_FFFF);
+        // the marker is the first 1 bit; lower data bits of the first byte are value bits
+        assert_eq!(vint(&[0x5A, 0xBC]).unwrap(), 0x1ABC);
+        assert_eq!(vint(&[0x12, 0x34, 0x56, 0x78]).unwrap(), 0x0234_5678);
+    }
+
+    #[test]
+    fn vint_reads_only_its_own_bytes() {
+        let d = [0x82, 0xAA, 0xBB];
+        let mut c = cur(&d);
+        assert_eq!(read_vint(&mut c).unwrap(), 2);
+        assert_eq!(c.position(), 1);
+        let d = [0x41, 0x02, 0xAA];
+        let mut c = cur(&d);
+        assert_eq!(read_vint(&mut c).unwrap(), 0x102);
+        assert_eq!(c.position(), 2);
+        assert_eq!(read_element_size(&mut cur(&[0x85])).unwrap(), 5);
+    }
+
+    #[test]
+    fn vint_rejects_zero_first_byte_and_truncation() {
+        invalid(vint(&[0x00, 0x01]), "no marker bit");
+        for d in [&[][..], &[0x40], &[0x20, 0x00], &[0x10, 0x00, 0x00]] {
+            assert!(
+                matches!(vint(d), Err(BitvueError::UnexpectedEof(_))),
+                "{d:02x?}"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "#248: read_vint refuses lengths above 4, but EBML sizes are 1-8 bytes"]
+    fn vint_seven_byte_form_keeps_its_data_bit() {
+        // marker at bit 1 of the first byte, bit 0 is the top data bit
+        assert_eq!(
+            vint(&[0x03, 0, 0, 0, 0, 0, 0x2A]).unwrap(),
+            (1 << 48) | 0x2A
+        );
+        assert_eq!(vint(&[0x02, 0, 0, 0, 0, 0, 0x2A]).unwrap(), 0x2A);
+    }
+
+    #[test]
+    #[ignore = "#248: read_vint refuses lengths above 4, but EBML sizes are 1-8 bytes"]
+    fn vint_eight_byte_sizes_are_valid() {
+        assert_eq!(vint(&[0x01, 0, 0, 0, 0, 0, 0, 0x2A]).unwrap(), 0x2A);
+        assert_eq!(vint(&[0x08, 0, 0, 0, 0x2A]).unwrap(), 0x2A);
+        // an unknown size is all ones in the data bits
+        assert_eq!(
+            vint(&[0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]).unwrap(),
+            (1 << 56) - 1
+        );
+    }
+
+    // ---- read_uint / read_string ----
+
+    #[test]
+    fn uint_sizes() {
+        assert_eq!(read_uint(&mut cur(&[]), 0).unwrap(), 0);
+        assert_eq!(read_uint(&mut cur(&[0xFF; 16]), 16).unwrap(), u64::MAX); // high bytes shift out
+        invalid(read_uint(&mut cur(&[0; 17]), 17), "Uint size 17");
+        assert!(matches!(
+            read_uint(&mut cur(&[1, 2]), 3),
+            Err(BitvueError::UnexpectedEof(_))
+        ));
+        let d = [0, 0, 0, 0, 0, 0, 0, 0x2A, 0xEE];
+        let mut c = cur(&d);
+        assert_eq!(read_uint(&mut c, 8).unwrap(), 0x2A);
+        assert_eq!(c.position(), 8);
+    }
+
+    #[test]
+    fn string_sizes_and_encodings() {
+        assert_eq!(read_string(&mut cur(&[]), 0).unwrap(), "");
+        assert_eq!(read_string(&mut cur(b"\0\0"), 2).unwrap(), "");
+        // trailing NULs are trimmed, inner ones are kept
+        assert_eq!(read_string(&mut cur(b"a\0b\0"), 4).unwrap(), "a\0b");
+        // invalid UTF-8 falls back to lossy conversion and still trims NULs
+        assert_eq!(
+            read_string(&mut cur(&[b'V', 0xFF, b'1', 0]), 4).unwrap(),
+            "V\u{FFFD}1"
+        );
+        assert_eq!(
+            read_string(&mut cur("V_AV1".as_bytes()), 5).unwrap(),
+            "V_AV1"
+        );
+        assert!(matches!(
+            read_string(&mut cur(b"ab"), 3),
+            Err(BitvueError::UnexpectedEof(_))
+        ));
+        invalid(read_string(&mut cur(&[]), 1_000_001), "exceeds maximum");
+        // exactly the limit passes the size check (then runs out of data)
+        assert!(matches!(
+            read_string(&mut cur(&[]), 1_000_000),
+            Err(BitvueError::UnexpectedEof(_))
+        ));
+    }
+
+    // ---- parse_simple_block ----
+
+    fn video_info() -> MkvInfo {
+        MkvInfo {
+            video_track_number: Some(1),
+            ..Default::default()
+        }
+    }
+
+    /// SimpleBlock payload: track (1-byte vint), signed 16-bit relative timecode, flags, frame
+    fn block(track: u8, rel: i16, flags: u8, frame: &[u8]) -> Vec<u8> {
+        let mut v = vec![0x80 | track];
+        v.extend(rel.to_be_bytes());
+        v.push(flags);
+        v.extend_from_slice(frame);
+        v
+    }
+
+    #[test]
+    fn simple_block_stores_frame_timestamp_and_keyframe_flag() {
+        let mut info = video_info();
+        let b1 = block(1, 10, 0x80, &[1, 2, 3]);
+        let b2 = block(1, -4, 0x00, &[4]);
+        let mut d = b1.clone();
+        d.extend(&b2);
+        let mut c = cur(&d);
+        parse_simple_block(&mut c, b1.len(), 1000, &mut info).unwrap();
+        assert_eq!(c.position(), b1.len() as u64);
+        parse_simple_block(&mut c, b2.len(), 1000, &mut info).unwrap();
+        assert_eq!(info.samples, vec![vec![1, 2, 3], vec![4]]);
+        assert_eq!(info.timestamps, vec![1010, 996]);
+        assert_eq!(info.key_frames, vec![1]); // 1-based index of the key frame
+        assert_eq!(info.sample_count, 2);
+    }
+
+    #[test]
+    fn simple_block_key_frame_numbers_follow_the_sample_count() {
+        let mut info = video_info();
+        for (i, flags) in [0x80u8, 0x00, 0x00, 0x80].into_iter().enumerate() {
+            let b = block(1, i as i16, flags, &[i as u8]);
+            parse_simple_block(&mut cur(&b), b.len(), 0, &mut info).unwrap();
+        }
+        assert_eq!(info.key_frames, vec![1, 4]);
+        // any other flag bit (invisible, lacing, discardable) is not a key frame
+        let b = block(1, 0, 0x7F, &[9]);
+        parse_simple_block(&mut cur(&b), b.len(), 0, &mut info).unwrap();
+        assert_eq!(info.key_frames, vec![1, 4]);
+    }
+
+    #[test]
+    fn simple_block_skips_other_tracks_and_leaves_the_cursor_after_them() {
+        let mut info = video_info();
+        let other = block(2, 0, 0x80, &[7, 7, 7, 7]);
+        let mut d = other.clone();
+        d.push(0xEE);
+        let mut c = cur(&d);
+        parse_simple_block(&mut c, other.len(), 0, &mut info).unwrap();
+        assert_eq!(c.position(), other.len() as u64);
+        assert!(info.samples.is_empty() && info.key_frames.is_empty());
+        // no video track known at all: nothing is stored
+        let mut none = MkvInfo::default();
+        let b = block(1, 0, 0x80, &[1]);
+        parse_simple_block(&mut cur(&b), b.len(), 0, &mut none).unwrap();
+        assert!(none.samples.is_empty());
+    }
+
+    #[test]
+    fn simple_block_with_a_multi_byte_track_number() {
+        let mut info = MkvInfo {
+            video_track_number: Some(300),
+            ..Default::default()
+        };
+        let mut b = vec![0x41, 0x2C]; // 2-byte vint = 300
+        b.extend([0, 5, 0x80, 0xAA]);
+        parse_simple_block(&mut cur(&b), b.len(), 100, &mut info).unwrap();
+        assert_eq!(info.timestamps, vec![105]);
+        assert_eq!(info.samples, vec![vec![0xAA]]);
+    }
+
+    #[test]
+    fn simple_block_with_no_frame_data_is_an_empty_sample() {
+        let mut info = video_info();
+        let b = block(1, 0, 0x00, &[]);
+        parse_simple_block(&mut cur(&b), b.len(), 0, &mut info).unwrap();
+        assert_eq!(info.samples, vec![Vec::<u8>::new()]);
+    }
+
+    #[test]
+    fn simple_block_truncation_is_an_error() {
+        for cut in 0..4 {
+            let full = block(1, 5, 0x80, &[1, 2, 3]);
+            let b = &full[..cut];
+            assert!(
+                parse_simple_block(&mut cur(b), full.len(), 0, &mut video_info()).is_err(),
+                "cut {cut}"
+            );
+        }
+        // frame data shorter than the declared size
+        let full = block(1, 5, 0x80, &[1, 2, 3]);
+        let r = parse_simple_block(
+            &mut cur(&full[..full.len() - 1]),
+            full.len(),
+            0,
+            &mut video_info(),
+        );
+        assert!(matches!(r, Err(BitvueError::UnexpectedEof(_))));
+    }
+
+    #[test]
+    fn simple_block_timestamp_arithmetic_wraps_below_zero_like_the_cast_says() {
+        // cluster timecode 0 with a negative relative timecode: (0 + -4) as u64
+        let mut info = video_info();
+        let b = block(1, -4, 0x00, &[1]);
+        parse_simple_block(&mut cur(&b), b.len(), 0, &mut info).unwrap();
+        assert_eq!(info.timestamps, vec![(-4i64) as u64]);
+    }
+
+    #[test]
+    #[ignore = "#269: declared size smaller than the block header underflows"]
+    fn simple_block_with_a_declared_size_below_its_header_is_an_error_not_a_panic() {
+        let b = block(1, 0, 0x80, &[1, 2, 3]);
+        let r =
+            std::panic::catch_unwind(|| parse_simple_block(&mut cur(&b), 2, 0, &mut video_info()));
+        assert!(r.is_ok(), "panicked");
+    }
+
+    // ---- top-level errors that hold regardless of ID decoding ----
+
+    #[test]
+    fn parse_mkv_rejects_short_and_foreign_data() {
+        invalid(parse_mkv(&[0x1A, 0x45, 0xDF]), "too small");
+        // exactly 4 bytes is long enough to look at, just not valid
+        let e = parse_mkv(&[0x1A, 0x45, 0xDF, 0xA3])
+            .unwrap_err()
+            .to_string();
+        assert!(!e.contains("too small"), "{e}");
+        assert!(parse_mkv(&[0x1A, 0x45, 0xDF, 0xA3]).is_err()); // header id only
+        assert!(parse_mkv(b"RIFF....AVI ").is_err());
+        assert!(parse_mkv(&[0u8; 64]).is_err());
+        assert!(extract_av1_samples(b"not matroska").is_err());
+        assert!(extract_avc_samples(b"not matroska").is_err());
+        assert!(extract_hevc_samples(b"not matroska").is_err());
+    }
+
+    // ---- spec-correct whole files: fail until #248 is fixed ----
+
+    fn size(n: usize) -> Vec<u8> {
+        if n < 0x7F {
+            vec![0x80 | n as u8]
+        } else if n < 0x3FFF {
+            vec![0x40 | (n >> 8) as u8, n as u8]
+        } else {
+            vec![0x20 | (n >> 16) as u8, (n >> 8) as u8, n as u8]
+        }
+    }
+
+    fn el(id: &[u8], payload: &[u8]) -> Vec<u8> {
+        let mut v = id.to_vec();
+        v.extend(size(payload.len()));
+        v.extend_from_slice(payload);
+        v
+    }
+
+    fn uint_el(id: &[u8], v: u8) -> Vec<u8> {
+        el(id, &[v])
+    }
+
+    fn track(number: u8, kind: u8, codec: &str) -> Vec<u8> {
+        let mut e = uint_el(&[0xD7], number);
+        e.extend(uint_el(&[0x83], kind));
+        e.extend(el(&[0x86], codec.as_bytes()));
+        el(&[0xAE], &e)
+    }
+
+    fn mkv_file(codec: &str, clusters: &[Vec<u8>]) -> Vec<u8> {
+        let mut f = el(&[0x1A, 0x45, 0xDF, 0xA3], &el(&[0x42, 0x82], b"matroska"));
+        let mut seg = el(&[0xEC], &[0; 3]); // Void
+        let mut tracks = track(2, 2, "A_OPUS");
+        tracks.extend(track(1, 1, codec));
+        seg.extend(el(&[0x16, 0x54, 0xAE, 0x6B], &tracks));
+        for c in clusters {
+            seg.extend(c);
+        }
+        f.extend(el(&[0x18, 0x53, 0x80, 0x67], &seg));
+        f
+    }
+
+    fn cluster(timecode: u8, blocks: &[Vec<u8>]) -> Vec<u8> {
+        let mut c = uint_el(&[0xE7], timecode);
+        for b in blocks {
+            c.extend(b);
+        }
+        el(&[0x1F, 0x43, 0xB6, 0x75], &c)
+    }
+
+    fn simple(track: u8, rel: i16, flags: u8, frame: &[u8]) -> Vec<u8> {
+        el(&[0xA3], &block(track, rel, flags, frame))
+    }
+
+    fn group(track: u8, rel: i16, frame: &[u8]) -> Vec<u8> {
+        let mut g = el(&[0xA1], &block(track, rel, 0x00, frame));
+        g.extend(uint_el(&[0x9B], 1)); // BlockDuration, skipped
+        el(&[0xA0], &g)
+    }
+
+    #[test]
+    #[ignore = "#248: element IDs lose their marker bits"]
+    fn whole_file_tracks_clusters_and_blocks() {
+        let f = mkv_file(
+            "V_AV1",
+            &[
+                cluster(
+                    100,
+                    &[
+                        simple(1, 0, 0x80, &[1, 1]),
+                        simple(2, 0, 0x80, &[9]),
+                        simple(1, 33, 0x00, &[2]),
+                    ],
+                ),
+                cluster(200, &[group(1, 5, &[3, 3, 3]), group(2, 5, &[8])]),
+            ],
+        );
+        let i = parse_mkv(&f).unwrap();
+        assert_eq!(i.codec_id.as_deref(), Some("V_AV1"));
+        assert_eq!(i.video_track_number, Some(1));
+        assert_eq!(i.samples, vec![vec![1, 1], vec![2], vec![3, 3, 3]]);
+        assert_eq!(i.timestamps, vec![100, 133, 205]);
+        assert_eq!(i.key_frames, vec![1]);
+        assert_eq!(i.sample_count, 3);
+        assert_eq!(extract_av1_samples(&f).unwrap().len(), 3);
+        assert!(extract_avc_samples(&f)
+            .unwrap_err()
+            .to_string()
+            .contains("Not an H.264/AVC file"));
+        assert!(extract_hevc_samples(&f)
+            .unwrap_err()
+            .to_string()
+            .contains("Not an H.265/HEVC file"));
+    }
+
+    #[test]
+    #[ignore = "#248: element IDs lose their marker bits"]
+    fn whole_file_codec_ids_select_the_extractor() {
+        let c = cluster(0, &[simple(1, 0, 0x80, &[5])]);
+        let avc = mkv_file("V_MPEG4/ISO/AVC", std::slice::from_ref(&c));
+        assert_eq!(extract_avc_samples(&avc).unwrap(), vec![vec![5]]);
+        assert!(extract_av1_samples(&avc)
+            .unwrap_err()
+            .to_string()
+            .contains("V_MPEG4/ISO/AVC"));
+        let hevc = mkv_file("V_MPEGH/ISO/HEVC", std::slice::from_ref(&c));
+        assert_eq!(extract_hevc_samples(&hevc).unwrap(), vec![vec![5]]);
+    }
+
+    #[test]
+    #[ignore = "#248: element IDs lose their marker bits"]
+    fn whole_file_without_a_video_track_has_no_codec() {
+        let mut f = el(&[0x1A, 0x45, 0xDF, 0xA3], &[]);
+        let tracks = el(&[0x16, 0x54, 0xAE, 0x6B], &track(1, 2, "A_OPUS"));
+        f.extend(el(&[0x18, 0x53, 0x80, 0x67], &tracks));
+        assert!(parse_mkv(&f).unwrap().codec_id.is_none());
+        assert!(extract_av1_samples(&f)
+            .unwrap_err()
+            .to_string()
+            .contains("No codec information"));
+    }
+
+    fn file_with(segment_children: &[u8]) -> Vec<u8> {
+        let mut f = el(&[0x1A, 0x45, 0xDF, 0xA3], &[]);
+        f.extend(el(&[0x18, 0x53, 0x80, 0x67], segment_children));
+        f
+    }
+
+    #[test]
+    #[ignore = "#248: element IDs lose their marker bits"]
+    fn whole_file_bytes_after_the_segment_are_not_parsed() {
+        let mut f = mkv_file("V_AV1", &[cluster(0, &[simple(1, 0, 0x80, &[1])])]);
+        let ok = parse_mkv(&f).unwrap();
+        f.extend([0x00, 0x00, 0x00]); // not a valid element: would be an error if read as one
+        let with_tail = parse_mkv(&f).unwrap();
+        assert_eq!(with_tail.samples, ok.samples);
+    }
+
+    #[test]
+    #[ignore = "#248: element IDs lose their marker bits"]
+    fn whole_file_element_count_limit_is_10000_per_level() {
+        let voids = |n: usize| [0xECu8, 0x80].repeat(n);
+        type Wrap = fn(&[u8]) -> Vec<u8>;
+        let levels: [(&str, Wrap); 5] = [
+            ("Segment", |v| v.to_vec()),
+            ("Tracks", |v| el(&[0x16, 0x54, 0xAE, 0x6B], v)),
+            ("TrackEntry", |v| {
+                el(&[0x16, 0x54, 0xAE, 0x6B], &el(&[0xAE], v))
+            }),
+            ("Cluster", |v| el(&[0x1F, 0x43, 0xB6, 0x75], v)),
+            ("BlockGroup", |v| {
+                el(&[0x1F, 0x43, 0xB6, 0x75], &el(&[0xA0], v))
+            }),
+        ];
+        for (name, wrap) in levels {
+            assert!(
+                parse_mkv(&file_with(&wrap(&voids(10_000)))).is_ok(),
+                "{name}: 10000 elements"
+            );
+            let e = parse_mkv(&file_with(&wrap(&voids(10_001))))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                e.contains(&format!("{name} element count exceeded")),
+                "{name}: {e}"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "#248: element IDs lose their marker bits"]
+    fn whole_file_wrong_top_level_elements() {
+        // EBML header ok, but the next element is not a Segment
+        let mut f = el(&[0x1A, 0x45, 0xDF, 0xA3], &[]);
+        f.extend(el(&[0xEC], &[0; 4]));
+        assert!(parse_mkv(&f)
+            .unwrap_err()
+            .to_string()
+            .contains("Expected Segment"));
+        // truncated mid-element
+        let ok = mkv_file("V_AV1", &[cluster(0, &[simple(1, 0, 0x80, &[1, 2, 3])])]);
+        assert!(parse_mkv(&ok[..ok.len() - 2]).is_err());
+    }
+}
