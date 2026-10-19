@@ -1,2 +1,0 @@
-crates/bitvue-engine/src/parity_harness/mod.rs:903:5: replace compare_evidence_bundles -> EvidenceBundleDiffResult with Default::default()
-crates/bitvue-engine/src/parity_harness/mod.rs:1064:5: replace compare_evidence_bundle_dirs -> Result<EvidenceBundleDiffResult, String> with Ok(Default::default())
