@@ -648,3 +648,268 @@ mod tests {
         std::fs::remove_file(&test_file).ok();
     }
 }
+
+/// Detection tests on real files in a temp dir: every magic-byte rule, its boundaries, and the extension fallback.
+#[cfg(test)]
+mod detection_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn write(name: &str, bytes: &[u8]) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join(name);
+        std::fs::write(&p, bytes).unwrap();
+        (dir, p)
+    }
+
+    fn magic(bytes: &[u8]) -> ContainerFormat {
+        let (_d, p) = write("clip.bin", bytes);
+        detect_from_magic_bytes(&p).unwrap()
+    }
+
+    fn padded(head: &[u8], total: usize) -> Vec<u8> {
+        let mut v = head.to_vec();
+        v.resize(total, 0xEE);
+        v
+    }
+
+    #[test]
+    fn container_signatures() {
+        assert_eq!(
+            magic(&padded(&[0, 0, 0, 0x18, b'f', b't', b'y', b'p'], 32)),
+            ContainerFormat::MP4
+        );
+        assert_eq!(
+            magic(&padded(&[0x1A, 0x45, 0xDF, 0xA3], 32)),
+            ContainerFormat::Matroska
+        );
+        assert_eq!(magic(&padded(b"DKIF", 32)), ContainerFormat::IVF);
+        let mut avi = padded(b"RIFF", 32);
+        avi[8..12].copy_from_slice(b"AVI ");
+        assert_eq!(magic(&avi), ContainerFormat::AVI);
+        // RIFF but not AVI (WAVE)
+        let mut wav = padded(b"RIFF", 32);
+        wav[8..12].copy_from_slice(b"WAVE");
+        assert_eq!(magic(&wav), ContainerFormat::Unknown);
+        // 'ftyp' must be at offset 4, not 0 or 5
+        assert_eq!(magic(&padded(b"ftyp", 32)), ContainerFormat::Unknown);
+        let mut late = padded(&[0; 5], 32);
+        late[5..9].copy_from_slice(b"ftyp");
+        assert_eq!(magic(&late), ContainerFormat::Unknown);
+    }
+
+    #[test]
+    fn files_shorter_than_eight_bytes_are_unknown() {
+        assert_eq!(magic(b""), ContainerFormat::Unknown);
+        assert_eq!(magic(b"DKIF123"), ContainerFormat::Unknown); // 7 bytes
+        assert_eq!(magic(b"DKIF1234"), ContainerFormat::IVF); // 8 bytes
+        assert_eq!(magic(&[0, 0, 0, 1, 0x67, 0, 0]), ContainerFormat::Unknown);
+    }
+
+    #[test]
+    fn annex_b_four_byte_start_code_accepts_h264_and_hevc_types() {
+        let nal = |b: u8| magic(&padded(&[0, 0, 0, 1, b], 12));
+        // H.264: nal_unit_type = low 5 bits; 1..=9 and 20
+        for t in [1u8, 5, 7, 8, 9, 20] {
+            assert_eq!(nal(t), ContainerFormat::AnnexB, "h264 type {t}");
+            assert_eq!(
+                nal(0x60 | t),
+                ContainerFormat::AnnexB,
+                "h264 type {t} with nal_ref_idc"
+            );
+        }
+        // H.265: nal_unit_type = bits 1..=6; 32..=34 (VPS/SPS/PPS)
+        for t in [32u8, 33, 34] {
+            assert_eq!(nal(t << 1), ContainerFormat::AnnexB, "hevc type {t}");
+        }
+        // neighbours of both ranges: 0, 10, 19, 21 (H.264) and 31, 35 (H.265, chosen so the low 5 bits fall outside H.264's set)
+        assert_eq!(nal(0x00), ContainerFormat::Unknown);
+        assert_eq!(nal(0x0A), ContainerFormat::Unknown);
+        assert_eq!(nal(0x13), ContainerFormat::Unknown);
+        assert_eq!(nal(0x15), ContainerFormat::Unknown);
+        assert_eq!(nal(31 << 1), ContainerFormat::Unknown); // 0x3E: h264 type 30
+                                                            // HEVC type 35 (AUD) is 0x46: its low 5 bits read as H.264 type 6, so it is still taken as Annex B
+        assert_eq!(nal(35 << 1), ContainerFormat::AnnexB);
+    }
+
+    #[test]
+    fn annex_b_three_byte_start_code_accepts_the_same_types() {
+        let nal = |b: u8| magic(&padded(&[0, 0, 1, b], 12));
+        for t in [1u8, 5, 7, 8, 9, 20] {
+            assert_eq!(nal(t), ContainerFormat::AnnexB, "h264 type {t}");
+            assert_eq!(
+                nal(0x60 | t),
+                ContainerFormat::AnnexB,
+                "h264 type {t} with nal_ref_idc"
+            );
+        }
+        for t in [32u8, 33, 34] {
+            assert_eq!(nal(t << 1), ContainerFormat::AnnexB, "hevc type {t}");
+        }
+        assert_eq!(nal(0x00), ContainerFormat::Unknown);
+        assert_eq!(nal(0x0A), ContainerFormat::Unknown);
+        assert_eq!(nal(0x15), ContainerFormat::Unknown);
+        assert_eq!(nal(31 << 1), ContainerFormat::Unknown);
+    }
+
+    #[test]
+    fn annex_b_start_code_must_be_at_the_start() {
+        assert_eq!(
+            magic(&padded(&[0xFF, 0, 0, 1, 0x67], 12)),
+            ContainerFormat::Unknown
+        );
+        assert_eq!(
+            magic(&padded(&[0, 0, 2, 0x67], 12)),
+            ContainerFormat::Unknown
+        );
+        // 00 00 00 00 01 is not a 4-byte start code at offset 0
+        assert_eq!(
+            magic(&padded(&[0, 0, 0, 0, 1, 0x67], 12)),
+            ContainerFormat::Unknown
+        );
+    }
+
+    #[test]
+    fn four_byte_code_with_a_bad_type_is_not_reread_as_a_three_byte_code() {
+        // bytes 0..3 are 00 00 00, so the 3-byte code cannot match; the result stays Unknown
+        assert_eq!(
+            magic(&padded(&[0, 0, 0, 1, 0x00], 12)),
+            ContainerFormat::Unknown
+        );
+    }
+
+    #[test]
+    fn only_the_first_32_bytes_matter() {
+        let mut d = padded(b"junk", 100);
+        d[40..44].copy_from_slice(b"DKIF");
+        assert_eq!(magic(&d), ContainerFormat::Unknown);
+    }
+
+    #[test]
+    fn magic_wins_over_extension_and_extension_is_the_fallback() {
+        let (_d, p) = write("clip.mp4", &padded(b"DKIF", 32));
+        assert_eq!(detect_container_format(&p).unwrap(), ContainerFormat::IVF);
+        let (_d, p) = write("clip.mkv", &padded(&[7; 4], 32));
+        assert_eq!(
+            detect_container_format(&p).unwrap(),
+            ContainerFormat::Matroska
+        );
+        let (_d, p) = write("clip.xyz", &padded(&[7; 4], 32));
+        assert_eq!(
+            detect_container_format(&p).unwrap(),
+            ContainerFormat::Unknown
+        );
+        let (_d, p) = write("noext", &padded(&[7; 4], 32));
+        assert_eq!(
+            detect_container_format(&p).unwrap(),
+            ContainerFormat::Unknown
+        );
+        // too short for magic detection: the extension decides
+        let (_d, p) = write("tiny.ivf", b"x");
+        assert_eq!(detect_container_format(&p).unwrap(), ContainerFormat::IVF);
+    }
+
+    #[test]
+    fn extension_table() {
+        for (name, want) in [
+            ("a.mp4", ContainerFormat::MP4),
+            ("a.m4v", ContainerFormat::MP4),
+            ("a.m4a", ContainerFormat::MP4),
+            ("a.mov", ContainerFormat::MP4),
+            ("a.MP4", ContainerFormat::MP4),
+            ("a.MoV", ContainerFormat::MP4),
+            ("a.mkv", ContainerFormat::Matroska),
+            ("a.webm", ContainerFormat::Matroska),
+            ("a.WEBM", ContainerFormat::Matroska),
+            ("a.avi", ContainerFormat::AVI),
+            ("a.ivf", ContainerFormat::IVF),
+            ("a.h264", ContainerFormat::AnnexB),
+            ("a.h265", ContainerFormat::AnnexB),
+            ("a.hevc", ContainerFormat::AnnexB),
+            ("a.265", ContainerFormat::AnnexB),
+            ("a.264", ContainerFormat::Unknown),
+            ("a.ts", ContainerFormat::Unknown),
+            ("a", ContainerFormat::Unknown),
+            (".mp4", ContainerFormat::Unknown),
+            ("dir.mp4/file", ContainerFormat::Unknown),
+            ("a.mp4.bak", ContainerFormat::Unknown),
+        ] {
+            assert_eq!(detect_from_extension(Path::new(name)), want, "{name}");
+        }
+    }
+
+    #[test]
+    fn support_matrix() {
+        for (head, supported) in [
+            (padded(&[0, 0, 0, 0x18, b'f', b't', b'y', b'p'], 32), true),
+            (padded(&[0x1A, 0x45, 0xDF, 0xA3], 32), true),
+            (padded(b"DKIF", 32), true),
+            (padded(&[0, 0, 0, 1, 0x67], 32), true),
+            (padded(&[0x47; 4], 32), false),
+        ] {
+            let (_d, p) = write("x.bin", &head);
+            assert_eq!(is_supported_format(&p).unwrap(), supported, "{head:02x?}");
+        }
+        let mut avi = padded(b"RIFF", 32);
+        avi[8..12].copy_from_slice(b"AVI ");
+        let (_d, p) = write("x.avi", &avi);
+        assert_eq!(detect_container_format(&p).unwrap(), ContainerFormat::AVI);
+        assert!(!is_supported_format(&p).unwrap()); // detected, but no demuxer
+    }
+
+    #[test]
+    fn io_errors_are_returned() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.mp4");
+        let e = detect_from_magic_bytes(&missing).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+        assert!(detect_container_format(&missing).is_err());
+        assert!(is_supported_format(&missing).is_err());
+        // a directory opens but cannot be read
+        assert!(detect_from_magic_bytes(dir.path()).is_err());
+    }
+
+    #[test]
+    fn likely_codec_for_every_format() {
+        use ContainerFormat::*;
+        for (f, codec) in [
+            (MP4, Some("h264")),
+            (Matroska, Some("vp9")),
+            (IVF, Some("av1")),
+            (AnnexB, Some("h264")),
+            (AVI, Some("h264")),
+            (Unknown, None),
+        ] {
+            assert_eq!(f.get_likely_codec(), codec, "{f:?}");
+        }
+    }
+
+    #[test]
+    fn hevc_parameter_set_range() {
+        for t in 0..=u8::MAX {
+            assert_eq!(
+                is_hevc_parameter_set_nal_type(t),
+                (32..=34).contains(&t),
+                "{t}"
+            );
+        }
+    }
+
+    #[test]
+    fn magic_bytes_helpers() {
+        let m = MagicBytes::new(*b"ab");
+        assert_eq!(m.as_bytes(), b"ab");
+        assert!(m.matches_at(b"xxab", 2));
+        assert!(!m.matches_at(b"xxab", 3));
+        assert!(!m.matches_at(b"", 0));
+        assert!(MagicBytes::<3>::START_CODE_3.matches(&[0, 0, 1, 9]));
+        assert!(MagicBytes::<4>::START_CODE_4.matches(&[0, 0, 0, 1]));
+        assert!(!MagicBytes::<4>::START_CODE_4.matches(&[0, 0, 1]));
+    }
+
+    #[test]
+    #[ignore = "#267: offset + N overflows for huge offsets"]
+    fn matches_at_with_a_huge_offset_is_false_not_a_panic() {
+        assert!(!MagicBytes::new(*b"ab").matches_at(b"abab", usize::MAX));
+    }
+}
