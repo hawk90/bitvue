@@ -197,4 +197,166 @@ mod tests {
         let got = clip_to_decoded_area(MotionVector::zero(), &g).unwrap();
         assert_eq!(got, MotionVector::new(0, -16 * 8));
     }
+
+    // ---- read_displacement_vector -------------------------------------------------------
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    fn mv(x: i32, y: i32) -> MotionVector {
+        MotionVector::new(x, y)
+    }
+
+    /// A tile of 64x64 units with the IntraBC neighbours `blocks` (x4, y4, w4, h4, vector), all
+    /// written as references to the intra "frame" (-1).
+    fn tile_with(blocks: &[(u32, u32, u32, u32, MotionVector)]) -> TileContext {
+        let mut ctx = TileContext::new(64, 64);
+        ctx.set_frame_extent(256, 256);
+        ctx.set_tile_extent(0, 64, 0, 64);
+        for &(x4, y4, w4, h4, v) in blocks {
+            ctx.set_spatial_ref_block(x4, y4, w4, h4, -1, -1, false, v, MotionVector::zero());
+        }
+        ctx
+    }
+
+    const BLOCK: MiRect = MiRect {
+        x4: 8,
+        y4: 40,
+        width: 4,
+        height: 4,
+    };
+
+    /// The vector a decoder with the same bits ends up with when the reference is `reference`.
+    fn expected(data: &[u8], reference: MotionVector, g: ClipGeometry) -> Option<MotionVector> {
+        let mut d = SymbolDecoder::new(data).unwrap();
+        let diff = read_explicit_mv(&mut d, -1).unwrap();
+        clip_to_decoded_area(
+            MotionVector::new(reference.x + diff.x, reference.y + diff.y),
+            &g,
+        )
+    }
+
+    fn geometry_of(mi: MiRect) -> ClipGeometry {
+        ClipGeometry {
+            x4: mi.x4,
+            y4: mi.y4,
+            bw4: mi.width,
+            bh4: mi.height,
+            col_end: 64,
+            sb128: false,
+            chroma_border_x: false,
+            chroma_border_y: false,
+        }
+    }
+
+    fn run(data: &[u8], ctx: &TileContext, mi: MiRect) -> Result<MotionVector> {
+        let mut d = SymbolDecoder::new(data).unwrap();
+        read_displacement_vector(&mut d, ctx, mi, 64, false, false, (true, true))
+    }
+
+    #[test]
+    fn the_reference_is_the_first_non_zero_stack_entry_else_the_default_vector() {
+        // Above the block (row 38..40): zero vectors; to the left: -64. Heavier zero entry first.
+        let zero_first = tile_with(&[(8, 38, 4, 2, mv(0, 0)), (6, 40, 2, 4, mv(-64, 0))]);
+        let first_nonzero = tile_with(&[(8, 38, 4, 2, mv(32, -16))]);
+        let none = tile_with(&[]);
+
+        let mut seen = std::collections::BTreeSet::new();
+        for seed in 1..=24u64 {
+            let data = noise(seed, 64);
+            for (label, ctx, reference) in [
+                ("stack[1] after a zero stack[0]", &zero_first, mv(-64, 0)),
+                ("stack[0]", &first_nonzero, mv(32, -16)),
+                ("default", &none, default_vector(BLOCK.y4, false)),
+            ] {
+                let want = expected(&data, reference, geometry_of(BLOCK));
+                let got = run(&data, ctx, BLOCK);
+                match want {
+                    Some(v) => {
+                        assert_eq!(got.unwrap(), v, "seed {seed}: {label}");
+                        seen.insert((label, v.x, v.y));
+                    }
+                    None => assert!(got.is_err(), "seed {seed}: {label}"),
+                }
+            }
+        }
+        let labels: std::collections::BTreeSet<_> = seen.iter().map(|s| s.0).collect();
+        assert_eq!(
+            labels.len(),
+            3,
+            "every reference source must produce an accepted vector: {labels:?}"
+        );
+    }
+
+    #[test]
+    fn a_vector_that_cannot_be_made_valid_is_a_decode_error() {
+        // First superblock, nothing above or left to copy from: the default vector plus any small
+        // difference still overlaps the block's own superblock.
+        let none = tile_with(&[]);
+        let mi = MiRect {
+            x4: 0,
+            y4: 0,
+            width: 4,
+            height: 4,
+        };
+        let mut errors = 0;
+        for seed in 1..=24u64 {
+            let data = noise(seed, 64);
+            let want = expected(&data, default_vector(0, false), geometry_of(mi));
+            let got = run(&data, &none, mi);
+            assert_eq!(got.is_err(), want.is_none(), "seed {seed}");
+            errors += usize::from(got.is_err());
+        }
+        assert!(errors > 0, "some seed must hit the rejection");
+    }
+
+    #[test]
+    fn narrow_chroma_blocks_move_the_clip_borders_by_four() {
+        // A 4-wide block with chroma on a subsampled stream borders 4 samples further in.
+        let none = tile_with(&[]);
+        let narrow = MiRect {
+            x4: 1,
+            y4: 40,
+            width: 1,
+            height: 1,
+        };
+        let mut differing = 0;
+        for seed in 1..=48u64 {
+            let data = noise(seed, 64);
+            let run_flags = |has_chroma: bool, sub: (bool, bool)| {
+                let mut d = SymbolDecoder::new(&data).unwrap();
+                read_displacement_vector(&mut d, &none, narrow, 64, false, has_chroma, sub).ok()
+            };
+            let plain = run_flags(false, (true, true));
+            let bordered = run_flags(true, (true, true));
+            // The border only applies with chroma AND subsampling on that axis.
+            assert_eq!(
+                run_flags(true, (false, false)),
+                plain,
+                "seed {seed}: 4:4:4 has no border"
+            );
+            let mut g = geometry_of(narrow);
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let diff = read_explicit_mv(&mut d, -1).unwrap();
+            let v = {
+                let r = default_vector(narrow.y4, false);
+                MotionVector::new(r.x + diff.x, r.y + diff.y)
+            };
+            assert_eq!(plain, clip_to_decoded_area(v, &g), "seed {seed}");
+            g.chroma_border_x = true;
+            g.chroma_border_y = true;
+            assert_eq!(bordered, clip_to_decoded_area(v, &g), "seed {seed}");
+            differing += usize::from(plain != bordered);
+        }
+        assert!(differing > 0, "some seed must be moved by the border");
+    }
 }
