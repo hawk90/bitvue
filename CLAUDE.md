@@ -51,7 +51,7 @@ Don't create new parity docs.
 ## Key scripts
 
 `scripts/dev.sh` `scripts/setup.sh` `scripts/parity_check.sh` (--local for the regression gate)
-`scripts/run_regression_suite.sh` `scripts/check_fuzz_targets.sh` (fuzz/ is outside the workspace: targets registered + compiling) `scripts/branch_coverage.py <crate>` (production-code branch coverage, nightly `--branch`; test code excluded) `scripts/clean.sh` `scripts/prune.sh` (drop Cargo incremental caches, ~60% of target/) `scripts/package_electron.sh [mac|linux|win]`
+`scripts/run_regression_suite.sh` `scripts/check_fuzz_targets.sh` (fuzz/ is outside the workspace: targets registered + compiling) `scripts/branch_coverage.py <crate>` (production-code branch coverage, nightly `--branch`; test code excluded) `scripts/function_coverage.py <crate>` (per-function/file line coverage from branch_coverage.py's profile; lists functions >100 lines below 90%; `--verify` cross-checks every line against `llvm-cov show`) `scripts/clean.sh` `scripts/prune.sh` (drop Cargo incremental caches, ~60% of target/) `scripts/package_electron.sh [mac|linux|win]`
 (builds+packages the Electron app; local counterpart to `.github/workflows/build-electron-app.yml`)
 
 ## Agents
