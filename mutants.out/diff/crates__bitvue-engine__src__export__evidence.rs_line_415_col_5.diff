@@ -1,0 +1,29 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace write_render_snapshots -> Result<(), String> with Ok(())
+@@ -407,25 +407,17 @@
+ }
+ 
+ /// `render_snapshots/snapshot_NNNN.json`, only when requested and non-empty.
+ fn write_render_snapshots(
+     writer: &mut BundleWriter,
+     request: &EvidenceBundleExportRequest,
+     render_snapshots: &[RenderSnapshot],
+ ) -> Result<(), String> {
+-    if !request.include_render_snapshots || render_snapshots.is_empty() {
+-        return Ok(());
+-    }
+-    writer.create_dir("render_snapshots", "snapshots")?;
+-    for (idx, snapshot) in render_snapshots.iter().enumerate() {
+-        let relative = format!("render_snapshots/snapshot_{:04}.json", idx);
+-        writer.json(&relative, snapshot, "snapshot")?;
+-    }
+-    Ok(())
++    Ok(()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Environment info for evidence bundle
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ struct EnvInfo {
+     os: String,
+     arch: String,
+     gpu: String,

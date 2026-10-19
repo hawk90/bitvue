@@ -1,0 +1,43 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace build_manifest -> EvidenceBundleManifest with Default::default()
+@@ -269,39 +269,17 @@
+         ),
+         Err(message) => EvidenceBundleExportResult::error(&message),
+     }
+ }
+ 
+ /// Manifest for this build and request. `warnings`/`artifacts` start empty; the export does not
+ /// collect any.
+ fn build_manifest(request: &EvidenceBundleExportRequest) -> EvidenceBundleManifest {
+-    EvidenceBundleManifest {
+-        bundle_version: "1.0".to_string(),
+-        app_version: env!("CARGO_PKG_VERSION").to_string(),
+-        git_commit: option_env!("GIT_COMMIT").unwrap_or("unknown").to_string(),
+-        build_profile: if cfg!(debug_assertions) {
+-            "debug"
+-        } else {
+-            "release"
+-        }
+-        .to_string(),
+-        os: std::env::consts::OS.to_string(),
+-        gpu: "unknown".to_string(),
+-        cpu: std::env::consts::ARCH.to_string(),
+-        backend: "dav1d".to_string(),
+-        plugin_versions: HashMap::new(),
+-        stream_fingerprint: request.stream_fingerprint.clone(),
+-        order_type: request.order_type,
+-        selection_state: request.selection_state.clone(),
+-        workspace: request.workspace.clone(),
+-        mode: request.mode.clone(),
+-        warnings: Vec::new(),
+-        artifacts: Vec::new(),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Files written into a bundle directory so far, and their combined size.
+ struct BundleWriter<'a> {
+     dir: &'a Path,
+     files: Vec<String>,
+     total_bytes: usize,
+ }

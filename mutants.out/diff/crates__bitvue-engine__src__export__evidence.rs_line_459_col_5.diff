@@ -1,0 +1,23 @@
+--- crates/bitvue-engine/src/export/evidence.rs
++++ replace write_json_file -> std::io::Result<usize> with Ok(0)
+@@ -451,19 +451,17 @@
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ struct BackendInfo {
+     backend: String,
+     plugin_versions: HashMap<String, String>,
+ }
+ 
+ /// Helper to write JSON file
+ fn write_json_file<T: Serialize>(path: &Path, data: &T) -> std::io::Result<usize> {
+-    let json = serde_json::to_string_pretty(data).map_err(std::io::Error::other)?;
+-    std::fs::write(path, &json)?;
+-    Ok(json.len())
++    Ok(0) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use crate::parity_harness::{EntityRef, ViewportState};
+     use std::path::PathBuf;
+ 
