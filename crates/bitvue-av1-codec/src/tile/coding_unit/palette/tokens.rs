@@ -229,9 +229,9 @@ mod tests {
         }
         for i in 0..3 {
             let (mut best, mut best_idx) = (scores[i], i);
-            for j in i + 1..8 {
-                if scores[j] > best {
-                    best = scores[j];
+            for (j, &score) in scores.iter().enumerate().skip(i + 1) {
+                if score > best {
+                    best = score;
                     best_idx = j;
                 }
             }
