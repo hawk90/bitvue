@@ -75,6 +75,7 @@ pub mod index_extractor;
 pub mod index_extractor_evidence;
 pub mod index_session;
 pub mod index_session_evidence;
+pub mod index_session_full;
 pub mod index_session_window;
 pub mod indexing;
 pub mod insight_feed;
