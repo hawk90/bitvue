@@ -465,6 +465,29 @@ fn test_compound_mv_stack_skips_temporal_pairs_when_ref1_is_negative() {
     }
 }
 
+/// The same gate from the other side: a negative first reference must not index `pocdiff` either
+/// (`-1 as usize` is out of bounds), whatever the second one is.
+#[test]
+fn test_compound_mv_stack_skips_temporal_pairs_when_ref0_is_negative() {
+    use crate::tile::motion_field::{project_motion_field, MotionFieldState};
+    let mut ctx = SpatialRefContext::new(16, 16);
+    ctx.set_frame_extent(64, 64);
+    let projected = project_motion_field(&[], &MotionFieldState::new(), 8, 8);
+    ctx.set_temporal_context(projected, [1; 7]);
+    for ref1 in [-1, PAIR.1] {
+        let with_temporal = ctx.compound_mv_stack(4, 4, 2, 2, -1, ref1, true);
+        let without = ctx.compound_mv_stack(4, 4, 2, 2, -1, ref1, false);
+        assert_eq!(with_temporal.1, without.1, "ref1 {ref1}");
+        for i in 0..with_temporal.1 {
+            assert_eq!(with_temporal.0[i].mv, without.0[i].mv, "ref1 {ref1}");
+            assert_eq!(
+                with_temporal.0[i].weight, without.0[i].weight,
+                "ref1 {ref1}"
+            );
+        }
+    }
+}
+
 /// dav1d reads the secondary rows at `((y4 - 2n + 1) | 1)`, the odd row of each 8x8 pair: at the
 /// odd `y4 = 5` the n = 2 row is 3, not 2 (the compound counterpart of the single-reference test).
 #[test]
