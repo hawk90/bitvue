@@ -31,7 +31,6 @@ pub mod partition;
 pub mod position;
 pub mod restoration;
 pub mod superblock;
-pub mod tile_group;
 pub mod tile_state;
 
 pub use coding_unit::{
@@ -51,7 +50,6 @@ pub use partition::{
 pub use position::{BlockRect, MiRect, SuperblockCtx};
 pub use restoration::{RestorationParams, RestorationRef};
 pub use superblock::{parse_superblock, Superblock};
-pub use tile_group::{parse_tile_group, TileGroup, TileInfo};
 pub use tile_state::TileState;
 
 use serde::{Deserialize, Serialize};

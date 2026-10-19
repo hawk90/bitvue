@@ -68,7 +68,7 @@ The sidecar exposes these trees through `get_frame_syntax`; the CLI exposes them
 
 ### Tiles and blocks (`tile/`)
 
-- `parse_tile_group`, `parse_superblock`, `parse_partition_tree`, `parse_coding_unit`, `partition_tree_to_grid`
+- `parse_superblock`, `parse_partition_tree`, `parse_coding_unit`, `partition_tree_to_grid`
 - Types: `BlockSize`, `PartitionType`, `PredictionMode`, `RefFrame`, `MotionVector`, `SuperblockSize`
 - The symbol decoder is in `symbol/`: `SymbolDecoder`, `ArithmeticDecoder`, `CdfContext`
 - `PartitionType` (0–9): `None`, `Horz`, `Vert`, `Split`, `HorzA`, `HorzB`, `VertA`, `VertB`, `Horz4`, `Vert4`
