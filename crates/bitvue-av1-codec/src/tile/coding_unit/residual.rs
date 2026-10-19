@@ -228,3 +228,369 @@ fn read_chroma_residual(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tile::coding_unit::types::{TxBlock, TxSize};
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    fn rect(x4: u32, y4: u32, w4: u32, h4: u32) -> (BlockRect, MiRect) {
+        (
+            BlockRect {
+                x: x4 * 4,
+                y: y4 * 4,
+                width: w4 * 4,
+                height: h4 * 4,
+            },
+            MiRect {
+                x4,
+                y4,
+                width: w4,
+                height: h4,
+            },
+        )
+    }
+
+    fn frame(key: bool, subsampling: (bool, bool), mono: bool) -> FrameCodingParams {
+        let mut f = FrameCodingParams::for_tests();
+        f.is_key_frame = key;
+        f.tx_type_flags.subsampling_x = subsampling.0;
+        f.tx_type_flags.subsampling_y = subsampling.1;
+        f.tx_type_flags.mono_chrome = mono;
+        f
+    }
+
+    fn fingerprint(decoder: &mut SymbolDecoder) -> u32 {
+        decoder.read_bools_n(24).unwrap()
+    }
+
+    /// The luma reads of spec 5.11.34 written out by hand for a list of `(x4, y4, w_px, h_px)`
+    /// transform blocks of an intra block: `all_zero`, then the transform type and the
+    /// coefficients when it is not all-zero. With `real_ctx` the neighbour contexts come from
+    /// (and are written to) `ctx`, otherwise both are 0.
+    fn manual_luma(
+        decoder: &mut SymbolDecoder,
+        ctx: &mut TileContext,
+        blocks: &[(u32, u32, u32, u32)],
+        real_ctx: bool,
+    ) -> ResidualBlockStats {
+        let mut total = ResidualBlockStats::default();
+        for &(x4, y4, w, h) in blocks {
+            let (w4, h4) = (w / 4, h / 4);
+            let (skip_ctx, sign_ctx) = if real_ctx {
+                (
+                    ctx.txb_skip_context(x4, y4, w4, h4, blocks.len() == 1),
+                    ctx.dc_sign_context(x4, y4, w4, h4),
+                )
+            } else {
+                (0, 0)
+            };
+            let block = if decoder.read_txb_skip(w, h, skip_ctx).unwrap() {
+                ResidualBlockStats {
+                    all_zero: true,
+                    ..Default::default()
+                }
+            } else {
+                let t = decoder
+                    .read_transform_type(true, false, false, false, w, h, 0)
+                    .unwrap();
+                decoder
+                    .read_residual_block(w, h, t.class, sign_ctx)
+                    .unwrap()
+            };
+            if real_ctx {
+                ctx.set_residual_ctx(
+                    x4,
+                    y4,
+                    w4,
+                    h4,
+                    block.sum_abs_level.min(63) as u8,
+                    block.dc_sign_value,
+                );
+            }
+            total.nonzero_count += block.nonzero_count;
+            total.sum_abs_level += block.sum_abs_level;
+            total.max_level = total.max_level.max(block.max_level);
+        }
+        total
+    }
+
+    fn same_stats(a: &ResidualBlockStats, b: &ResidualBlockStats) -> bool {
+        (a.nonzero_count, a.sum_abs_level, a.max_level)
+            == (b.nonzero_count, b.sum_abs_level, b.max_level)
+    }
+
+    #[test]
+    fn without_tx_blocks_the_block_is_tiled_at_tx_size_and_neighbour_contexts_stay_unused() {
+        // An inter-frame intra block with no transform-block list: uniform 16x16 tiles, fixed
+        // contexts, and the residual context arrays are never touched.
+        let (r, mi) = rect(0, 0, 8, 4); // 32x16 -> two 16x16 transforms
+        let f = frame(false, (true, false), false); // no chroma, to look at luma alone
+        let mut varied = std::collections::BTreeSet::new();
+        for seed in 1..=48u64 {
+            let data = noise(seed, 256);
+            let mut cu = CodingUnit::new(0, 0, 32, 16);
+            cu.tx_size = TxSize::Tx16x16;
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(32, 32);
+            read_residual(&mut d, &mut ctx, r, mi, &f, &mut cu, 0).unwrap();
+
+            let mut want_d = SymbolDecoder::new(&data).unwrap();
+            let want = manual_luma(
+                &mut want_d,
+                &mut TileContext::new(32, 32),
+                &[(0, 0, 16, 16), (4, 0, 16, 16)],
+                false,
+            );
+            let got = cu.residual.unwrap();
+            assert!(same_stats(&got, &want), "seed {seed}: {got:?} vs {want:?}");
+            assert_eq!(fingerprint(&mut d), fingerprint(&mut want_d), "seed {seed}");
+
+            let fresh = TileContext::new(32, 32);
+            assert_eq!(
+                ctx.dc_sign_context(4, 0, 4, 4),
+                fresh.dc_sign_context(4, 0, 4, 4)
+            );
+            assert_eq!(
+                ctx.txb_skip_context(4, 0, 4, 4, false),
+                fresh.txb_skip_context(4, 0, 4, 4, false)
+            );
+            varied.insert(got.nonzero_count.min(3));
+        }
+        assert!(
+            varied.len() >= 2,
+            "seeds must mix all-zero and coded blocks: {varied:?}"
+        );
+    }
+
+    #[test]
+    fn a_key_frame_block_without_tx_blocks_uses_and_updates_the_real_contexts() {
+        let (r, mi) = rect(0, 0, 8, 4);
+        let f = frame(true, (true, false), false);
+        let mut context_changed = false;
+        for seed in 1..=48u64 {
+            let data = noise(seed, 256);
+            let mut cu = CodingUnit::new(0, 0, 32, 16);
+            cu.tx_size = TxSize::Tx16x16;
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(32, 32);
+            read_residual(&mut d, &mut ctx, r, mi, &f, &mut cu, 0).unwrap();
+
+            let mut want_d = SymbolDecoder::new(&data).unwrap();
+            let mut want_ctx = TileContext::new(32, 32);
+            let want = manual_luma(
+                &mut want_d,
+                &mut want_ctx,
+                &[(0, 0, 16, 16), (4, 0, 16, 16)],
+                true,
+            );
+            assert!(same_stats(&cu.residual.unwrap(), &want), "seed {seed}");
+            assert_eq!(fingerprint(&mut d), fingerprint(&mut want_d), "seed {seed}");
+            for (x4, y4) in [(0, 0), (4, 0), (8, 0), (0, 4)] {
+                assert_eq!(
+                    ctx.txb_skip_context(x4, y4, 4, 4, false),
+                    want_ctx.txb_skip_context(x4, y4, 4, 4, false),
+                    "seed {seed} ({x4},{y4})"
+                );
+                assert_eq!(
+                    ctx.dc_sign_context(x4, y4, 4, 4),
+                    want_ctx.dc_sign_context(x4, y4, 4, 4)
+                );
+            }
+            context_changed |= ctx.txb_skip_context(4, 0, 4, 4, false)
+                != TileContext::new(32, 32).txb_skip_context(4, 0, 4, 4, false);
+        }
+        assert!(
+            context_changed,
+            "coded blocks must leave a non-zero cul_level behind"
+        );
+    }
+
+    #[test]
+    fn an_intrabc_block_on_a_key_frame_without_tx_blocks_keeps_the_fixed_contexts() {
+        let (r, mi) = rect(0, 0, 4, 4);
+        let f = frame(true, (true, false), false);
+        let data = noise(5, 256);
+        let mut cu = CodingUnit::new(0, 0, 16, 16);
+        cu.use_intrabc = true;
+        cu.tx_size = TxSize::Tx16x16;
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let mut ctx = TileContext::new(32, 32);
+        read_residual(&mut d, &mut ctx, r, mi, &f, &mut cu, 0).unwrap();
+        let fresh = TileContext::new(32, 32);
+        assert_eq!(
+            ctx.txb_skip_context(4, 0, 4, 4, false),
+            fresh.txb_skip_context(4, 0, 4, 4, false)
+        );
+    }
+
+    #[test]
+    fn a_tx_block_list_overrides_the_uniform_tiling() {
+        // 16x16 block with two 8x16 transforms (var-tx style); tx_size would say 16x16.
+        let (r, mi) = rect(0, 0, 4, 4);
+        let f = frame(false, (true, false), false);
+        let data = noise(11, 256);
+        let mut cu = CodingUnit::new(0, 0, 16, 16);
+        cu.tx_size = TxSize::Tx16x16;
+        cu.tx_blocks = Some(vec![
+            TxBlock {
+                x4: 0,
+                y4: 0,
+                width_px: 8,
+                height_px: 16,
+            },
+            TxBlock {
+                x4: 2,
+                y4: 0,
+                width_px: 8,
+                height_px: 16,
+            },
+        ]);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        let mut ctx = TileContext::new(32, 32);
+        read_residual(&mut d, &mut ctx, r, mi, &f, &mut cu, 0).unwrap();
+
+        let mut want_d = SymbolDecoder::new(&data).unwrap();
+        // The block is inter-style (a tx list exists): contexts are real.
+        let want = manual_luma(
+            &mut want_d,
+            &mut TileContext::new(32, 32),
+            &[(0, 0, 8, 16), (2, 0, 8, 16)],
+            true,
+        );
+        assert!(same_stats(&cu.residual.unwrap(), &want));
+        assert_eq!(fingerprint(&mut d), fingerprint(&mut want_d));
+    }
+
+    #[test]
+    fn chroma_is_read_only_for_420_colour_blocks_that_own_their_chroma() {
+        let data = noise(21, 512);
+        let luma_only = |r, mi, f: &FrameCodingParams, cu: &CodingUnit| {
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(32, 32);
+            let (summary, _) = read_luma_residual(&mut d, &mut ctx, r, mi, f, cu, 0).unwrap();
+            (summary, fingerprint(&mut d))
+        };
+        let full = |r, mi, f: &FrameCodingParams, cu: &mut CodingUnit| {
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(32, 32);
+            read_residual(&mut d, &mut ctx, r, mi, f, cu, 0).unwrap();
+            fingerprint(&mut d)
+        };
+        let mut cu = CodingUnit::new(0, 0, 16, 16);
+        cu.tx_size = TxSize::Tx16x16;
+        let (r, mi) = rect(0, 0, 4, 4);
+
+        let (_, luma_bits) = luma_only(r, mi, &frame(false, (true, true), false), &cu);
+        let with_chroma = full(r, mi, &frame(false, (true, true), false), &mut cu);
+        assert_ne!(with_chroma, luma_bits, "4:2:0 reads U and V");
+        assert_eq!(
+            cu.residual.as_ref().unwrap().nonzero_count,
+            luma_only(r, mi, &frame(false, (true, true), false), &cu)
+                .0
+                .nonzero_count,
+            "the stored statistics are luma only"
+        );
+
+        for (label, f) in [
+            (
+                "4:2:2 / 4:4:0 (only x subsampled)",
+                frame(false, (true, false), false),
+            ),
+            ("only y subsampled", frame(false, (false, true), false)),
+            ("4:4:4", frame(false, (false, false), false)),
+            ("monochrome", frame(false, (true, true), true)),
+        ] {
+            let (_, want) = luma_only(r, mi, &f, &cu);
+            assert_eq!(full(r, mi, &f, &mut cu), want, "{label}: no chroma symbols");
+        }
+    }
+
+    #[test]
+    fn a_narrow_block_codes_chroma_only_at_an_odd_position() {
+        // 4x4 blocks share a chroma block: only the one at an odd column and row owns it.
+        let f = frame(false, (true, true), false);
+        let data = noise(31, 512);
+        for (x4, y4, owns) in [
+            (0, 0, false),
+            (1, 0, false),
+            (0, 1, false),
+            (1, 1, true),
+            (3, 5, true),
+        ] {
+            let (r, mi) = rect(x4, y4, 1, 1);
+            let mut cu = CodingUnit::new(x4 * 4, y4 * 4, 4, 4);
+            cu.tx_size = TxSize::Tx4x4;
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(32, 32);
+            let (_, _) = read_luma_residual(&mut d, &mut ctx, r, mi, &f, &cu, 0).unwrap();
+            let luma_bits = fingerprint(&mut d);
+
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(32, 32);
+            read_residual(&mut d, &mut ctx, r, mi, &f, &mut cu, 0).unwrap();
+            assert_eq!(fingerprint(&mut d) != luma_bits, owns, "4x4 at ({x4},{y4})");
+        }
+    }
+
+    #[test]
+    fn a_128x128_block_has_four_32x32_chroma_transforms_per_plane() {
+        // 128x128 luma -> 64x64 chroma, capped at 32x32 per transform: 2x2 tiles in each of U, V.
+        let f = frame(false, (true, true), false);
+        let (r, mi) = rect(0, 0, 32, 32);
+        for seed in 1..=8u64 {
+            let data = noise(seed, 2048);
+            let mut cu = CodingUnit::new(0, 0, 128, 128);
+            cu.tx_size = TxSize::Tx64x64;
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let mut ctx = TileContext::new(64, 64);
+            read_residual(&mut d, &mut ctx, r, mi, &f, &mut cu, 0).unwrap();
+
+            // Luma: four 64x64 tiles; chroma: per plane the four 32x32 tiles in raster order.
+            let mut want_d = SymbolDecoder::new(&data).unwrap();
+            let mut want_ctx = TileContext::new(64, 64);
+            manual_luma(
+                &mut want_d,
+                &mut want_ctx,
+                &[
+                    (0, 0, 64, 64),
+                    (16, 0, 64, 64),
+                    (0, 16, 64, 64),
+                    (16, 16, 64, 64),
+                ],
+                false,
+            );
+            for plane in 0..2usize {
+                for (cx4, cy4) in [(0, 0), (8, 0), (0, 8), (8, 8)] {
+                    let skip_ctx = want_ctx.txb_skip_context_chroma(plane, cx4, cy4, 8, 8, true);
+                    let sign_ctx = want_ctx.dc_sign_context_chroma(plane, cx4, cy4, 8, 8);
+                    let b = want_d
+                        .read_chroma_residual_block(32, 32, skip_ctx, sign_ctx, TxClass1d::TwoD)
+                        .unwrap();
+                    want_ctx.set_residual_ctx_chroma(
+                        plane,
+                        cx4,
+                        cy4,
+                        8,
+                        8,
+                        b.sum_abs_level.min(63) as u8,
+                        b.dc_sign_value,
+                    );
+                }
+            }
+            assert_eq!(fingerprint(&mut d), fingerprint(&mut want_d), "seed {seed}");
+        }
+    }
+}
