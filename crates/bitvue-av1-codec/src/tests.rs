@@ -150,88 +150,172 @@ fn test_parse_av1_empty_data() {
     assert!(info.height().is_none());
 }
 
+/// One OBU with a size field (`obu_has_size_field = 1`), as a muxer writes it.
+fn obu(obu_type: ObuType, payload: &[u8]) -> Vec<u8> {
+    assert!(payload.len() < 0x80, "one-byte leb128 size");
+    let mut out = vec![((obu_type as u8) << 3) | 0x02, payload.len() as u8];
+    out.extend_from_slice(payload);
+    out
+}
+
+fn counts(data: &[u8]) -> (usize, usize) {
+    let info = parse_av1(data).unwrap();
+    (info.obu_count, info.frame_count)
+}
+
 #[test]
 fn test_parse_av1_invalid_obu_header() {
-    // Invalid OBU header (forbidden bit set, invalid type)
-    let invalid_data = [0xFF, 0xFF, 0xFF, 0xFF];
-    let result = parse_av1(&invalid_data);
-    // Should handle gracefully - may error or return partial results
-    assert!(result.is_ok() || result.is_err());
+    // forbidden bit set
+    for data in [&[0xFFu8; 4][..], &[0x80, 0x00]] {
+        let e = parse_av1(data).unwrap_err().to_string();
+        assert!(e.contains("obu_forbidden_bit is not 0"), "{data:02x?}: {e}");
+    }
 }
 
 #[test]
 fn test_parse_av1_temporal_delimiter_only() {
-    // Temporal delimiter OBU (type 2) with minimal header
-    // OBU header: obu_forbidden_bit=0, obu_type=2 (TemporalDelimiter), has_size=0
-    let mut td_obu = vec![0u8; 2];
-    td_obu[0] = 2 << 1; // obu_type=2, has_size=0 (bit already 0, no `| 0x00` needed)
-    let result = parse_av1(&td_obu);
-    assert!(result.is_ok());
-    let info = result.unwrap();
-    assert_eq!(info.obu_count, 1);
-    assert_eq!(info.frame_count, 0);
+    // with and without a size field
+    for data in [
+        obu(ObuType::TemporalDelimiter, &[]),
+        vec![(ObuType::TemporalDelimiter as u8) << 3],
+    ] {
+        let info = parse_av1(&data).unwrap();
+        assert_eq!((info.obu_count, info.frame_count), (1, 0), "{data:02x?}");
+        assert_eq!(info.obus[0].header.obu_type, ObuType::TemporalDelimiter);
+        assert!(info.sequence_header.is_none());
+    }
 }
 
 #[test]
 fn test_parse_av1_with_padding_obu() {
-    // Padding OBU (type 15)
-    let mut padding_data = vec![0u8; 10];
-    padding_data[0] = (15 << 1) | 0x01; // obu_type=15, has_size=1
-    padding_data[1] = 8; // size=8
-
-    let result = parse_av1(&padding_data);
-    // Should handle gracefully - padding OBU with zeros is valid
-    assert!(result.is_ok() || result.is_err());
+    let info = parse_av1(&obu(ObuType::Padding, &[0; 8])).unwrap();
+    assert_eq!((info.obu_count, info.frame_count), (1, 0));
+    assert_eq!(info.obus[0].header.obu_type, ObuType::Padding);
+    assert_eq!(info.obus[0].payload.len(), 8);
 }
 
 #[test]
 fn test_parse_av1_ivf_detection() {
-    // IVF header with DKIF signature
-    let mut ivf_data = vec![0u8; 32];
-    ivf_data[0..4].copy_from_slice(b"DKIF");
-    ivf_data[4..6].copy_from_slice(&0u16.to_le_bytes()); // version
-    ivf_data[6..8].copy_from_slice(&0u16.to_le_bytes()); // header size
-    ivf_data[8..12].copy_from_slice(&320u32.to_le_bytes()); // width
-    ivf_data[10..12].copy_from_slice(&240u16.to_le_bytes()); // height
-    ivf_data[12..16].copy_from_slice(&0u32.to_le_bytes()); // frame rate
-    ivf_data[16..20].copy_from_slice(&0u32.to_le_bytes()); // time scale
-    ivf_data[20..24].copy_from_slice(&0u32.to_le_bytes()); // frame count
-    ivf_data[24..28].copy_from_slice(b"AV01"); // fourcc
+    // a well-formed IVF holding two temporal units
+    let mut w = bitvue_formats::IvfWriter::new(320, 240, 30, 1);
+    w.write_frame(
+        &[
+            obu(ObuType::TemporalDelimiter, &[]),
+            obu(ObuType::Padding, &[0; 3]),
+        ]
+        .concat(),
+        0,
+    )
+    .unwrap();
+    w.write_frame(&obu(ObuType::TemporalDelimiter, &[]), 1)
+        .unwrap();
+    let ivf = w.finalize();
+    assert!(is_ivf(&ivf));
+    assert_eq!(counts(&ivf), (3, 0));
 
-    let result = parse_av1(&ivf_data);
-    // Should detect IVF and try to parse (may fail with no frames)
-    assert!(result.is_ok() || result.is_err());
+    // a header that claims header_size 0 reads "DKIF" as the first frame size and is rejected
+    let mut bad = ivf.clone();
+    bad[6..8].copy_from_slice(&0u16.to_le_bytes());
+    assert!(parse_av1(&bad)
+        .unwrap_err()
+        .to_string()
+        .contains("exceeds maximum allowed size"));
 }
 
 #[test]
 fn test_parse_av1_mp4_detection() {
-    // MP4 with ftyp box
-    let mut mp4_data = vec![0u8; 32];
-    mp4_data.extend_from_slice(&20u32.to_be_bytes());
-    mp4_data.extend_from_slice(b"ftyp");
-    mp4_data.extend_from_slice(b"av01"); // AV1 brand
-
-    let result = parse_av1(&mp4_data);
-    // Should detect MP4 and try to extract AV1 samples
-    assert!(result.is_ok() || result.is_err());
+    // ftyp at offset 4 makes it an MP4; there is no moov, so no codec
+    let mut mp4 = 20u32.to_be_bytes().to_vec();
+    mp4.extend_from_slice(b"ftypav01");
+    mp4.extend([0u8; 4]);
+    mp4.extend_from_slice(b"av01");
+    assert!(is_mp4(&mp4));
+    let e = parse_av1(&mp4).unwrap_err().to_string();
+    assert!(e.contains("No codec information found in MP4"), "{e}");
+    // the same bytes shifted so ftyp is not at offset 4 are not an MP4 and are read as raw OBUs
+    let mut shifted = vec![0u8; 32];
+    shifted.extend(&mp4);
+    assert!(!is_mp4(&shifted));
 }
 
 #[test]
 fn test_parse_av1_mkv_detection() {
-    // MKV with EBML header
-    let mkv_data = [0x1A, 0x45, 0xDF, 0xA3, 0x00, 0x00, 0x00, 0x00];
-    let result = parse_av1(&mkv_data);
-    // Should detect MKV and try to extract AV1 samples
-    assert!(result.is_ok() || result.is_err());
+    // EBML magic followed by nothing usable: detected as MKV, rejected by the MKV parser
+    let mkv = [0x1A, 0x45, 0xDF, 0xA3, 0x00, 0x00, 0x00, 0x00];
+    assert!(is_mkv(&mkv));
+    assert!(parse_av1(&mkv).is_err());
 }
 
 #[test]
 fn test_parse_av1_ts_detection() {
-    // TS packet with sync byte
-    let ts_data = vec![0x47u8; 188];
-    let result = parse_av1(&ts_data);
-    // Should detect TS and try to extract AV1 samples
-    assert!(result.is_ok() || result.is_err());
+    // one packet of sync bytes: a TS without PAT/PMT, so no AV1 stream and no data
+    let ts = vec![0x47u8; 188];
+    assert!(is_ts(&ts));
+    assert_eq!(counts(&ts), (0, 0));
+}
+
+#[test]
+fn test_parse_av1_multiple_obus() {
+    let data = [
+        obu(ObuType::TemporalDelimiter, &[]),
+        obu(ObuType::Padding, &[0; 5]),
+        obu(ObuType::TemporalDelimiter, &[]),
+    ]
+    .concat();
+    let info = parse_av1(&data).unwrap();
+    assert_eq!((info.obu_count, info.frame_count), (3, 0));
+    let types: Vec<_> = info.obus.iter().map(|o| o.header.obu_type).collect();
+    assert_eq!(
+        types,
+        [
+            ObuType::TemporalDelimiter,
+            ObuType::Padding,
+            ObuType::TemporalDelimiter
+        ]
+    );
+}
+
+#[test]
+fn test_parse_av1_minimal_sequence_header() {
+    // a sequence header OBU whose payload is all zeros still parses
+    let info = parse_av1(&obu(ObuType::SequenceHeader, &[0; 14])).unwrap();
+    assert_eq!((info.obu_count, info.frame_count), (1, 0));
+    assert_eq!(info.obus[0].header.obu_type, ObuType::SequenceHeader);
+    // all-zero bits: profile 0, no reduced header, 1-bit width/height fields holding 0 => a 1x1 frame
+    assert_eq!(info.profile(), Some(&Av1Profile::Main));
+    assert_eq!((info.width(), info.height()), (Some(1), Some(1)));
+}
+
+#[test]
+fn test_parse_av1_obu_types_with_a_zero_payload() {
+    // (type, counts as a frame)
+    for (t, is_frame) in [
+        (ObuType::FrameHeader, true),
+        (ObuType::TileGroup, false),
+        (ObuType::Metadata, false),
+        (ObuType::Frame, true),
+        (ObuType::RedundantFrameHeader, false),
+        (ObuType::TileList, false),
+    ] {
+        let info = parse_av1(&obu(t, &[0; 14])).unwrap();
+        assert_eq!(
+            (info.obu_count, info.frame_count),
+            (1, is_frame as usize),
+            "{t:?}"
+        );
+        assert_eq!(info.obus[0].header.obu_type, t);
+        assert_eq!(info.obus[0].payload.len(), 14, "{t:?}");
+    }
+}
+
+#[test]
+fn test_parse_av1_reserved_obu_types() {
+    for code in 9u8..=14 {
+        let data = [(code << 3) | 0x02, 2, 0, 0];
+        let info = parse_av1(&data).unwrap();
+        assert_eq!((info.obu_count, info.frame_count), (1, 0), "type {code}");
+        assert_eq!(info.obus[0].payload.len(), 2);
+    }
 }
 
 #[test]
@@ -250,134 +334,6 @@ fn test_av1_info_methods() {
     assert!(info.height().is_none());
     assert!(info.bit_depth().is_none());
     assert!(info.profile().is_none());
-}
-
-#[test]
-fn test_parse_av1_multiple_obus() {
-    // Create multiple OBUs: temporal delimiter + padding
-    let mut data = [0u8; 20];
-    // First OBU: Temporal delimiter
-    data[0] = (2 << 1) | 0x01; // type=2, has_size
-    data[1] = 0; // size=0
-                 // Second OBU: Padding
-    data[2] = (15 << 1) | 0x01; // type=15, has_size
-    data[3] = 5; // size=5
-                 // Fill padding with zeros
-    data[4..10].fill(0);
-    // Third OBU: Temporal delimiter
-    data[10] = (2 << 1) | 0x01;
-    data[11] = 0;
-
-    let result = parse_av1(&data[..12]);
-    assert!(result.is_ok());
-    let info = result.unwrap();
-    assert!(info.obu_count >= 1);
-}
-
-#[test]
-fn test_parse_av1_minimal_sequence_header() {
-    // Minimal sequence header OBU (type 1)
-    // This is a simplified test - real sequence headers are complex
-    let mut data = vec![0u8; 16];
-    data[0] = (1 << 1) | 0x01; // obu_type=1 (SequenceHeader), has_size=1
-    data[1] = 14; // size=14
-                  // seq_profile (2 bits) = 0
-                  // still_picture (1 bit) = 0
-                  // reduced_still_picture_header (1 bit) = 0
-                  // ... rest of sequence header would be more complex
-    data[2] = 0; // flags field
-
-    let result = parse_av1(&data);
-    // May fail due to incomplete sequence header, but should not panic
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_parse_av1_frame_header_obu() {
-    // Frame header OBU (type 3)
-    let mut data = vec![0u8; 16];
-    data[0] = (3 << 1) | 0x01; // obu_type=3 (FrameHeader), has_size=1
-    data[1] = 14; // size=14
-                  // Fill with zeros (invalid but won't panic)
-    data[2..16].fill(0);
-
-    let result = parse_av1(&data);
-    // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_parse_av1_tile_group_obu() {
-    // Tile group OBU (type 4)
-    let mut data = vec![0u8; 16];
-    data[0] = (4 << 1) | 0x01; // obu_type=4 (TileGroup), has_size=1
-    data[1] = 14; // size=14
-
-    let result = parse_av1(&data);
-    // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_parse_av1_metadata_obu() {
-    // Metadata OBU (type 5)
-    let mut data = vec![0u8; 16];
-    data[0] = (5 << 1) | 0x01; // obu_type=5 (Metadata), has_size=1
-    data[1] = 14; // size=14
-
-    let result = parse_av1(&data);
-    // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_parse_av1_frame_obu() {
-    // Frame OBU (type 6) - combines frame header and tile group
-    let mut data = vec![0u8; 16];
-    data[0] = (6 << 1) | 0x01; // obu_type=6 (Frame), has_size=1
-    data[1] = 14; // size=14
-
-    let result = parse_av1(&data);
-    // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_parse_av1_redundant_frame_header_obu() {
-    // Redundant frame header OBU (type 7)
-    let mut data = vec![0u8; 16];
-    data[0] = (7 << 1) | 0x01; // obu_type=7 (RedundantFrameHeader), has_size=1
-    data[1] = 14; // size=14
-
-    let result = parse_av1(&data);
-    // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_parse_av1_tile_list_obu() {
-    // Tile list OBU (type 8)
-    let mut data = vec![0u8; 16];
-    data[0] = (8 << 1) | 0x01; // obu_type=8 (TileList), has_size=1
-    data[1] = 14; // size=14
-
-    let result = parse_av1(&data);
-    // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_parse_av1_reserved_obu_types() {
-    // Test reserved OBU types (9-14)
-    for obu_type in 9..=14 {
-        let mut data = vec![0u8; 4];
-        data[0] = (obu_type << 1) | 0x01; // obu_type, has_size=1
-        data[1] = 2; // size=2
-
-        let result = parse_av1(&data);
-        // Should handle reserved types gracefully
-        assert!(result.is_ok() || result.is_err());
-    }
 }
 
 #[test]
@@ -528,39 +484,16 @@ fn test_large_input_handling() {
 
 #[test]
 fn test_parse_av1_with_multiple_obus() {
-    // Test parsing multiple OBUs - verify no panic occurs
-    let mut data = [0u8; 64];
-    let mut pos = 0;
-
-    // OBU 1: Temporal delimiter
-    data[pos] = (1 << 3) | 0x02;
-    pos += 1;
-    data[pos] = 0;
-    pos += 1;
-
-    // OBU 2: Sequence header (type 1 for AV1, but we use value directly)
-    data[pos] = (1 << 3) | 0x02;
-    pos += 1;
-    data[pos] = 10;
-    pos += 1;
-    for _ in 0..10 {
-        data[pos] = 0;
-        pos += 1;
-    }
-
-    // OBU 3: Frame header
-    data[pos] = (3 << 3) | 0x02;
-    pos += 1;
-    data[pos] = 10;
-    pos += 1;
-    for _ in 0..10 {
-        data[pos] = 0;
-        pos += 1;
-    }
-
-    let result = parse_av1(&data[..pos]);
-    // Should not panic - may succeed or fail depending on OBU parsing
-    let _ = result;
+    // temporal delimiter, sequence header, frame header
+    let data = [
+        obu(ObuType::TemporalDelimiter, &[]),
+        obu(ObuType::SequenceHeader, &[0; 10]),
+        obu(ObuType::FrameHeader, &[0; 10]),
+    ]
+    .concat();
+    let info = parse_av1(&data).unwrap();
+    assert_eq!((info.obu_count, info.frame_count), (3, 1));
+    assert!(info.sequence_header.is_some());
 }
 
 // ===== Comprehensive Public API Tests =====
@@ -874,7 +807,15 @@ fn test_extract_obu_data_from_mp4_with_mdat() {
 
     let result = extract_obu_data_from_mp4(&data);
     // May fail on malformed MP4 - just check it doesn't panic
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("No codec information found in MP4"),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -888,7 +829,15 @@ fn test_extract_obu_data_from_mp4_without_obu() {
 
     let result = extract_obu_data_from_mp4(&data);
     // May fail on malformed MP4 - just check it doesn't panic
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("No codec information found in MP4"),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -898,7 +847,15 @@ fn test_extract_obu_data_from_mp4_corrupted() {
 
     let result = extract_obu_data_from_mp4(&data);
     // Should handle corruption gracefully
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("MP4 box extends beyond file"),
+        "{:?}",
+        result
+    );
 }
 
 // extract_obu_data_from_mkv() tests
@@ -919,7 +876,7 @@ fn test_extract_obu_data_from_mkv_with_cluster() {
 
     let result = extract_obu_data_from_mkv(&data);
     // May fail on malformed MKV - just check it doesn't panic
-    assert!(result.is_ok() || result.is_err());
+    assert!(result.is_err());
 }
 
 #[test]
@@ -929,7 +886,7 @@ fn test_extract_obu_data_from_mkv_without_obu() {
 
     let result = extract_obu_data_from_mkv(&data);
     // May fail on malformed MKV - just check it doesn't panic
-    assert!(result.is_ok() || result.is_err());
+    assert!(result.is_err());
 }
 
 // extract_obu_data_from_ts() tests
@@ -947,7 +904,7 @@ fn test_extract_obu_data_from_ts_with_pes() {
 
     let result = extract_obu_data_from_ts(&data);
     // May fail on malformed TS - just check it doesn't panic
-    assert!(result.is_ok() || result.is_err());
+    assert!(result.as_ref().unwrap().is_empty(), "{:?}", result);
 }
 
 #[test]
@@ -970,7 +927,7 @@ fn test_extract_obu_data_from_ts_short_transport_stream() {
     data[0] = 0x47; // sync byte at start
 
     let result = extract_obu_data_from_ts(&data);
-    assert!(result.is_ok() || result.is_err());
+    assert!(result.as_ref().unwrap().is_empty(), "{:?}", result);
 }
 
 // Edge case and stress tests
@@ -985,7 +942,11 @@ fn test_parse_av1_with_zero_length_obu() {
     ];
 
     let result = parse_av1(&data);
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        matches!(result, Err(bitvue_engine::BitvueError::UnexpectedEof(_))),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1000,7 +961,11 @@ fn test_parse_av1_with_maximum_obu_size() {
 
     let result = parse_av1(&data);
     // Should handle large size gracefully
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        matches!(result, Err(bitvue_engine::BitvueError::UnexpectedEof(_))),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1058,22 +1023,19 @@ fn test_extract_functions_with_corrupted_containers() {
 
 #[test]
 fn test_obu_size_variations() {
-    // Test parse_av1 with various OBU sizes
-    let sizes = [5, 10, 50, 100, 500];
-
-    for size in sizes {
-        let mut data = vec![0u8; size + 4];
-        data[0] = (1 << 3) | 0x02; // temporal delimiter
-        data[1] = (size - 2) as u8;
-        data[2..size + 2].fill(0);
-
-        let result = parse_av1(&data);
-        assert!(
-            result.is_ok() || result.is_err(),
-            "Failed for size {}",
-            size
+    // one-byte leb128 sizes up to 127, then two-byte sizes (0xC8 0x01 = 200)
+    for size in [0usize, 1, 5, 10, 50, 100, 127] {
+        let info = parse_av1(&obu(ObuType::Padding, &vec![0; size])).unwrap();
+        assert_eq!(
+            (info.obu_count, info.obus[0].payload.len()),
+            (1, size),
+            "size {size}"
         );
     }
+    let mut data = vec![((ObuType::Padding as u8) << 3) | 0x02, 0xC8, 0x01];
+    data.extend(vec![0u8; 200]);
+    let info = parse_av1(&data).unwrap();
+    assert_eq!((info.obu_count, info.obus[0].payload.len()), (1, 200));
 }
 
 #[test]
@@ -1143,7 +1105,15 @@ fn test_parse_av1_with_multiple_frame_headers() {
 
     let result = parse_av1(&data[..pos]);
     // May fail on partial data - just check it doesn't panic
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("exceeds maximum allowed size"),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1228,7 +1198,15 @@ fn test_parse_av1_with_completely_invalid_data() {
     let data = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
     let result = parse_av1(&data);
     // Should handle gracefully - either Ok with minimal info or Err
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("obu_forbidden_bit is not 0"),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1237,7 +1215,13 @@ fn test_parse_av1_with_all_zeros() {
     let data = vec![0u8; 100];
     let result = parse_av1(&data);
     // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
+    assert_eq!(
+        result
+            .as_ref()
+            .map(|i| (i.obu_count, i.frame_count))
+            .unwrap(),
+        (1, 0)
+    );
 }
 
 #[test]
@@ -1248,7 +1232,15 @@ fn test_parse_av1_with_repeated_pattern() {
         .collect();
     let result = parse_av1(&data);
     // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("obu_forbidden_bit is not 0"),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1257,7 +1249,14 @@ fn test_parse_av1_with_truncated_ivf_header() {
     let data = vec![0x44, 0x4B, 0x49, 0x46]; // Only "DKIF" signature
     let result = parse_av1(&data);
     // Should handle gracefully - insufficient data
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        matches!(
+            result,
+            Err(bitvue_engine::BitvueError::InsufficientData { .. })
+        ),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1270,7 +1269,11 @@ fn test_parse_av1_with_invalid_ivf_signature() {
     data[8..12].copy_from_slice(b"AV01");
     let result = parse_av1(&data);
     // Should handle as raw OBU or return Err
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        matches!(result, Err(bitvue_engine::BitvueError::UnexpectedEof(_))),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1297,7 +1300,15 @@ fn test_extract_obu_data_from_ts_with_invalid_ts() {
     let data = vec![0xFFu8; 200];
     let result = extract_obu_data_from_ts(&data);
     // Should return Err or empty for invalid TS
-    assert!(result.is_err() || result.is_ok());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid sync byte: 0xFF"),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1306,7 +1317,13 @@ fn test_parse_av1_with_very_large_input() {
     let large_data = vec![0u8; 10_000_000]; // 10 MB
     let result = parse_av1(&large_data);
     // Should handle without panic
-    assert!(result.is_ok() || result.is_err());
+    assert_eq!(
+        result
+            .as_ref()
+            .map(|i| (i.obu_count, i.frame_count))
+            .unwrap(),
+        (1, 0)
+    );
 }
 
 #[test]
@@ -1323,15 +1340,9 @@ fn test_container_detectors_with_mixed_signatures() {
     let mkv_result = is_mkv(&data);
     let ts_result = is_ts(&data);
 
-    // At most one should be true (or none)
-    let true_count = [mp4_result, mkv_result, ts_result]
-        .iter()
-        .filter(|&&x| x)
-        .count();
-    assert!(
-        true_count <= 3,
-        "Too many containers detected simultaneously"
-    );
+    // "ftyp" is at offset 0 (not 4), the EBML magic is at offset 50 (not 0) and the sync byte at 4 (not 0):
+    // none of the three signatures is where its detector looks
+    assert_eq!((mp4_result, mkv_result, ts_result), (false, false, false));
 }
 
 #[test]
@@ -1357,9 +1368,17 @@ fn test_extract_functions_partial_data_handling() {
     let ts_result = extract_obu_data_from_ts(&partial_data);
 
     // All should handle gracefully (Err or Ok with empty)
-    assert!(mp4_result.is_err() || mp4_result.is_ok());
-    assert!(mkv_result.is_err() || mkv_result.is_ok());
-    assert!(ts_result.is_err() || ts_result.is_ok());
+    assert!(
+        mp4_result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("No codec information found in MP4"),
+        "{:?}",
+        mp4_result
+    );
+    assert!(mkv_result.is_err());
+    assert!(ts_result.as_ref().unwrap().is_empty(), "{:?}", ts_result);
 }
 
 #[test]
@@ -1400,7 +1419,15 @@ fn test_parse_av1_with_corrupted_obu_chain() {
 
     let result = parse_av1(&data);
     // Should handle corruption gracefully
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("exceeds maximum allowed size"),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1418,7 +1445,13 @@ fn test_parse_av1_with_mixed_endianness() {
 
     let result = parse_av1(&data);
     // Should handle gracefully
-    assert!(result.is_ok() || result.is_err());
+    assert_eq!(
+        result
+            .as_ref()
+            .map(|i| (i.obu_count, i.frame_count))
+            .unwrap(),
+        (0, 0)
+    );
 }
 
 #[test]
@@ -1434,7 +1467,15 @@ fn test_extract_functions_with_embedded_nulls() {
 
     let result = extract_obu_data_from_mp4(&data);
     // Should handle without panic
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .to_string()
+            .contains("No codec information found in MP4"),
+        "{:?}",
+        result
+    );
 }
 
 #[test]
@@ -1443,7 +1484,13 @@ fn test_parse_av1_unicode_handling() {
     let data: Vec<u8> = (0..256).map(|i| i as u8).collect();
     let result = parse_av1(&data);
     // Should handle all byte values gracefully
-    assert!(result.is_ok() || result.is_err());
+    assert_eq!(
+        result
+            .as_ref()
+            .map(|i| (i.obu_count, i.frame_count))
+            .unwrap(),
+        (1, 0)
+    );
 }
 
 // ---- parse_av1: which container each input is routed to ----
