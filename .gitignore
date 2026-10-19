@@ -100,3 +100,7 @@ ds-bundle/
 .design-sync/learnings/
 .design-sync/node_modules
 frontend/.design-sync-dist.css
+
+# cargo-mutants output
+/mutants.out/
+/mutants.out.old/
