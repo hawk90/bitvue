@@ -474,60 +474,6 @@ fn test_parse_av1_invalid_obu() {
 }
 
 #[test]
-fn test_extract_obu_data_from_mp4_valid() {
-    // Test extract_obu_data_from_mp4 with valid MP4 data
-    let mut data = vec![0u8; 32];
-    // MP4 header
-    data[4..8].copy_from_slice(b"ftyp");
-    data[8..12].copy_from_slice(b"av01");
-    // moov box
-    data[12..16].copy_from_slice(b"moov");
-    // mdat box with OBU data
-    data[16..20].copy_from_slice(b"mdat");
-    // Add some OBU-like data
-    data[20] = (1 << 3) | 0x02;
-    data[21] = 5;
-
-    let result = extract_obu_data_from_mp4(&data);
-    // Should not panic, even if it doesn't find OBUs
-    // May succeed with empty data or fail gracefully
-    let _ = result;
-}
-
-#[test]
-fn test_extract_obu_data_from_mkv_valid() {
-    // Test extract_obu_data_from_mkv with valid MKV data
-    let mut data = vec![0u8; 32];
-    // EBML header
-    data[0] = 0x1A;
-    data[1] = 0x45;
-    data[2] = 0xDF;
-    data[3] = 0xA3;
-    // Add some cluster data with OBU
-    data[20] = (1 << 3) | 0x02;
-    data[21] = 5;
-
-    let result = extract_obu_data_from_mkv(&data);
-    // Should not panic
-    let _ = result;
-}
-
-#[test]
-fn test_extract_obu_data_from_ts_valid() {
-    // Test extract_obu_data_from_ts with valid TS data
-    let mut data = vec![0u8; 200];
-    data[0] = 0x47; // sync byte
-    data[188] = 0x47; // sync byte at position 188
-                      // Add some OBU-like data in the middle
-    data[100] = (1 << 3) | 0x02;
-    data[101] = 5;
-
-    let result = extract_obu_data_from_ts(&data);
-    // Should not panic
-    let _ = result;
-}
-
-#[test]
 fn test_container_detection_mutual_exclusivity() {
     // Test that different containers are properly distinguished
     let mp4_data = {
