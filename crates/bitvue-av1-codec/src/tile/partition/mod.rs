@@ -240,4 +240,162 @@ mod tests {
         let leaves = parent.leaf_blocks();
         assert_eq!(leaves.len(), 4);
     }
+
+    // ---- parse_partition_recursive error paths --------------------------------------------
+
+    fn noise(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    /// Runs `parse_partition_recursive` on a fresh state for `data` and returns the result
+    /// message (`Err`) or the node.
+    fn recurse(
+        data: &[u8],
+        (x, y): (u32, u32),
+        block_size: BlockSize,
+        (mi_rows, mi_cols): (u32, u32),
+        depth: u8,
+    ) -> bitvue_engine::Result<Option<PartitionNode>> {
+        use crate::tile::{MvPredictorContext, TileContext, TileState};
+        let mut state = TileState {
+            decoder: crate::symbol::SymbolDecoder::new(data).unwrap(),
+            mv_ctx: MvPredictorContext::new(1, 1),
+            tile_ctx: TileContext::new(64, 64),
+        };
+        parse_partition_recursive(
+            &mut state,
+            x,
+            y,
+            block_size,
+            mi_rows,
+            mi_cols,
+            depth,
+            &mut |_, _| Ok(()),
+        )
+    }
+
+    fn message(r: bitvue_engine::Result<Option<PartitionNode>>) -> Option<String> {
+        match r {
+            Err(bitvue_engine::BitvueError::InvalidData(m)) => Some(m),
+            Err(other) => panic!("unexpected error kind: {other:?}"),
+            Ok(_) => None,
+        }
+    }
+
+    #[test]
+    fn recursion_stops_with_an_error_at_the_depth_limit() {
+        let data = noise(1, 64);
+        let (rows, cols) = (mi_units(8), mi_units(8));
+        let at_limit = message(recurse(
+            &data,
+            (0, 0),
+            BlockSize::Block8x8,
+            (rows, cols),
+            10,
+        ));
+        assert!(at_limit.unwrap().contains("depth exceeded maximum (10)"));
+        assert!(message(recurse(
+            &data,
+            (0, 0),
+            BlockSize::Block8x8,
+            (rows, cols),
+            200
+        ))
+        .is_some());
+        // The limit is checked before the frame-edge test: even an outside block errors.
+        assert!(message(recurse(
+            &data,
+            (4096, 0),
+            BlockSize::Block8x8,
+            (rows, cols),
+            10
+        ))
+        .is_some());
+        // One level below the limit it is just a normal parse (no depth error).
+        let below = message(recurse(&data, (0, 0), BlockSize::Block8x8, (rows, cols), 9));
+        assert!(
+            below.is_none_or(|m| !m.contains("depth")),
+            "depth 9 is allowed"
+        );
+    }
+
+    #[test]
+    fn a_block_outside_the_frame_returns_nothing_and_reads_nothing() {
+        let data = noise(2, 64);
+        // x = 64 px = 16 units is beyond a frame 8 units wide; likewise rows.
+        for pos in [(64, 0), (0, 64), (64, 64)] {
+            let r = recurse(&data, pos, BlockSize::Block16x16, (8, 8), 0).unwrap();
+            assert!(r.is_none(), "{pos:?}");
+        }
+        // Exactly on the edge (unit 8 of 8) is outside as well; unit 7 is inside.
+        assert!(recurse(&data, (32, 0), BlockSize::Block8x8, (8, 8), 0)
+            .unwrap()
+            .is_none());
+        assert!(recurse(&data, (28, 0), BlockSize::Block8x8, (8, 8), 0)
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn a_partition_that_does_not_fit_the_block_shape_is_an_error_not_a_bad_tree() {
+        // The recursion also runs on the non-square children of terminal partitions; a
+        // symbol that is legal for a square block of that size can be illegal (or produce
+        // same-size children) for a rectangular one. Both must surface as errors.
+        use BlockSize::*;
+        let mut not_allowed = std::collections::BTreeSet::new();
+        let mut same_size = std::collections::BTreeSet::new();
+        for bs in [
+            Block4x8,
+            Block16x32,
+            Block32x64,
+            Block16x8,
+            Block32x16,
+            Block64x128,
+        ] {
+            for seed in 1..=300u64 {
+                let data = noise(seed, 64);
+                let (rows, cols) = (mi_units(bs.height()), mi_units(bs.width()));
+                if let Some(m) = message(recurse(&data, (0, 0), bs, (rows, cols), 0)) {
+                    if m.contains("not allowed for block size") {
+                        assert!(m.contains(&format!("{bs:?}")), "{m}");
+                        not_allowed.insert((bs.width(), bs.height()));
+                    } else if m.contains("produces sub-blocks of same size") {
+                        assert!(m.contains(&format!("{bs:?}")), "{m}");
+                        same_size.insert((bs.width(), bs.height()));
+                    }
+                }
+            }
+        }
+        assert!(not_allowed.contains(&(4, 8)), "{not_allowed:?}");
+        assert!(not_allowed.contains(&(16, 32)), "{not_allowed:?}");
+        assert!(same_size.contains(&(16, 8)), "{same_size:?}");
+        assert!(same_size.contains(&(32, 64)), "{same_size:?}");
+    }
+
+    #[test]
+    fn square_blocks_never_hit_the_shape_errors() {
+        use BlockSize::*;
+        for bs in [Block8x8, Block16x16, Block32x32, Block64x64, Block128x128] {
+            for seed in 1..=200u64 {
+                let data = noise(seed, 128);
+                let (rows, cols) = (mi_units(bs.height()), mi_units(bs.width()));
+                if let Some(m) = message(recurse(&data, (0, 0), bs, (rows, cols), 0)) {
+                    assert!(
+                        !m.contains("not allowed")
+                            && !m.contains("same size")
+                            && !m.contains("depth"),
+                        "{bs:?} seed {seed}: {m}"
+                    );
+                }
+            }
+        }
+    }
 }
