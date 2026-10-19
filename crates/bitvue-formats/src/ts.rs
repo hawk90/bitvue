@@ -1026,3 +1026,790 @@ mod tests {
         assert!(!is_hevc_keyframe(&[]));
     }
 }
+
+/// Stream-level tests: build TS packets / PSI sections / PES packets by hand and run the demux paths on them.
+#[cfg(test)]
+mod stream_tests {
+    use super::*;
+
+    const VIDEO_PID: u16 = 0x101;
+    const PMT_PID: u16 = 0x1000;
+
+    /// One 188-byte TS packet; short payloads are padded with an adaptation-field stuffing run, as muxers do.
+    fn packet(pid: u16, pusi: bool, payload: &[u8]) -> Vec<u8> {
+        assert!(payload.len() <= 184);
+        let mut p = vec![
+            TS_SYNC_BYTE,
+            ((pusi as u8) << 6) | (pid >> 8) as u8,
+            pid as u8,
+        ];
+        if payload.len() == 184 {
+            p.push(0x10);
+        } else {
+            p.push(0x30);
+            let stuffing = 183 - payload.len();
+            p.push(stuffing as u8);
+            if stuffing > 0 {
+                p.push(0x00);
+                p.extend(vec![0xFF; stuffing - 1]);
+            }
+        }
+        p.extend_from_slice(payload);
+        assert_eq!(p.len(), TS_PACKET_SIZE);
+        p
+    }
+
+    /// PAT section with a leading zero pointer_field (PUSI form).
+    fn pat(programs: &[(u16, u16)]) -> Vec<u8> {
+        let section_length = 9 + 4 * programs.len();
+        let mut s = vec![
+            0x00,
+            0x00,
+            0xB0 | (section_length >> 8) as u8,
+            section_length as u8,
+            0x00,
+            0x01,
+            0xC1,
+            0x00,
+            0x00,
+        ];
+        for &(number, pid) in programs {
+            s.extend_from_slice(&[(number >> 8) as u8, number as u8]);
+            s.extend_from_slice(&[0xE0 | (pid >> 8) as u8, pid as u8]);
+        }
+        s.extend_from_slice(&[0, 0, 0, 0]); // CRC (not checked)
+        s
+    }
+
+    /// `(stream_type, pid, es_info bytes)`
+    type Es<'a> = (u8, u16, &'a [u8]);
+
+    /// PMT section (PUSI form). `with_pcr` selects the layout: ISO/IEC 13818-1 puts a 2-byte PCR_PID before
+    /// program_info_length; `parse_pmt` currently does not skip it (#261), so the downstream tests use the
+    /// layout it reads today (`with_pcr = false`) and the spec layout is covered by `#[ignore]`d tests.
+    fn pmt(program_info: &[u8], streams: &[Es], with_pcr: bool) -> Vec<u8> {
+        let mut body = Vec::new();
+        for &(stream_type, pid, es_info) in streams {
+            body.push(stream_type);
+            body.extend_from_slice(&[0xE0 | (pid >> 8) as u8, pid as u8]);
+            body.extend_from_slice(&[0xF0 | (es_info.len() >> 8) as u8, es_info.len() as u8]);
+            body.extend_from_slice(es_info);
+        }
+        let section_length = 13 + program_info.len() + body.len();
+        let mut s = vec![
+            0x00,
+            0x02,
+            0xB0 | (section_length >> 8) as u8,
+            section_length as u8,
+            0x00,
+            0x01,
+            0xC1,
+            0x00,
+            0x00,
+        ];
+        if with_pcr {
+            s.extend_from_slice(&[0xE0 | (VIDEO_PID >> 8) as u8, VIDEO_PID as u8]);
+        }
+        s.extend_from_slice(&[
+            0xF0 | (program_info.len() >> 8) as u8,
+            program_info.len() as u8,
+        ]);
+        s.extend_from_slice(program_info);
+        s.extend_from_slice(&body);
+        s.extend_from_slice(&[0, 0, 0, 0]); // CRC (not checked)
+        s
+    }
+
+    fn timestamp(prefix: u8, t: u64) -> [u8; 5] {
+        [
+            (prefix << 4) | (((t >> 30) & 0x07) as u8) << 1 | 1,
+            (t >> 22) as u8,
+            ((((t >> 15) & 0x7F) as u8) << 1) | 1,
+            (t >> 7) as u8,
+            (((t & 0x7F) as u8) << 1) | 1,
+        ]
+    }
+
+    /// PES packet; the optional header carries PTS (and DTS) like a real muxer writes it.
+    fn pes(stream_id: u8, pts: Option<u64>, dts: Option<u64>, es: &[u8]) -> Vec<u8> {
+        let mut ts = Vec::new();
+        let flags = match (pts, dts) {
+            (Some(p), Some(d)) => {
+                ts.extend_from_slice(&timestamp(0x3, p));
+                ts.extend_from_slice(&timestamp(0x1, d));
+                0xC0
+            }
+            (Some(p), None) => {
+                ts.extend_from_slice(&timestamp(0x2, p));
+                0x80
+            }
+            _ => 0x00,
+        };
+        let mut v = vec![0, 0, 1, stream_id, 0, 0, 0x80, flags, ts.len() as u8];
+        v.extend_from_slice(&ts);
+        v.extend_from_slice(es);
+        v
+    }
+
+    /// Cut a PES into TS packets of `chunk` payload bytes; the first one has PUSI set.
+    fn pes_packets(pid: u16, pes: &[u8], chunk: usize) -> Vec<u8> {
+        pes.chunks(chunk)
+            .enumerate()
+            .flat_map(|(i, c)| packet(pid, i == 0, c))
+            .collect()
+    }
+
+    fn psi_packets(streams: &[Es], with_pcr: bool) -> Vec<u8> {
+        let mut d = packet(PAT_PID, true, &pat(&[(1, PMT_PID)]));
+        d.extend(packet(PMT_PID, true, &pmt(&[], streams, with_pcr)));
+        d
+    }
+
+    const IDR: [u8; 3] = [0x65, 0xAA, 0xBB];
+    const NON_IDR: [u8; 2] = [0x41, 0xCC];
+
+    fn annex_b(nals: &[(&[u8], &[u8])]) -> Vec<u8> {
+        nals.iter()
+            .flat_map(|(sc, nal)| sc.iter().chain(nal.iter()).copied())
+            .collect()
+    }
+
+    // ---- parse_ts_packet ----
+
+    #[test]
+    fn packet_header_fields_are_decoded() {
+        let mut d = vec![0u8; TS_PACKET_SIZE];
+        d[..4].copy_from_slice(&[0x47, 0x5F, 0xFF, 0x1A]);
+        let p = parse_ts_packet(&d).unwrap();
+        assert_eq!(p.pid, 0x1FFF);
+        assert!(p.payload_unit_start);
+        assert_eq!(p._adaptation_field_control, 0x01);
+        assert_eq!(p._continuity_counter, 0x0A);
+        assert_eq!(p.payload.len(), 184);
+    }
+
+    #[test]
+    fn adaptation_field_only_or_reserved_has_no_payload() {
+        for afc in [0x00u8, 0x20] {
+            let mut d = vec![0u8; TS_PACKET_SIZE];
+            d[..4].copy_from_slice(&[0x47, 0x01, 0x02, afc]);
+            d[4] = 10;
+            let p = parse_ts_packet(&d).unwrap();
+            assert!(p.payload.is_empty(), "afc {afc:#x}");
+        }
+    }
+
+    #[test]
+    fn adaptation_field_is_skipped_before_the_payload() {
+        let p = parse_ts_packet(&packet(0x100, false, &[1, 2, 3])).unwrap();
+        assert_eq!(p.payload, vec![1, 2, 3]);
+        assert_eq!(p._adaptation_field_control, 0x03);
+    }
+
+    #[test]
+    fn adaptation_length_up_to_the_end_is_ok_and_one_past_is_an_error() {
+        let mut d = vec![0u8; TS_PACKET_SIZE];
+        d[..4].copy_from_slice(&[0x47, 0x00, 0x10, 0x30]);
+        d[4] = 183; // exactly what is left after the length byte
+        assert!(parse_ts_packet(&d).unwrap().payload.is_empty());
+        d[4] = 184;
+        let e = parse_ts_packet(&d).unwrap_err().to_string();
+        assert!(e.contains("exceeds remaining data"), "{e}");
+    }
+
+    #[test]
+    fn header_only_packets() {
+        // payload-only, nothing after the header
+        let p = parse_ts_packet(&[0x47, 0x00, 0x10, 0x10]).unwrap();
+        assert!(p.payload.is_empty());
+        // adaptation flag but no length byte
+        let e = parse_ts_packet(&[0x47, 0x00, 0x10, 0x30]).unwrap_err();
+        assert!(e.to_string().contains("length missing"), "{e}");
+    }
+
+    #[test]
+    fn invalid_sync_byte_is_named_in_the_error() {
+        let e = parse_ts_packet(&[0x48, 0, 0, 0]).unwrap_err().to_string();
+        assert!(e.contains("0x48"), "{e}");
+    }
+
+    #[test]
+    fn is_ts_checks_the_second_sync_byte_only_when_present() {
+        let mut one = vec![0u8; TS_PACKET_SIZE];
+        one[0] = 0x47;
+        assert!(is_ts(&one));
+        let mut two = vec![0u8; TS_PACKET_SIZE * 2];
+        two[0] = 0x47;
+        assert!(!is_ts(&two));
+        two[TS_PACKET_SIZE] = 0x47;
+        assert!(is_ts(&two));
+        assert!(!is_ts(&one[..TS_PACKET_SIZE - 1]));
+    }
+
+    // ---- parse_pat ----
+
+    #[test]
+    fn pat_lists_programs_and_skips_the_network_entry() {
+        let e = parse_pat(&pat(&[(0, 0x10), (1, 0x1000), (2, 0x1001)]), true).unwrap();
+        let got: Vec<(u16, u16)> = e.iter().map(|x| (x._program_number, x.pmt_pid)).collect();
+        assert_eq!(got, vec![(1, 0x1000), (2, 0x1001)]);
+    }
+
+    #[test]
+    fn pat_pointer_field_is_honoured_only_with_pusi() {
+        let mut with_pointer = vec![3, 0xAA, 0xBB, 0xCC];
+        with_pointer.extend(&pat(&[(1, 0x1000)])[1..]); // drop the zero pointer_field
+        assert_eq!(parse_pat(&with_pointer, true).unwrap().len(), 1);
+
+        // without PUSI there is no pointer_field: the table starts at byte 0
+        assert_eq!(
+            parse_pat(&pat(&[(1, 0x1000)])[1..], false).unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn pat_rejects_or_ignores_malformed_sections() {
+        assert!(parse_pat(&[], true).unwrap().is_empty());
+        // pointer_field points past the payload
+        assert!(parse_pat(&[9, 0, 0], true).unwrap().is_empty());
+        // table_id is not 0
+        let mut wrong = pat(&[(1, 0x1000)]);
+        wrong[1] = 0x02;
+        assert!(parse_pat(&wrong, true).unwrap().is_empty());
+        // truncated right after table_id / section_length
+        assert!(parse_pat(&[0, 0x00], true).unwrap().is_empty());
+        // zero programs (section_length == 9)
+        assert!(parse_pat(&pat(&[]), true).unwrap().is_empty());
+    }
+
+    #[test]
+    fn pat_stops_at_section_end_even_when_more_bytes_follow() {
+        let mut p = pat(&[(1, 0x1000)]);
+        // the CRC + stuffing after the section must not be read as a 2nd program
+        p.extend_from_slice(&[0, 2, 0xF0, 0x01, 0xFF, 0xFF]);
+        assert_eq!(parse_pat(&p, true).unwrap().len(), 1);
+    }
+
+    // ---- parse_pmt ----
+
+    #[test]
+    fn pmt_lists_streams_and_skips_program_and_es_descriptors() {
+        let p = pmt(
+            &[0x05, 0x04, 0x48, 0x45, 0x56, 0x43],
+            &[
+                (STREAM_TYPE_AVC, 0x100, &[0x28, 0x01, 0x7A, 0x00]),
+                (STREAM_TYPE_HEVC, 0x101, &[]),
+                (0x0F, 0x102, &[0x0A, 0x04, b'e', b'n', b'g', 0]),
+            ],
+            false,
+        );
+        let s = parse_pmt(&p, true).unwrap();
+        let got: Vec<(u8, u16)> = s
+            .iter()
+            .map(|x| (x.stream_type, x.elementary_pid))
+            .collect();
+        assert_eq!(got, vec![(0x1B, 0x100), (0x24, 0x101), (0x0F, 0x102)]);
+    }
+
+    #[test]
+    fn pmt_pointer_field_is_honoured_only_with_pusi() {
+        let body = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])], false);
+        let mut with_pointer = vec![2, 0xAA, 0xBB];
+        with_pointer.extend(&body[1..]);
+        assert_eq!(parse_pmt(&with_pointer, true).unwrap().len(), 1);
+        assert_eq!(parse_pmt(&body[1..], false).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn pmt_rejects_or_ignores_malformed_sections() {
+        assert!(parse_pmt(&[], false).unwrap().is_empty());
+        assert!(parse_pmt(&[9, 0, 0], true).unwrap().is_empty());
+        let mut wrong = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])], false);
+        wrong[1] = 0x00; // table_id 0 = PAT
+        assert!(parse_pmt(&wrong, true).unwrap().is_empty());
+        // truncated after table_id, and after the fixed header
+        assert!(parse_pmt(&[0, 0x02, 0xB0], true).unwrap().is_empty());
+        assert!(parse_pmt(&[0, 0x02, 0xB0, 0x20, 0, 1, 0xC1, 0, 0], true)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn pmt_stops_at_a_truncated_stream_entry() {
+        let mut p = pmt(
+            &[],
+            &[
+                (STREAM_TYPE_AVC, 0x100, &[]),
+                (STREAM_TYPE_HEVC, 0x101, &[]),
+            ],
+            false,
+        );
+        // keep the 1st entry whole and 3 bytes of the 2nd; section_length still claims both
+        let cut = 1 + 3 + 5 + 2 + 5 + 3;
+        p.truncate(cut);
+        let s = parse_pmt(&p, true).unwrap();
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].stream_type, STREAM_TYPE_AVC);
+    }
+
+    #[test]
+    fn pmt_stops_at_the_end_given_by_section_length() {
+        let mut p = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])], false);
+        // append a second, well-formed entry after the section end (before the CRC would be)
+        p.extend_from_slice(&[STREAM_TYPE_HEVC, 0xE1, 0x01, 0xF0, 0x00]);
+        assert_eq!(parse_pmt(&p, true).unwrap().len(), 1);
+    }
+
+    // ---- parse_pes ----
+
+    #[test]
+    fn pes_without_optional_header_for_system_stream_ids() {
+        for id in [0xBC, 0xBF, 0xF0, 0xF1, 0xF2, 0xF8, 0xFF] {
+            let d = [0, 0, 1, id, 0, 4, 0xDE, 0xAD, 0xBE, 0xEF];
+            let p = parse_pes(&d).unwrap();
+            assert_eq!(p._stream_id, id);
+            assert_eq!((p.pts, p.dts), (None, None));
+            assert_eq!(p.payload, vec![0xDE, 0xAD, 0xBE, 0xEF], "stream id {id:#x}");
+        }
+    }
+
+    #[test]
+    fn pes_pts_and_dts_are_decoded() {
+        let es = [9u8, 8, 7];
+        let pts = 0x1_2345_6789u64; // uses all 33 bits' worth of groups
+        let dts = 0x0_0ABC_DEF0u64;
+        let p = parse_pes(&pes(0xE0, Some(pts), Some(dts), &es)).unwrap();
+        assert_eq!((p.pts, p.dts), (Some(pts), Some(dts)));
+        assert_eq!(p.payload, es);
+
+        let p = parse_pes(&pes(0xE0, Some(pts), None, &es)).unwrap();
+        assert_eq!((p.pts, p.dts), (Some(pts), None));
+        assert_eq!(p.payload, es);
+
+        let p = parse_pes(&pes(0xE0, None, None, &es)).unwrap();
+        assert_eq!((p.pts, p.dts), (None, None));
+        assert_eq!(p.payload, es);
+    }
+
+    #[test]
+    fn pes_timestamp_helper_round_trips_the_33_bit_range() {
+        for t in [
+            0u64,
+            1,
+            0x7F,
+            0x80,
+            0x7FFF,
+            0x8000,
+            0x3FFF_FFFF,
+            0x4000_0000,
+            (1 << 33) - 1,
+        ] {
+            assert_eq!(parse_timestamp(&timestamp(0x2, t)), t, "{t:#x}");
+        }
+    }
+
+    #[test]
+    fn pes_header_truncation_cases() {
+        // video stream id but the 3 flag bytes are not all there
+        let e = parse_pes(&[0, 0, 1, 0xE0, 0, 0, 0x80, 0x80])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("PES header too short"), "{e}");
+        // header present, no payload
+        let p = parse_pes(&[0, 0, 1, 0xE0, 0, 0, 0x80, 0x00, 0x00]).unwrap();
+        assert!(p.payload.is_empty());
+        // PTS announced but cut short: no PTS, and the payload offset lies past the end
+        let p = parse_pes(&[0, 0, 1, 0xE0, 0, 0, 0x80, 0x80, 0x05, 0x21, 0, 1]).unwrap();
+        assert_eq!(p.pts, None);
+        assert!(p.payload.is_empty());
+        // DTS announced but cut short: PTS survives
+        let mut d = vec![0, 0, 1, 0xE0, 0, 0, 0x80, 0xC0, 0x0A];
+        d.extend_from_slice(&timestamp(0x3, 5));
+        d.extend_from_slice(&[0x11, 0, 1]);
+        let p = parse_pes(&d).unwrap();
+        assert_eq!((p.pts, p.dts), (Some(5), None));
+    }
+
+    #[test]
+    fn pes_with_pts_and_no_payload_keeps_the_pts() {
+        // exactly 5 timestamp bytes left in the buffer
+        let p = parse_pes(&pes(0xE0, Some(77), None, &[])).unwrap();
+        assert_eq!(p.pts, Some(77));
+        assert!(p.payload.is_empty());
+        let p = parse_pes(&pes(0xE0, Some(77), Some(66), &[])).unwrap();
+        assert_eq!((p.pts, p.dts), (Some(77), Some(66)));
+    }
+
+    #[test]
+    fn hevc_irap_range_is_16_to_23_inclusive() {
+        for nal_type in 0u8..=40 {
+            let nal = [nal_type << 1, 0x01];
+            assert_eq!(
+                is_hevc_keyframe(&nal),
+                (16..=23).contains(&nal_type),
+                "type {nal_type}"
+            );
+        }
+        // layer id / temporal id bits in the 2nd byte and the top bit are not part of the type
+        assert!(is_hevc_keyframe(&[(19 << 1) | 1, 0xFF]));
+        assert!(!is_hevc_keyframe(&[0x26]));
+    }
+
+    // ---- split_annex_b_nal_units ----
+
+    #[test]
+    fn annex_b_edge_cases() {
+        assert!(split_annex_b_nal_units(&[1, 2, 3]).is_empty());
+        assert!(split_annex_b_nal_units(&[0, 0, 1]).is_empty());
+        assert!(split_annex_b_nal_units(&[0, 0, 0, 1]).is_empty());
+        // consecutive start codes: the empty unit between them is dropped
+        assert_eq!(
+            split_annex_b_nal_units(&[0, 0, 1, 0, 0, 1, 0xAA]),
+            vec![vec![0xAA]]
+        );
+        // extra leading zero before a 4-byte start code is not part of the unit
+        assert_eq!(
+            split_annex_b_nal_units(&[0, 0, 0, 0, 1, 0xAA]),
+            vec![vec![0xAA]]
+        );
+        // garbage before the first start code is ignored
+        assert_eq!(
+            split_annex_b_nal_units(&[7, 7, 0, 0, 1, 0xAA]),
+            vec![vec![0xAA]]
+        );
+    }
+
+    #[test]
+    fn annex_b_trims_the_next_start_code_of_either_length() {
+        let d = annex_b(&[
+            (&[0, 0, 0, 1], &IDR),
+            (&[0, 0, 1], &NON_IDR),
+            (&[0, 0, 0, 1], &[0x67]),
+        ]);
+        assert_eq!(
+            split_annex_b_nal_units(&d),
+            vec![IDR.to_vec(), NON_IDR.to_vec(), vec![0x67]]
+        );
+    }
+
+    // ---- extract_video_samples_for_pid ----
+
+    fn avc_pes_stream() -> Vec<u8> {
+        // PES 1: IDR (4-byte code) + non-IDR (3-byte code), cut mid-NAL across packets; PES 2: one non-IDR
+        let es1 = annex_b(&[(&[0, 0, 0, 1], &IDR), (&[0, 0, 1], &NON_IDR)]);
+        let es2 = annex_b(&[(&[0, 0, 0, 1], &NON_IDR)]);
+        let mut d = Vec::new();
+        d.extend(packet(0x55, true, &[1, 2, 3])); // other PID: ignored
+        d.extend(pes_packets(
+            VIDEO_PID,
+            &pes(0xE0, Some(9000), Some(6000), &es1),
+            24,
+        ));
+        d.extend(packet(0x55, false, &[4, 5, 6]));
+        d.extend(pes_packets(
+            VIDEO_PID,
+            &pes(0xE0, Some(12000), None, &es2),
+            184,
+        ));
+        d
+    }
+
+    #[test]
+    fn video_samples_are_reassembled_across_packets() {
+        let samples =
+            extract_video_samples_for_pid(&avc_pes_stream(), VIDEO_PID, is_avc_keyframe).unwrap();
+        type Row = (Vec<u8>, bool, Option<u64>, Option<u64>);
+        let view: Vec<Row> = samples
+            .iter()
+            .map(|s| (s.data.clone(), s.key_frame, s.pts, s.dts))
+            .collect();
+        assert_eq!(
+            view,
+            vec![
+                (IDR.to_vec(), true, Some(9000), Some(6000)),
+                (NON_IDR.to_vec(), false, Some(9000), Some(6000)),
+                (NON_IDR.to_vec(), false, Some(12000), None),
+            ]
+        );
+        // offsets are cumulative NAL sizes, sizes match the data
+        assert_eq!(
+            samples.iter().map(|s| s.size).collect::<Vec<_>>(),
+            vec![3, 2, 2]
+        );
+        assert_eq!(
+            samples.iter().map(|s| s.offset).collect::<Vec<_>>(),
+            vec![0, 3, 5]
+        );
+    }
+
+    #[test]
+    fn video_samples_use_the_given_keyframe_rule() {
+        let s = extract_video_samples_for_pid(&avc_pes_stream(), VIDEO_PID, |_| true).unwrap();
+        assert!(s.iter().all(|x| x.key_frame));
+        let s = extract_video_samples_for_pid(&avc_pes_stream(), VIDEO_PID, |_| false).unwrap();
+        assert!(s.iter().all(|x| !x.key_frame));
+    }
+
+    #[test]
+    fn video_samples_ignore_a_trailing_partial_packet_and_other_pids() {
+        let mut d = avc_pes_stream();
+        d.extend_from_slice(&[0x47, 0x00, 0x00]); // < 188 bytes: not parsed
+        assert_eq!(
+            extract_video_samples_for_pid(&d, VIDEO_PID, is_avc_keyframe)
+                .unwrap()
+                .len(),
+            3
+        );
+        assert!(extract_video_samples_for_pid(&d, 0x777, is_avc_keyframe)
+            .unwrap()
+            .is_empty());
+        assert!(
+            extract_video_samples_for_pid(&[], VIDEO_PID, is_avc_keyframe)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn video_samples_propagate_a_bad_packet() {
+        let mut d = avc_pes_stream();
+        let bad = d.len() / TS_PACKET_SIZE / 2 * TS_PACKET_SIZE;
+        d[bad] = 0x00;
+        assert!(extract_video_samples_for_pid(&d, VIDEO_PID, is_avc_keyframe).is_err());
+    }
+
+    #[test]
+    fn video_continuation_without_a_start_is_dropped() {
+        let es = annex_b(&[(&[0, 0, 0, 1], &IDR)]);
+        let mut d = packet(VIDEO_PID, false, &[0, 0, 0, 1, 0x65, 0x01]); // no PES start yet
+        d.extend(pes_packets(VIDEO_PID, &pes(0xE0, Some(1), None, &es), 184));
+        let s = extract_video_samples_for_pid(&d, VIDEO_PID, is_avc_keyframe).unwrap();
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].data, IDR);
+    }
+
+    #[test]
+    fn video_pes_with_a_bad_start_code_is_skipped_with_its_continuations() {
+        let es = annex_b(&[(&[0, 0, 0, 1], &IDR)]);
+        let mut d = packet(VIDEO_PID, true, &[9, 9, 9, 9, 9, 9, 9]); // PUSI, not a PES
+        d.extend(packet(VIDEO_PID, false, &[0, 0, 0, 1, 0x41, 0x01]));
+        d.extend(pes_packets(VIDEO_PID, &pes(0xE0, Some(1), None, &es), 184));
+        let s = extract_video_samples_for_pid(&d, VIDEO_PID, is_avc_keyframe).unwrap();
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].data, IDR);
+    }
+
+    // ---- extract_pes_packets (the AV1 path) ----
+
+    #[test]
+    fn pes_packets_collect_payloads_and_pts() {
+        let mut d = pes_packets(
+            VIDEO_PID,
+            &pes(0xE0, Some(3000), None, &[1, 2, 3, 4, 5, 6, 7, 8]),
+            12,
+        );
+        d.extend(pes_packets(VIDEO_PID, &pes(0xE0, None, None, &[9, 9]), 184));
+        d.extend(packet(0x55, true, &[0]));
+        let (samples, ts) = extract_pes_packets(&d, VIDEO_PID).unwrap();
+        assert_eq!(samples, vec![vec![1, 2, 3, 4, 5, 6, 7, 8], vec![9, 9]]);
+        assert_eq!(ts, vec![3000, 0]); // a PES without PTS is stamped 0
+    }
+
+    #[test]
+    fn pes_packets_drop_buffers_that_are_not_pes() {
+        // a continuation packet before any PUSI creates a buffer that fails to parse when flushed
+        let mut d = packet(VIDEO_PID, false, &[1, 2, 3]);
+        d.extend(pes_packets(VIDEO_PID, &pes(0xE0, Some(1), None, &[5]), 184));
+        // and a final PUSI packet that is not a PES at all
+        d.extend(packet(VIDEO_PID, true, &[7, 7, 7, 7, 7, 7]));
+        let (samples, ts) = extract_pes_packets(&d, VIDEO_PID).unwrap();
+        assert_eq!(samples, vec![vec![5]]);
+        assert_eq!(ts, vec![1]);
+    }
+
+    #[test]
+    fn pes_packets_propagate_a_bad_packet() {
+        let mut d = pes_packets(VIDEO_PID, &pes(0xE0, Some(1), None, &[5]), 184);
+        d.extend(vec![0u8; TS_PACKET_SIZE]);
+        assert!(extract_pes_packets(&d, VIDEO_PID).is_err());
+    }
+
+    // ---- extract_pat_pmt and the public extractors ----
+
+    #[test]
+    fn pat_pmt_scan_ignores_unrelated_and_early_packets() {
+        let pat_pkt = packet(PAT_PID, true, &pat(&[(1, PMT_PID)]));
+        let pmt_pkt = packet(
+            PMT_PID,
+            true,
+            &pmt(&[], &[(STREAM_TYPE_AVC, VIDEO_PID, &[])], false),
+        );
+        let other_pmt = packet(
+            0x1FFE,
+            true,
+            &pmt(&[], &[(STREAM_TYPE_HEVC, 0x300, &[])], false),
+        );
+        let empty_pat = packet(PAT_PID, false, &[]);
+
+        // PMT before any PAT is not recognised
+        let d = [&pmt_pkt[..], &pat_pkt[..]].concat();
+        let (pat, pmt) = extract_pat_pmt(&d).unwrap();
+        assert_eq!((pat.len(), pmt.len()), (1, 0));
+
+        // PMT after the PAT is read; a PMT on a PID the PAT does not name and an empty PAT packet are ignored
+        let d = [&pat_pkt[..], &other_pmt[..], &empty_pat[..], &pmt_pkt[..]].concat();
+        let (pat, pmt) = extract_pat_pmt(&d).unwrap();
+        assert_eq!(pat.len(), 1);
+        assert_eq!(pmt.len(), 1);
+        assert_eq!(
+            (pmt[0].stream_type, pmt[0].elementary_pid),
+            (STREAM_TYPE_AVC, VIDEO_PID)
+        );
+
+        assert!(extract_pat_pmt(&[0xFF; TS_PACKET_SIZE]).is_err());
+    }
+
+    fn full_stream(stream_type: u8, es: &[u8]) -> Vec<u8> {
+        let mut d = psi_packets(&[(stream_type, VIDEO_PID, &[])], false);
+        d.extend(pes_packets(
+            VIDEO_PID,
+            &pes(0xE0, Some(4500), Some(3000), es),
+            20,
+        ));
+        d
+    }
+
+    #[test]
+    fn avc_extractors_return_nal_units_with_timing() {
+        let d = full_stream(
+            STREAM_TYPE_AVC,
+            &annex_b(&[(&[0, 0, 0, 1], &IDR), (&[0, 0, 1], &NON_IDR)]),
+        );
+        assert_eq!(
+            extract_avc_samples(&d).unwrap(),
+            vec![IDR.to_vec(), NON_IDR.to_vec()]
+        );
+        let v = extract_avc_video_samples(&d).unwrap();
+        assert_eq!(v.len(), 2);
+        assert!(v[0].key_frame && !v[1].key_frame);
+        assert_eq!((v[0].pts, v[0].dts), (Some(4500), Some(3000)));
+        // a stream of another type yields nothing rather than an error
+        assert!(extract_hevc_samples(&d).unwrap().is_empty());
+        assert!(extract_hevc_video_samples(&d).unwrap().is_empty());
+    }
+
+    #[test]
+    fn hevc_extractors_return_nal_units_with_keyframe_flags() {
+        let idr = [0x26u8, 0x01, 0xAF]; // IDR_W_RADL
+        let trail = [0x02u8, 0x01, 0xBF]; // TRAIL_R
+        let d = full_stream(
+            STREAM_TYPE_HEVC,
+            &annex_b(&[(&[0, 0, 0, 1], &idr), (&[0, 0, 1], &trail)]),
+        );
+        assert_eq!(
+            extract_hevc_samples(&d).unwrap(),
+            vec![idr.to_vec(), trail.to_vec()]
+        );
+        let v = extract_hevc_video_samples(&d).unwrap();
+        assert_eq!(
+            v.iter().map(|s| s.key_frame).collect::<Vec<_>>(),
+            vec![true, false]
+        );
+        assert!(extract_avc_samples(&d).unwrap().is_empty());
+        assert!(extract_avc_video_samples(&d).unwrap().is_empty());
+    }
+
+    #[test]
+    fn av1_extractor_returns_pes_payloads() {
+        let d = full_stream(STREAM_TYPE_AV1, &[0x12, 0x00, 0x0A]);
+        let info = parse_ts(&d).unwrap();
+        assert_eq!(info.video_pid, Some(VIDEO_PID));
+        assert_eq!(info.sample_count, 1);
+        assert_eq!(info.samples, vec![vec![0x12, 0x00, 0x0A]]);
+        assert_eq!(info.timestamps, vec![4500]);
+        assert_eq!(extract_av1_samples(&d).unwrap(), info.samples);
+    }
+
+    #[test]
+    fn parse_ts_without_an_av1_stream_reports_none() {
+        let d = full_stream(STREAM_TYPE_AVC, &annex_b(&[(&[0, 0, 1], &IDR)]));
+        let info = parse_ts(&d).unwrap();
+        assert_eq!((info.video_pid, info.sample_count), (None, 0));
+        assert!(info.samples.is_empty() && info.timestamps.is_empty());
+    }
+
+    #[test]
+    fn pid_lookup_picks_the_first_match() {
+        let s = [
+            PmtStream {
+                stream_type: 0x0F,
+                elementary_pid: 1,
+            },
+            PmtStream {
+                stream_type: STREAM_TYPE_AV1,
+                elementary_pid: 2,
+            },
+            PmtStream {
+                stream_type: STREAM_TYPE_AV1,
+                elementary_pid: 3,
+            },
+        ];
+        assert_eq!(find_video_pid(&s), Some(2));
+        assert_eq!(find_pid_by_stream_type(&s, 0x0F), Some(1));
+        assert_eq!(find_pid_by_stream_type(&s, STREAM_TYPE_HEVC), None);
+        assert_eq!(find_video_pid(&[]), None);
+    }
+
+    // ---- spec-correct input: these fail until #261 is fixed ----
+
+    #[test]
+    #[ignore = "#261: parse_pmt does not skip PCR_PID"]
+    fn spec_layout_pmt_is_parsed() {
+        let p = pmt(
+            &[0x05, 0x04, 0x48, 0x45, 0x56, 0x43],
+            &[(STREAM_TYPE_AVC, 0x100, &[0x28, 0x01])],
+            true,
+        );
+        let s = parse_pmt(&p, true).unwrap();
+        assert_eq!(s.len(), 1);
+        assert_eq!(
+            (s[0].stream_type, s[0].elementary_pid),
+            (STREAM_TYPE_AVC, 0x100)
+        );
+    }
+
+    #[test]
+    #[ignore = "#261: parse_pmt does not skip PCR_PID"]
+    fn spec_layout_stream_yields_samples() {
+        let mut d = psi_packets(&[(STREAM_TYPE_AVC, VIDEO_PID, &[])], true);
+        d.extend(pes_packets(
+            VIDEO_PID,
+            &pes(0xE0, Some(1), None, &annex_b(&[(&[0, 0, 1], &IDR)])),
+            184,
+        ));
+        assert_eq!(extract_avc_samples(&d).unwrap(), vec![IDR.to_vec()]);
+    }
+
+    #[test]
+    #[ignore = "#261: unchecked section_length arithmetic"]
+    fn malformed_section_lengths_do_not_panic() {
+        // section_length smaller than the fixed header, and larger than the payload
+        assert!(parse_pat(
+            &[0x00, 0x00, 0xB0, 0x04, 0, 1, 0xC1, 0, 0, 0, 1, 0xE1, 0x00],
+            true
+        )
+        .is_ok());
+        assert!(parse_pat(&[0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0, 0], false).is_ok());
+        assert!(parse_pat(
+            &[0x00, 0x00, 0xB0, 0xFF, 0, 1, 0xC1, 0, 0, 0, 1, 0xE1, 0x00],
+            true
+        )
+        .is_ok());
+        assert!(parse_pmt(
+            &[0x00, 0x02, 0xB0, 0x00, 0, 1, 0xC1, 0, 0, 0xF0, 0x00],
+            true
+        )
+        .is_ok());
+    }
+}
