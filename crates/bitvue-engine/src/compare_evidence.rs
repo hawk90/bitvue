@@ -64,6 +64,22 @@ pub struct StreamEvidence {
     pub decode_id: EvidenceId,
 }
 
+/// Which of the two compared streams a piece of evidence belongs to
+#[derive(Clone, Copy)]
+enum StreamSide {
+    A,
+    B,
+}
+
+impl StreamSide {
+    fn label(self) -> &'static str {
+        match self {
+            StreamSide::A => "A",
+            StreamSide::B => "B",
+        }
+    }
+}
+
 impl CompareEvidenceManager {
     /// Create a new compare evidence manager
     pub fn new(evidence_chain_a: EvidenceChain, evidence_chain_b: EvidenceChain) -> Self {
@@ -95,89 +111,91 @@ impl CompareEvidenceManager {
         let frame_a = pair.stream_a_idx?;
         let frame_b = pair.stream_b_idx?;
 
-        // Create evidence for stream A
-        let bit_offset_id_a = self.next_id();
-        let syntax_id_a = self.next_id();
-        let decode_id_a = self.next_id();
+        let stream_a =
+            self.record_stream_evidence(StreamSide::A, frame_a, bit_range_a, frame_size_a);
+        let stream_b =
+            self.record_stream_evidence(StreamSide::B, frame_b, bit_range_b, frame_size_b);
+        let diff_viz_id = self.record_diff_heatmap(pair, frame_a, frame_b, &stream_a, &stream_b);
 
-        // Bit offset A
-        self.evidence_chain_a.add_bit_offset(BitOffsetEvidence::new(
-            bit_offset_id_a.clone(),
-            bit_range_a,
-            format!("compare_A_{}", frame_a),
-        ));
-
-        // Syntax A
-        let mut syntax_ev_a = SyntaxEvidence::new(
-            syntax_id_a.clone(),
-            SyntaxNodeType::FrameHeader,
-            format!("frame_{}_header_A", frame_a),
-            bit_range_a,
-            bit_offset_id_a.clone(),
-        );
-        syntax_ev_a.add_metadata("stream".to_string(), "A".to_string());
-        syntax_ev_a.add_metadata("frame_size".to_string(), frame_size_a.to_string());
-        self.evidence_chain_a.add_syntax(syntax_ev_a);
-
-        // Decode A
-        let mut decode_ev_a = DecodeEvidence::new(
-            decode_id_a.clone(),
-            DecodeArtifactType::YuvFrame,
-            format!("frame_{}_yuv_A", frame_a),
-            syntax_id_a.clone(),
-        );
-        decode_ev_a.set_frame_indices(frame_a, frame_a);
-        decode_ev_a.add_metadata("stream".to_string(), "A".to_string());
-        self.evidence_chain_a.add_decode(decode_ev_a);
-
-        let stream_a = StreamEvidence {
-            bit_offset_id: bit_offset_id_a,
-            syntax_id: syntax_id_a,
-            decode_id: decode_id_a,
+        let pair_evidence = ComparePairEvidence {
+            frame_a_idx: frame_a,
+            frame_b_idx: frame_b,
+            stream_a,
+            stream_b,
+            diff_viz_id,
         };
 
-        // Create evidence for stream B
-        let bit_offset_id_b = self.next_id();
-        let syntax_id_b = self.next_id();
-        let decode_id_b = self.next_id();
+        self.pair_evidence_map
+            .insert((frame_a, frame_b), pair_evidence.clone());
 
-        // Bit offset B
-        self.evidence_chain_b.add_bit_offset(BitOffsetEvidence::new(
-            bit_offset_id_b.clone(),
-            bit_range_b,
-            format!("compare_B_{}", frame_b),
+        Some(pair_evidence)
+    }
+
+    fn chain_mut(&mut self, side: StreamSide) -> &mut EvidenceChain {
+        match side {
+            StreamSide::A => &mut self.evidence_chain_a,
+            StreamSide::B => &mut self.evidence_chain_b,
+        }
+    }
+
+    /// Add the bit offset -> syntax -> decode evidence of one stream's frame to that stream's chain
+    fn record_stream_evidence(
+        &mut self,
+        side: StreamSide,
+        frame_idx: usize,
+        bit_range: BitRange,
+        frame_size: usize,
+    ) -> StreamEvidence {
+        let label = side.label();
+        let bit_offset_id = self.next_id();
+        let syntax_id = self.next_id();
+        let decode_id = self.next_id();
+
+        let chain = self.chain_mut(side);
+
+        chain.add_bit_offset(BitOffsetEvidence::new(
+            bit_offset_id.clone(),
+            bit_range,
+            format!("compare_{}_{}", label, frame_idx),
         ));
 
-        // Syntax B
-        let mut syntax_ev_b = SyntaxEvidence::new(
-            syntax_id_b.clone(),
+        let mut syntax_ev = SyntaxEvidence::new(
+            syntax_id.clone(),
             SyntaxNodeType::FrameHeader,
-            format!("frame_{}_header_B", frame_b),
-            bit_range_b,
-            bit_offset_id_b.clone(),
+            format!("frame_{}_header_{}", frame_idx, label),
+            bit_range,
+            bit_offset_id.clone(),
         );
-        syntax_ev_b.add_metadata("stream".to_string(), "B".to_string());
-        syntax_ev_b.add_metadata("frame_size".to_string(), frame_size_b.to_string());
-        self.evidence_chain_b.add_syntax(syntax_ev_b);
+        syntax_ev.add_metadata("stream".to_string(), label.to_string());
+        syntax_ev.add_metadata("frame_size".to_string(), frame_size.to_string());
+        chain.add_syntax(syntax_ev);
 
-        // Decode B
-        let mut decode_ev_b = DecodeEvidence::new(
-            decode_id_b.clone(),
+        let mut decode_ev = DecodeEvidence::new(
+            decode_id.clone(),
             DecodeArtifactType::YuvFrame,
-            format!("frame_{}_yuv_B", frame_b),
-            syntax_id_b.clone(),
+            format!("frame_{}_yuv_{}", frame_idx, label),
+            syntax_id.clone(),
         );
-        decode_ev_b.set_frame_indices(frame_b, frame_b);
-        decode_ev_b.add_metadata("stream".to_string(), "B".to_string());
-        self.evidence_chain_b.add_decode(decode_ev_b);
+        decode_ev.set_frame_indices(frame_idx, frame_idx);
+        decode_ev.add_metadata("stream".to_string(), label.to_string());
+        chain.add_decode(decode_ev);
 
-        let stream_b = StreamEvidence {
-            bit_offset_id: bit_offset_id_b,
-            syntax_id: syntax_id_b,
-            decode_id: decode_id_b,
-        };
+        StreamEvidence {
+            bit_offset_id,
+            syntax_id,
+            decode_id,
+        }
+    }
 
-        // Create diff heatmap viz evidence (links to both decode artifacts)
+    /// Add the diff heatmap (linked to both decode artifacts) to stream A's chain
+    fn record_diff_heatmap(
+        &mut self,
+        pair: &FramePair,
+        frame_a: usize,
+        frame_b: usize,
+        stream_a: &StreamEvidence,
+        stream_b: &StreamEvidence,
+    ) -> EvidenceId {
         let diff_viz_id = self.next_id();
         let mut diff_viz = VizEvidence::new(
             diff_viz_id.clone(),
@@ -194,74 +212,8 @@ impl CompareEvidenceManager {
         diff_viz.add_metadata("stream_a_decode".to_string(), stream_a.decode_id.clone());
         diff_viz.add_metadata("stream_b_decode".to_string(), stream_b.decode_id.clone());
 
-        // Add to stream A evidence chain (primary)
         self.evidence_chain_a.add_viz(diff_viz);
-
-        // Create evidence bundle
-        let pair_evidence = ComparePairEvidence {
-            frame_a_idx: frame_a,
-            frame_b_idx: frame_b,
-            stream_a,
-            stream_b,
-            diff_viz_id,
-        };
-
-        // Store in map
-        self.pair_evidence_map
-            .insert((frame_a, frame_b), pair_evidence.clone());
-
-        Some(pair_evidence)
-    }
-
-    /// Create evidence for a single stream in the pair
-    #[allow(dead_code)]
-    fn create_stream_evidence(
-        &mut self,
-        frame_idx: usize,
-        bit_range: BitRange,
-        frame_size: usize,
-        stream_label: &str,
-        evidence_chain: &mut EvidenceChain,
-    ) -> StreamEvidence {
-        // Stage 01: Bit offset evidence
-        let bit_offset_id = self.next_id();
-        let bit_offset_ev = BitOffsetEvidence::new(
-            bit_offset_id.clone(),
-            bit_range,
-            format!("compare_{}_{}", stream_label, frame_idx),
-        );
-        evidence_chain.add_bit_offset(bit_offset_ev);
-
-        // Stage 02: Syntax evidence
-        let syntax_id = self.next_id();
-        let mut syntax_ev = SyntaxEvidence::new(
-            syntax_id.clone(),
-            SyntaxNodeType::FrameHeader,
-            format!("frame_{}_header_{}", frame_idx, stream_label),
-            bit_range,
-            bit_offset_id.clone(),
-        );
-        syntax_ev.add_metadata("stream".to_string(), stream_label.to_string());
-        syntax_ev.add_metadata("frame_size".to_string(), frame_size.to_string());
-        evidence_chain.add_syntax(syntax_ev);
-
-        // Stage 03: Decode evidence
-        let decode_id = self.next_id();
-        let mut decode_ev = DecodeEvidence::new(
-            decode_id.clone(),
-            DecodeArtifactType::YuvFrame,
-            format!("frame_{}_yuv_{}", frame_idx, stream_label),
-            syntax_id.clone(),
-        );
-        decode_ev.set_frame_indices(frame_idx, frame_idx);
-        decode_ev.add_metadata("stream".to_string(), stream_label.to_string());
-        evidence_chain.add_decode(decode_ev);
-
-        StreamEvidence {
-            bit_offset_id,
-            syntax_id,
-            decode_id,
-        }
+        diff_viz_id
     }
 
     /// Get evidence for a frame pair

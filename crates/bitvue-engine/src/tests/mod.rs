@@ -35,6 +35,7 @@ pub mod compare_h264_quirk_field_frame_001;
 pub mod compare_h264_quirk_mixed_scenarios_001;
 pub mod compare_h264_quirk_mmco_timing_001;
 pub mod compare_h264_quirk_poc_wrap_001;
+pub mod compare_pair_evidence_detail;
 pub mod compare_vp9_quirks_altref;
 pub mod compare_vp9_quirks_integration;
 pub mod compare_vp9_quirks_refframe_refresh;
