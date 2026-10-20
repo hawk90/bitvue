@@ -11,6 +11,8 @@ mod candidates;
 mod compound_stack;
 mod match_ref;
 mod mode_context;
+#[cfg(test)]
+mod scan_tests;
 mod single_stack;
 #[cfg(test)]
 mod tests;
