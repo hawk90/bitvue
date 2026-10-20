@@ -79,18 +79,71 @@ impl TimelineEvidenceManager {
     ) -> TimelineFrameEvidence {
         let display_idx = timeline_frame.display_idx;
 
-        // Stage 01: Bit offset evidence
         let bit_offset_id = self.next_id();
-        let mut bit_offset_ev = BitOffsetEvidence::new(
-            bit_offset_id.clone(),
+        let syntax_id = self.next_id();
+        let decode_id = self.next_id();
+        let timeline_viz_id = self.next_id();
+
+        let mut bit_offset_ev = Self::bit_offset_evidence(&bit_offset_id, bit_range, display_idx);
+        let mut syntax_ev = Self::syntax_evidence(
+            &syntax_id,
+            &bit_offset_id,
+            timeline_frame,
+            bit_range,
+            frame_size_bytes,
+        );
+        let mut decode_ev =
+            Self::decode_evidence(&decode_id, &syntax_id, display_idx, frame_size_bytes);
+        let viz_ev = Self::viz_evidence(&timeline_viz_id, &decode_id, timeline_frame);
+
+        // UX Core: Establish bidirectional links for evidence chain navigation
+        bit_offset_ev.link_syntax(syntax_id.clone());
+        syntax_ev.link_decode(decode_id.clone());
+        decode_ev.link_viz(timeline_viz_id.clone());
+
+        self.evidence_chain.add_bit_offset(bit_offset_ev);
+        self.evidence_chain.add_syntax(syntax_ev);
+        self.evidence_chain.add_decode(decode_ev);
+        self.evidence_chain.add_viz(viz_ev);
+
+        let frame_evidence = TimelineFrameEvidence {
+            display_idx,
+            bit_offset_id,
+            syntax_id,
+            decode_id,
+            timeline_viz_id,
+        };
+
+        self.frame_evidence_map
+            .insert(display_idx, frame_evidence.clone());
+
+        frame_evidence
+    }
+
+    /// Stage 01: where the frame starts in the bitstream
+    fn bit_offset_evidence(
+        id: &EvidenceId,
+        bit_range: BitRange,
+        display_idx: usize,
+    ) -> BitOffsetEvidence {
+        BitOffsetEvidence::new(
+            id.clone(),
             bit_range,
             format!("timeline_frame_{}", display_idx),
-        );
+        )
+    }
 
-        // Stage 02: Syntax evidence (frame header)
-        let syntax_id = self.next_id();
+    /// Stage 02: the frame header syntax node
+    fn syntax_evidence(
+        id: &EvidenceId,
+        bit_offset_id: &EvidenceId,
+        timeline_frame: &TimelineFrame,
+        bit_range: BitRange,
+        frame_size_bytes: usize,
+    ) -> SyntaxEvidence {
+        let display_idx = timeline_frame.display_idx;
         let mut syntax_ev = SyntaxEvidence::new(
-            syntax_id.clone(),
+            id.clone(),
             SyntaxNodeType::FrameHeader,
             format!("frame_{}_header", display_idx),
             bit_range,
@@ -109,22 +162,36 @@ impl TimelineEvidenceManager {
         if let Some(dts) = timeline_frame.dts {
             syntax_ev.add_metadata("dts".to_string(), dts.to_string());
         }
+        syntax_ev
+    }
 
-        // Stage 03: Decode evidence (decoded frame)
-        let decode_id = self.next_id();
+    /// Stage 03: the decoded frame
+    fn decode_evidence(
+        id: &EvidenceId,
+        syntax_id: &EvidenceId,
+        display_idx: usize,
+        frame_size_bytes: usize,
+    ) -> DecodeEvidence {
         let mut decode_ev = DecodeEvidence::new(
-            decode_id.clone(),
+            id.clone(),
             DecodeArtifactType::YuvFrame,
             format!("frame_{}_yuv", display_idx),
             syntax_id.clone(),
         );
         decode_ev.set_frame_indices(display_idx, display_idx);
         decode_ev.add_metadata("size_bytes".to_string(), frame_size_bytes.to_string());
+        decode_ev
+    }
 
-        // Stage 04: Viz evidence (timeline track)
-        let timeline_viz_id = self.next_id();
+    /// Stage 04: the timeline lane element
+    fn viz_evidence(
+        id: &EvidenceId,
+        decode_id: &EvidenceId,
+        timeline_frame: &TimelineFrame,
+    ) -> VizEvidence {
+        let display_idx = timeline_frame.display_idx;
         let mut viz_ev = VizEvidence::new(
-            timeline_viz_id.clone(),
+            id.clone(),
             VizElementType::TimelineLane,
             format!("timeline_frame_{}", display_idx),
             decode_id.clone(),
@@ -134,7 +201,6 @@ impl TimelineEvidenceManager {
         // Set temporal position (normalize to 0..1 range, will be set properly by caller)
         viz_ev.set_temporal_pos(display_idx as f64);
 
-        // Add visual properties
         viz_ev.add_visual_property("frame_type".to_string(), timeline_frame.frame_type.clone());
         viz_ev.add_visual_property("marker".to_string(), format!("{:?}", timeline_frame.marker));
         viz_ev.add_visual_property(
@@ -146,35 +212,8 @@ impl TimelineEvidenceManager {
             timeline_frame.size_bytes.to_string(),
         );
         viz_ev.add_visual_property("display_idx".to_string(), display_idx.to_string());
-
-        // Add metadata
         viz_ev.add_metadata("display_idx".to_string(), display_idx.to_string());
-
-        // UX Core: Establish bidirectional links for evidence chain navigation
-        bit_offset_ev.link_syntax(syntax_id.clone());
-        syntax_ev.link_decode(decode_id.clone());
-        decode_ev.link_viz(timeline_viz_id.clone());
-
-        // Add all evidence to the chain
-        self.evidence_chain.add_bit_offset(bit_offset_ev);
-        self.evidence_chain.add_syntax(syntax_ev);
-        self.evidence_chain.add_decode(decode_ev);
-        self.evidence_chain.add_viz(viz_ev);
-
-        // Create evidence bundle
-        let frame_evidence = TimelineFrameEvidence {
-            display_idx,
-            bit_offset_id,
-            syntax_id,
-            decode_id,
-            timeline_viz_id,
-        };
-
-        // Store in map
-        self.frame_evidence_map
-            .insert(display_idx, frame_evidence.clone());
-
-        frame_evidence
+        viz_ev
     }
 
     /// Get evidence for a timeline frame
