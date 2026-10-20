@@ -88,6 +88,7 @@ pub mod mv_overlay;
 pub mod occlusion_budget;
 pub mod parity_baseline_evaluation;
 pub mod parity_harness;
+pub mod parity_score;
 pub mod partition_grid;
 pub mod performance;
 pub mod picture_stats;
