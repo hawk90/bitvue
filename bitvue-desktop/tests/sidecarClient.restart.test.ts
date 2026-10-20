@@ -66,19 +66,27 @@ describe("SidecarClient crash recovery (real process, real SIGKILL)", () => {
     expect(result).toEqual({ protocol_version: "0.1.0", capabilities: [] });
   });
 
-  it("rejects pending requests at crash time instead of silently retrying them", async () => {
-    client = new SidecarClient(binaryPath, { restart: { maxAttempts: 3, backoffMs: 100 } });
-    await client.hello("restart-test/0.0.1");
-    const pid = client.pid!;
+  // SIGSTOP does not exist on Windows; `process.kill` can only terminate there.
+  it.skipIf(process.platform === "win32")(
+    "rejects pending requests at crash time instead of silently retrying them",
+    async () => {
+      client = new SidecarClient(binaryPath, { restart: { maxAttempts: 3, backoffMs: 100 } });
+      await client.hello("restart-test/0.0.1");
+      const pid = client.pid!;
 
-    // Fire a request, then kill before the sidecar can possibly have replied.
-    const pending = client.request("open_stream", { stream: "A", path: "/irrelevant" });
-    process.kill(pid, "SIGKILL");
+      // Freeze the sidecar *before* sending, so it cannot reply no matter how the scheduler
+      // interleaves us: sending and then killing races (a reply written to the pipe before the
+      // SIGKILL lands is still delivered, and the request resolves instead of rejecting). The
+      // stop signal is queued before the write, so the sidecar never gets to run on the request.
+      process.kill(pid, "SIGSTOP");
+      const pending = client.request("open_stream", { stream: "A", path: "/irrelevant" });
+      process.kill(pid, "SIGKILL");
 
-    // Rejected, not hung and not silently re-sent to the restarted process — the caller must
-    // decide whether to retry, since the request might have partially applied before the crash.
-    await expect(pending).rejects.toThrow(/exited/i);
-  });
+      // Rejected, not hung and not silently re-sent to the restarted process — the caller must
+      // decide whether to retry, since the request might have partially applied before the crash.
+      await expect(pending).rejects.toThrow(/exited/i);
+    },
+  );
 
   it("gives up after maxAttempts if the process keeps crashing immediately", async () => {
     // A path that spawns successfully as a *process* (any executable) but isn't bitvue-sidecar,
