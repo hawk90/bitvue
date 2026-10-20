@@ -1,10 +1,9 @@
 //! The compound candidate stack (dav1d `refmvs_find`, compound branch).
 
+use super::mode_context::{ScanExtent, ScanQuery};
 use super::*;
 
-/// Pushes one neighbour cell's matching reference pair onto the stack with the given weight.
-type AddCandidate<'a> =
-    dyn Fn(&mut [CompoundMvStackEntry; 8], &mut usize, &SpatialRefCell, i32) + 'a;
+type Stack = [CompoundMvStackEntry; 8];
 
 impl SpatialRefContext {
     /// Real weighted compound candidate stack: a port of the compound branch of dav1d's
@@ -22,95 +21,36 @@ impl SpatialRefContext {
         ref0: i8,
         ref1: i8,
         use_ref_frame_mvs: bool,
-    ) -> ([CompoundMvStackEntry; 8], usize) {
-        let mut stack = [CompoundMvStackEntry::default(); 8];
-        let mut cnt = 0usize;
-        let w4 = bw4.min(16).min(self.col_end.saturating_sub(x4)).max(1);
-        let h4 = bh4.min(16).min(self.row_end.saturating_sub(y4)).max(1);
-
-        // `n_rows`/`n_cols` stay `u32::MAX` while the row/column is outside the tile.
-        let mut n_rows = u32::MAX;
-        let mut n_cols = u32::MAX;
-        let max_rows = if y4 > self.row_start {
-            (y4 - self.row_start)
-                .div_ceil(2)
-                .min(2 + u32::from(bh4 > 1))
-        } else {
-            0
-        } as i32;
-        let max_cols = if x4 > self.col_start {
-            (x4 - self.col_start)
-                .div_ceil(2)
-                .min(2 + u32::from(bw4 > 1))
-        } else {
-            0
-        } as i32;
-        let add = |stack: &mut [CompoundMvStackEntry; 8],
-                   cnt: &mut usize,
-                   cell: &SpatialRefCell,
-                   weight: i32| {
-            if let Some(mv) = Self::compound_candidate_mv(cell, ref0, ref1) {
-                Self::push_compound_mv_candidate(stack, cnt, weight, mv);
-            }
+    ) -> (Stack, usize) {
+        let query = ScanQuery {
+            x4,
+            y4,
+            bw4,
+            bh4,
+            ref0,
+            ref1,
         };
+        let extent = self.scan_extent(&query);
+        let mut stack = Stack::default();
+        let mut cnt = 0usize;
 
-        if y4 > self.row_start {
-            n_rows = self.walk_row(
-                y4 - 1,
-                x4,
-                bw4,
-                w4,
-                max_rows,
-                if bw4 >= 16 { 4 } else { 1 },
-                &mut |cell, weight| add(&mut stack, &mut cnt, cell, weight),
-            );
-        }
-        if x4 > self.col_start {
-            n_cols = self.walk_col(
-                x4 - 1,
-                y4,
-                bh4,
-                h4,
-                max_cols,
-                if bh4 >= 16 { 4 } else { 1 },
-                &mut |cell, weight| add(&mut stack, &mut cnt, cell, weight),
-            );
-        }
-        // Top-right: only a decoded cell can be there (dav1d's `EDGE_I444_TOP_HAS_RIGHT`).
-        if n_rows != u32::MAX && bw4.max(bh4) <= 16 && x4 + bw4 < self.col_end {
-            if let Some(cell) = self.cell(x4 + bw4, y4 - 1) {
-                add(&mut stack, &mut cnt, cell, 4);
-            }
-        }
+        let (mut n_rows, mut n_cols) =
+            self.scan_compound_primary(&query, &extent, &mut stack, &mut cnt);
 
         let nearest_cnt = cnt;
         for cand in &mut stack[..nearest_cnt] {
             cand.weight += 640;
         }
 
-        self.add_temporal_pairs(
+        self.add_temporal_pairs(&mut stack, &mut cnt, &query, &extent, use_ref_frame_mvs);
+        self.scan_compound_top_left(&query, n_rows, n_cols, &mut stack, &mut cnt);
+        self.scan_secondary(
+            &query,
+            &extent,
+            &mut n_rows,
+            &mut n_cols,
             &mut stack,
             &mut cnt,
-            x4,
-            y4,
-            bw4,
-            bh4,
-            w4,
-            h4,
-            ref0,
-            ref1,
-            use_ref_frame_mvs,
-        );
-
-        // Top-left, then the secondary rows/columns -- only where both edges exist.
-        if n_rows != u32::MAX && n_cols != u32::MAX {
-            if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
-                add(&mut stack, &mut cnt, cell, 4);
-            }
-        }
-        (n_rows, n_cols) = self.scan_secondary(
-            &mut stack, &mut cnt, &add, x4, y4, bw4, bh4, w4, h4, max_rows, max_cols, n_rows,
-            n_cols,
         );
 
         // Sort the nearest group, then the rest (stable, descending).
@@ -121,8 +61,8 @@ impl SpatialRefContext {
             self.fill_compound_extended_candidates(
                 x4,
                 y4,
-                w4,
-                h4,
+                extent.w4,
+                extent.h4,
                 n_rows != u32::MAX,
                 n_cols != u32::MAX,
                 ref0,
@@ -137,35 +77,99 @@ impl SpatialRefContext {
         (stack, cnt)
     }
 
+    /// Pushes the cell's reference pair onto the stack with `weight` when it matches the query.
+    fn add_compound_neighbour(
+        q: &ScanQuery,
+        stack: &mut Stack,
+        cnt: &mut usize,
+        cell: &SpatialRefCell,
+        weight: i32,
+    ) {
+        if let Some(mv) = Self::compound_candidate_mv(cell, q.ref0, q.ref1) {
+            Self::push_compound_mv_candidate(stack, cnt, weight, mv);
+        }
+    }
+
+    /// The nearest group: the row above, the column to the left and the top-right cell (only a
+    /// decoded cell can be there, dav1d's `EDGE_I444_TOP_HAS_RIGHT`). Returns `(n_rows, n_cols)`,
+    /// each `u32::MAX` while the row/column is outside the tile.
+    fn scan_compound_primary(
+        &self,
+        q: &ScanQuery,
+        extent: &ScanExtent,
+        stack: &mut Stack,
+        cnt: &mut usize,
+    ) -> (u32, u32) {
+        let mut n_rows = u32::MAX;
+        let mut n_cols = u32::MAX;
+        if q.y4 > self.row_start {
+            n_rows = self.walk_row(
+                q.y4 - 1,
+                q.x4,
+                q.bw4,
+                extent.w4,
+                extent.max_rows,
+                if q.bw4 >= 16 { 4 } else { 1 },
+                &mut |cell, weight| Self::add_compound_neighbour(q, stack, cnt, cell, weight),
+            );
+        }
+        if q.x4 > self.col_start {
+            n_cols = self.walk_col(
+                q.x4 - 1,
+                q.y4,
+                q.bh4,
+                extent.h4,
+                extent.max_cols,
+                if q.bh4 >= 16 { 4 } else { 1 },
+                &mut |cell, weight| Self::add_compound_neighbour(q, stack, cnt, cell, weight),
+            );
+        }
+        if n_rows != u32::MAX && q.bw4.max(q.bh4) <= 16 && q.x4 + q.bw4 < self.col_end {
+            if let Some(cell) = self.cell(q.x4 + q.bw4, q.y4 - 1) {
+                Self::add_compound_neighbour(q, stack, cnt, cell, 4);
+            }
+        }
+        (n_rows, n_cols)
+    }
+
+    /// The top-left cell -- only where both the row above and the column to the left exist.
+    fn scan_compound_top_left(
+        &self,
+        q: &ScanQuery,
+        n_rows: u32,
+        n_cols: u32,
+        stack: &mut Stack,
+        cnt: &mut usize,
+    ) {
+        if n_rows != u32::MAX && n_cols != u32::MAX {
+            if let Some(cell) = self.cell(q.x4 - 1, q.y4 - 1) {
+                Self::add_compound_neighbour(q, stack, cnt, cell, 4);
+            }
+        }
+    }
+
     /// Temporal pairs: one cell projected against both references.
-    #[allow(clippy::too_many_arguments)]
     fn add_temporal_pairs(
         &self,
-        stack: &mut [CompoundMvStackEntry; 8],
+        stack: &mut Stack,
         cnt: &mut usize,
-        x4: u32,
-        y4: u32,
-        bw4: u32,
-        bh4: u32,
-        w4: u32,
-        h4: u32,
-        ref0: i8,
-        ref1: i8,
+        q: &ScanQuery,
+        extent: &ScanExtent,
         use_ref_frame_mvs: bool,
     ) {
-        if use_ref_frame_mvs && ref0 >= 0 && ref1 >= 0 {
+        if use_ref_frame_mvs && q.ref0 >= 0 && q.ref1 >= 0 {
             if let Some(temporal) = &self.temporal {
                 for [mv0, mv1] in crate::tile::motion_field::add_temporal_compound_candidates(
                     &temporal.projected,
-                    temporal.pocdiff[ref0 as usize],
-                    temporal.pocdiff[ref1 as usize],
+                    temporal.pocdiff[q.ref0 as usize],
+                    temporal.pocdiff[q.ref1 as usize],
                     crate::tile::motion_field::TemporalBlock {
-                        bx4: x4,
-                        by4: y4,
-                        bw4,
-                        bh4,
-                        w4,
-                        h4,
+                        bx4: q.x4,
+                        by4: q.y4,
+                        bw4: q.bw4,
+                        bh4: q.bh4,
+                        w4: extent.w4,
+                        h4: extent.h4,
                         col_start: self.col_start,
                         col_end: self.col_end,
                         row_end: self.row_end,
@@ -184,49 +188,41 @@ impl SpatialRefContext {
         }
     }
 
-    /// The secondary rows/columns 3 and 5 units back, skipped where an earlier scan already covered them.
-    #[allow(clippy::too_many_arguments)]
+    /// The secondary rows/columns 3 and 5 units back, skipped where an earlier scan already
+    /// covered them; extends `n_rows`/`n_cols` by what they walked.
     fn scan_secondary(
         &self,
-        stack: &mut [CompoundMvStackEntry; 8],
+        q: &ScanQuery,
+        extent: &ScanExtent,
+        n_rows: &mut u32,
+        n_cols: &mut u32,
+        stack: &mut Stack,
         cnt: &mut usize,
-        add: &AddCandidate<'_>,
-        x4: u32,
-        y4: u32,
-        bw4: u32,
-        bh4: u32,
-        w4: u32,
-        h4: u32,
-        max_rows: i32,
-        max_cols: i32,
-        mut n_rows: u32,
-        mut n_cols: u32,
-    ) -> (u32, u32) {
+    ) {
         for n in 2..=3u32 {
-            if n > n_rows && n as i32 <= max_rows {
-                n_rows += self.walk_row(
-                    (y4 + 1 - 2 * n) | 1,
-                    x4 | 1,
-                    bw4,
-                    w4,
-                    1 + max_rows - n as i32,
-                    if bw4 >= 16 { 4 } else { 2 },
-                    &mut |cell, weight| add(stack, cnt, cell, weight),
+            if n > *n_rows && n as i32 <= extent.max_rows {
+                *n_rows += self.walk_row(
+                    (q.y4 + 1 - 2 * n) | 1,
+                    q.x4 | 1,
+                    q.bw4,
+                    extent.w4,
+                    1 + extent.max_rows - n as i32,
+                    if q.bw4 >= 16 { 4 } else { 2 },
+                    &mut |cell, weight| Self::add_compound_neighbour(q, stack, cnt, cell, weight),
                 );
             }
-            if n > n_cols && n as i32 <= max_cols {
-                n_cols += self.walk_col(
-                    (x4 + 1 - 2 * n) | 1,
-                    y4 | 1,
-                    bh4,
-                    h4,
-                    1 + max_cols - n as i32,
-                    if bh4 >= 16 { 4 } else { 2 },
-                    &mut |cell, weight| add(stack, cnt, cell, weight),
+            if n > *n_cols && n as i32 <= extent.max_cols {
+                *n_cols += self.walk_col(
+                    (q.x4 + 1 - 2 * n) | 1,
+                    q.y4 | 1,
+                    q.bh4,
+                    extent.h4,
+                    1 + extent.max_cols - n as i32,
+                    if q.bh4 >= 16 { 4 } else { 2 },
+                    &mut |cell, weight| Self::add_compound_neighbour(q, stack, cnt, cell, weight),
                 );
             }
         }
-        (n_rows, n_cols)
     }
 
     /// Clamps every candidate to the frame.

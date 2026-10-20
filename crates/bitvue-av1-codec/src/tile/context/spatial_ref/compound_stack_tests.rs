@@ -171,7 +171,7 @@ fn sweep(seed: u64, grid_size: u32, pair_bias: u32) -> u64 {
                 ctx.set_intra_block(x, y, w, h);
                 continue;
             }
-            let (r0, r1) = if next(&mut state) % pair_bias == 0 {
+            let (r0, r1) = if next(&mut state).is_multiple_of(pair_bias) {
                 (PAIR.0, PAIR.1)
             } else {
                 (

@@ -3,13 +3,13 @@
 use super::*;
 
 /// The block whose neighbours are scanned and the reference pair it looks for.
-struct ScanQuery {
-    x4: u32,
-    y4: u32,
-    bw4: u32,
-    bh4: u32,
-    ref0: i8,
-    ref1: i8,
+pub(super) struct ScanQuery {
+    pub(super) x4: u32,
+    pub(super) y4: u32,
+    pub(super) bw4: u32,
+    pub(super) bh4: u32,
+    pub(super) ref0: i8,
+    pub(super) ref1: i8,
 }
 
 impl ScanQuery {
@@ -19,11 +19,11 @@ impl ScanQuery {
 }
 
 /// How far the neighbour scans reach for one query.
-struct ScanExtent {
-    w4: u32,
-    h4: u32,
-    max_rows: i32,
-    max_cols: i32,
+pub(super) struct ScanExtent {
+    pub(super) w4: u32,
+    pub(super) h4: u32,
+    pub(super) max_rows: i32,
+    pub(super) max_cols: i32,
 }
 
 /// What the scans found so far.
@@ -89,7 +89,7 @@ impl SpatialRefContext {
 
     /// The scanned width/height (capped, clamped to the frame edge) and how many 8x8 rows/columns
     /// above/left of the block lie inside the tile.
-    fn scan_extent(&self, q: &ScanQuery) -> ScanExtent {
+    pub(super) fn scan_extent(&self, q: &ScanQuery) -> ScanExtent {
         let w4 = q.bw4.min(16).min(self.col_end.saturating_sub(q.x4)).max(1);
         let h4 = q.bh4.min(16).min(self.row_end.saturating_sub(q.y4)).max(1);
         let max_rows = if q.y4 > self.row_start {
