@@ -104,6 +104,7 @@ pub mod temporal_state;
 pub mod timeline;
 pub mod timeline_cache;
 pub mod timeline_evidence;
+pub mod timeline_frame_evidence_detail;
 pub mod timeline_lanes;
 pub mod timeline_window;
 pub mod tooltip;
