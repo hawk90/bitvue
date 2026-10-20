@@ -70,6 +70,7 @@ pub mod frame_identity_core_vp9_evidence_chain_005;
 pub mod future_plugin;
 pub mod h264_full_index;
 pub mod hrd;
+pub mod hud_format_text;
 pub mod index_dev_hud;
 pub mod index_dev_hud_window;
 pub mod index_extractor;
