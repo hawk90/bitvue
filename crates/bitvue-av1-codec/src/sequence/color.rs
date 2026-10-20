@@ -194,21 +194,7 @@ pub(super) fn parse_color_config(
     reader: &mut BitReader,
     profile: &Av1Profile,
 ) -> Result<ColorConfig> {
-    // high_bitdepth (1 bit)
-    let high_bitdepth = reader.read_bit()?;
-
-    let bit_depth = if matches!(profile, Av1Profile::Professional) && high_bitdepth {
-        // twelve_bit (1 bit)
-        if reader.read_bit()? {
-            12
-        } else {
-            10
-        }
-    } else if matches!(profile, Av1Profile::Professional) || high_bitdepth {
-        10
-    } else {
-        8
-    };
+    let bit_depth = read_bit_depth(reader, profile)?;
 
     let mono_chrome = if !matches!(profile, Av1Profile::High) {
         reader.read_bit()?
@@ -218,23 +204,8 @@ pub(super) fn parse_color_config(
 
     let num_planes = if mono_chrome { 1 } else { 3 };
 
-    // color_description_present_flag (1 bit)
-    let color_description_present = reader.read_bit()?;
-
     let (color_primaries, transfer_characteristics, matrix_coefficients) =
-        if color_description_present {
-            (
-                ColorPrimaries::from_u8(reader.read_bits(8)? as u8),
-                TransferCharacteristics::from_u8(reader.read_bits(8)? as u8),
-                MatrixCoefficients::from_u8(reader.read_bits(8)? as u8),
-            )
-        } else {
-            (
-                ColorPrimaries::Unspecified,
-                TransferCharacteristics::Unspecified,
-                MatrixCoefficients::Unspecified,
-            )
-        };
+        read_color_description(reader)?;
 
     let (color_range, subsampling_x, subsampling_y, chroma_sample_position) = if mono_chrome {
         // color_range (1 bit)
@@ -248,29 +219,12 @@ pub(super) fn parse_color_config(
     } else {
         // color_range (1 bit)
         let color_range = reader.read_bit()?;
-
-        let (subsampling_x, subsampling_y) = if matches!(profile, Av1Profile::Main) {
-            (true, true)
-        } else if matches!(profile, Av1Profile::High) {
-            (false, false)
-        } else if bit_depth == 12 {
-            let subsampling_x = reader.read_bit()?;
-            let subsampling_y = if subsampling_x {
-                reader.read_bit()?
-            } else {
-                false
-            };
-            (subsampling_x, subsampling_y)
-        } else {
-            (true, false)
-        };
-
+        let (subsampling_x, subsampling_y) = read_subsampling(reader, profile, bit_depth)?;
         let chroma_sample_position = if subsampling_x && subsampling_y {
             ChromaSamplePosition::from_u8(reader.read_bits(2)? as u8)
         } else {
             ChromaSamplePosition::Unknown
         };
-
         (
             color_range,
             subsampling_x,
@@ -297,5 +251,69 @@ pub(super) fn parse_color_config(
         subsampling_y,
         chroma_sample_position,
         separate_uv_delta_q,
+    })
+}
+
+/// high_bitdepth (+ twelve_bit for the Professional profile) -> bit depth
+fn read_bit_depth(reader: &mut BitReader, profile: &Av1Profile) -> Result<u8> {
+    // high_bitdepth (1 bit)
+    let high_bitdepth = reader.read_bit()?;
+
+    Ok(
+        if matches!(profile, Av1Profile::Professional) && high_bitdepth {
+            // twelve_bit (1 bit)
+            if reader.read_bit()? {
+                12
+            } else {
+                10
+            }
+        } else if matches!(profile, Av1Profile::Professional) || high_bitdepth {
+            10
+        } else {
+            8
+        },
+    )
+}
+
+/// color_description_present_flag and, when set, the three 8-bit descriptors
+fn read_color_description(
+    reader: &mut BitReader,
+) -> Result<(ColorPrimaries, TransferCharacteristics, MatrixCoefficients)> {
+    // color_description_present_flag (1 bit)
+    if reader.read_bit()? {
+        Ok((
+            ColorPrimaries::from_u8(reader.read_bits(8)? as u8),
+            TransferCharacteristics::from_u8(reader.read_bits(8)? as u8),
+            MatrixCoefficients::from_u8(reader.read_bits(8)? as u8),
+        ))
+    } else {
+        Ok((
+            ColorPrimaries::Unspecified,
+            TransferCharacteristics::Unspecified,
+            MatrixCoefficients::Unspecified,
+        ))
+    }
+}
+
+/// subsampling_x / subsampling_y: fixed by profile, except 12-bit Professional which signals them
+fn read_subsampling(
+    reader: &mut BitReader,
+    profile: &Av1Profile,
+    bit_depth: u8,
+) -> Result<(bool, bool)> {
+    Ok(if matches!(profile, Av1Profile::Main) {
+        (true, true)
+    } else if matches!(profile, Av1Profile::High) {
+        (false, false)
+    } else if bit_depth == 12 {
+        let subsampling_x = reader.read_bit()?;
+        let subsampling_y = if subsampling_x {
+            reader.read_bit()?
+        } else {
+            false
+        };
+        (subsampling_x, subsampling_y)
+    } else {
+        (true, false)
     })
 }
