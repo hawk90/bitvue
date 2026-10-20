@@ -118,6 +118,15 @@ pub struct WindowPerformanceMetrics {
     pub window_adjust_latency_us: Vec<u64>,
 }
 
+/// `part` as a percentage of `total`, 0 when there is nothing to divide by.
+fn percent(part: u64, total: u64) -> f64 {
+    if total > 0 {
+        part as f64 / total as f64 * 100.0
+    } else {
+        0.0
+    }
+}
+
 impl TimelineWindowHUD {
     /// Create a new timeline window HUD
     pub fn new(session_id: String) -> Self {
@@ -415,68 +424,15 @@ impl TimelineWindowHUD {
     pub fn format_text(&self) -> String {
         let mut output = String::new();
 
-        output.push_str(&format!(
-            "=== Timeline Window DevHUD: {} ===\n",
-            self.session_id
-        ));
-        output.push_str(&format!("Updates: {}\n\n", self.update_count));
-
-        // Window state
-        output.push_str("--- Window State ---\n");
-        output.push_str(&format!("Total Frames: {}\n", self.window_viz.total_frames));
-        output.push_str(&format!(
-            "Window: {}-{} (size={})\n",
-            self.window_viz.window_start,
-            self.window_viz.window_end,
-            self.window_viz.window_end - self.window_viz.window_start
-        ));
-        output.push_str(&format!("Position: {}\n", self.window_viz.current_position));
-        output.push_str(&format!(
-            "Materialized: {} ({:.1}% coverage)\n",
-            self.window_viz.materialized_indices.len(),
-            self.window_viz.coverage_percent * 100.0
-        ));
-        output.push_str(&format!(
-            "Sparse Keyframes: {}\n",
-            self.window_viz.sparse_keyframes.len()
-        ));
-        output.push('\n');
+        output.push_str(&self.text_header());
+        output.push_str(&self.text_window_state());
 
         // Visualization
         output.push_str("--- Timeline Visualization ---\n");
         output.push_str(&self.format_window_viz(60));
         output.push('\n');
 
-        // Materialization stats
-        output.push_str("--- Materialization ---\n");
-        output.push_str(&format!(
-            "Total Requests: {}\n",
-            self.materialization_tracker.total_requests
-        ));
-        output.push_str(&format!(
-            "Cache Hits: {} ({:.1}%)\n",
-            self.materialization_tracker.cache_hits,
-            if self.materialization_tracker.total_requests > 0 {
-                self.materialization_tracker.cache_hits as f64
-                    / self.materialization_tracker.total_requests as f64
-                    * 100.0
-            } else {
-                0.0
-            }
-        ));
-        output.push_str(&format!(
-            "Cache Misses: {}\n",
-            self.materialization_tracker.cache_misses
-        ));
-        output.push_str(&format!(
-            "Evictions: {}\n",
-            self.materialization_tracker.frames_evicted
-        ));
-        output.push_str(&format!(
-            "Window Moves: {}\n",
-            self.materialization_tracker.window_moves
-        ));
-        output.push('\n');
+        output.push_str(&self.text_materialization());
 
         // Access pattern
         if !self.materialization_tracker.recent_pattern.is_empty() {
@@ -492,44 +448,87 @@ impl TimelineWindowHUD {
             output.push('\n');
         }
 
-        // Performance metrics
-        output.push_str("--- Performance (UI Freeze Prevention) ---\n");
+        output.push_str(&self.text_performance());
+
+        output
+    }
+
+    fn text_header(&self) -> String {
+        format!(
+            "=== Timeline Window DevHUD: {} ===\nUpdates: {}\n\n",
+            self.session_id, self.update_count
+        )
+    }
+
+    fn text_window_state(&self) -> String {
+        let viz = &self.window_viz;
+        let mut output = String::from("--- Window State ---\n");
+        output.push_str(&format!("Total Frames: {}\n", viz.total_frames));
+        output.push_str(&format!(
+            "Window: {}-{} (size={})\n",
+            viz.window_start,
+            viz.window_end,
+            viz.window_end - viz.window_start
+        ));
+        output.push_str(&format!("Position: {}\n", viz.current_position));
+        output.push_str(&format!(
+            "Materialized: {} ({:.1}% coverage)\n",
+            viz.materialized_indices.len(),
+            viz.coverage_percent * 100.0
+        ));
+        output.push_str(&format!(
+            "Sparse Keyframes: {}\n",
+            viz.sparse_keyframes.len()
+        ));
+        output.push('\n');
+        output
+    }
+
+    fn text_materialization(&self) -> String {
+        let tracker = &self.materialization_tracker;
+        let mut output = String::from("--- Materialization ---\n");
+        output.push_str(&format!("Total Requests: {}\n", tracker.total_requests));
+        output.push_str(&format!(
+            "Cache Hits: {} ({:.1}%)\n",
+            tracker.cache_hits,
+            percent(tracker.cache_hits, tracker.total_requests)
+        ));
+        output.push_str(&format!("Cache Misses: {}\n", tracker.cache_misses));
+        output.push_str(&format!("Evictions: {}\n", tracker.frames_evicted));
+        output.push_str(&format!("Window Moves: {}\n", tracker.window_moves));
+        output.push('\n');
+        output
+    }
+
+    fn text_performance(&self) -> String {
+        let perf = &self.performance;
+        let mut output = String::from("--- Performance (UI Freeze Prevention) ---\n");
         output.push_str(&format!(
             "Avg Access Time: {:.1} μs\n",
-            self.performance.avg_access_time_us
+            perf.avg_access_time_us
         ));
         output.push_str(&format!(
             "Max Access Time: {} μs\n",
-            self.performance.max_access_time_us
+            perf.max_access_time_us
         ));
         output.push_str(&format!(
             "P95 Access Time: {} μs\n",
-            self.performance.p95_access_time_us
+            perf.p95_access_time_us
         ));
         output.push_str(&format!(
             "P99 Access Time: {} μs\n",
-            self.performance.p99_access_time_us
+            perf.p99_access_time_us
         ));
         output.push_str(&format!(
             "Blocking Ops (>16ms): {} / {} ({:.1}%)\n",
-            self.performance.blocking_operations,
-            self.performance.total_operations,
-            if self.performance.total_operations > 0 {
-                self.performance.blocking_operations as f64
-                    / self.performance.total_operations as f64
-                    * 100.0
-            } else {
-                0.0
-            }
+            perf.blocking_operations,
+            perf.total_operations,
+            percent(perf.blocking_operations, perf.total_operations)
         ));
 
-        if !self.performance.window_adjust_latency_us.is_empty() {
-            let avg_adjust = self
-                .performance
-                .window_adjust_latency_us
-                .iter()
-                .sum::<u64>() as f64
-                / self.performance.window_adjust_latency_us.len() as f64;
+        if !perf.window_adjust_latency_us.is_empty() {
+            let avg_adjust = perf.window_adjust_latency_us.iter().sum::<u64>() as f64
+                / perf.window_adjust_latency_us.len() as f64;
             output.push_str(&format!("Avg Window Adjust: {:.1} μs\n", avg_adjust));
         }
 
