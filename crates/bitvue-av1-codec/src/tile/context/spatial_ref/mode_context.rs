@@ -2,6 +2,38 @@
 
 use super::*;
 
+/// The block whose neighbours are scanned and the reference pair it looks for.
+struct ScanQuery {
+    x4: u32,
+    y4: u32,
+    bw4: u32,
+    bh4: u32,
+    ref0: i8,
+    ref1: i8,
+}
+
+impl ScanQuery {
+    fn matches(&self, cell: &SpatialRefCell) -> bool {
+        SpatialRefContext::ref_matches(cell, self.ref0, self.ref1)
+    }
+}
+
+/// How far the neighbour scans reach for one query.
+struct ScanExtent {
+    w4: u32,
+    h4: u32,
+    max_rows: i32,
+    max_cols: i32,
+}
+
+/// What the scans found so far.
+#[derive(Default)]
+struct ScanMatches {
+    newmv: bool,
+    row_mvs: bool,
+    col_mvs: bool,
+}
+
 impl SpatialRefContext {
     /// Whether a decoded cell's ref matches the query block's `(ref0, ref1)` -- rav1d
     /// `add_spatial_candidate`: single-ref (`ref1 < 0`) matches if the cell's `ref0` *or* `ref1`
@@ -34,43 +66,79 @@ impl SpatialRefContext {
         ref0: i8,
         ref1: i8,
     ) -> (u8, u8, bool) {
-        let w4 = bw4.min(16).min(self.col_end.saturating_sub(x4)).max(1);
-        let h4 = bh4.min(16).min(self.row_end.saturating_sub(y4)).max(1);
-        let mut have_newmv = false;
-        let mut have_row_mvs = false;
-        let mut have_col_mvs = false;
-        let matches = |cell: &SpatialRefCell| Self::ref_matches(cell, ref0, ref1);
+        let query = ScanQuery {
+            x4,
+            y4,
+            bw4,
+            bh4,
+            ref0,
+            ref1,
+        };
+        let extent = self.scan_extent(&query);
+        let mut found = ScanMatches::default();
 
-        // `n_rows`/`n_cols` stay `u32::MAX` while the row/column is outside the tile.
+        let (mut n_rows, mut n_cols) = self.scan_primary(&query, &extent, &mut found);
+        let nearest_match = u8::from(found.row_mvs) + u8::from(found.col_mvs);
+
+        self.scan_top_left(&query, n_rows, n_cols, &mut found);
+        self.scan_secondary_matches(&query, &extent, &mut n_rows, &mut n_cols, &mut found);
+
+        let ref_match_count = u8::from(found.row_mvs) + u8::from(found.col_mvs);
+        (nearest_match, ref_match_count, found.newmv)
+    }
+
+    /// The scanned width/height (capped, clamped to the frame edge) and how many 8x8 rows/columns
+    /// above/left of the block lie inside the tile.
+    fn scan_extent(&self, q: &ScanQuery) -> ScanExtent {
+        let w4 = q.bw4.min(16).min(self.col_end.saturating_sub(q.x4)).max(1);
+        let h4 = q.bh4.min(16).min(self.row_end.saturating_sub(q.y4)).max(1);
+        let max_rows = if q.y4 > self.row_start {
+            (q.y4 - self.row_start)
+                .div_ceil(2)
+                .min(2 + u32::from(q.bh4 > 1))
+        } else {
+            0
+        } as i32;
+        let max_cols = if q.x4 > self.col_start {
+            (q.x4 - self.col_start)
+                .div_ceil(2)
+                .min(2 + u32::from(q.bw4 > 1))
+        } else {
+            0
+        } as i32;
+        ScanExtent {
+            w4,
+            h4,
+            max_rows,
+            max_cols,
+        }
+    }
+
+    /// The "primary" scans: the row above, the column to the left and the top-right cell. These
+    /// are the only ones that feed `newmv`. Returns `(n_rows, n_cols)`, each `u32::MAX` while the
+    /// row/column is outside the tile.
+    fn scan_primary(
+        &self,
+        q: &ScanQuery,
+        extent: &ScanExtent,
+        found: &mut ScanMatches,
+    ) -> (u32, u32) {
+        let (x4, y4, bw4, bh4) = (q.x4, q.y4, q.bw4, q.bh4);
         let mut n_rows = u32::MAX;
         let mut n_cols = u32::MAX;
-        let max_rows = if y4 > self.row_start {
-            (y4 - self.row_start)
-                .div_ceil(2)
-                .min(2 + u32::from(bh4 > 1))
-        } else {
-            0
-        } as i32;
-        let max_cols = if x4 > self.col_start {
-            (x4 - self.col_start)
-                .div_ceil(2)
-                .min(2 + u32::from(bw4 > 1))
-        } else {
-            0
-        } as i32;
 
         if y4 > self.row_start {
             n_rows = self.walk_row(
                 y4 - 1,
                 x4,
                 bw4,
-                w4,
-                max_rows,
+                extent.w4,
+                extent.max_rows,
                 if bw4 >= 16 { 4 } else { 1 },
                 &mut |cell, _| {
-                    if matches(cell) {
-                        have_row_mvs = true;
-                        have_newmv |= cell.is_newmv;
+                    if q.matches(cell) {
+                        found.row_mvs = true;
+                        found.newmv |= cell.is_newmv;
                     }
                 },
             );
@@ -80,13 +148,13 @@ impl SpatialRefContext {
                 x4 - 1,
                 y4,
                 bh4,
-                h4,
-                max_cols,
+                extent.h4,
+                extent.max_cols,
                 if bh4 >= 16 { 4 } else { 1 },
                 &mut |cell, _| {
-                    if matches(cell) {
-                        have_col_mvs = true;
-                        have_newmv |= cell.is_newmv;
+                    if q.matches(cell) {
+                        found.col_mvs = true;
+                        found.newmv |= cell.is_newmv;
                     }
                 },
             );
@@ -94,51 +162,61 @@ impl SpatialRefContext {
         // Top-right.
         if n_rows != u32::MAX && bw4.max(bh4) <= 16 && x4 + bw4 < self.col_end {
             if let Some(cell) = self.cell(x4 + bw4, y4 - 1) {
-                if matches(cell) {
-                    have_row_mvs = true;
-                    have_newmv |= cell.is_newmv;
+                if q.matches(cell) {
+                    found.row_mvs = true;
+                    found.newmv |= cell.is_newmv;
                 }
             }
         }
+        (n_rows, n_cols)
+    }
 
-        let nearest_match = u8::from(have_row_mvs) + u8::from(have_col_mvs);
-
-        // Top-left and the secondary scans never feed `have_newmv` (dav1d's
-        // `have_dummy_newmv_match`).
+    /// The top-left cell. Like the secondary scans it never feeds `newmv` (dav1d's
+    /// `have_dummy_newmv_match`).
+    fn scan_top_left(&self, q: &ScanQuery, n_rows: u32, n_cols: u32, found: &mut ScanMatches) {
         if n_rows != u32::MAX && n_cols != u32::MAX {
-            if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
-                if matches(cell) {
-                    have_row_mvs = true;
+            if let Some(cell) = self.cell(q.x4 - 1, q.y4 - 1) {
+                if q.matches(cell) {
+                    found.row_mvs = true;
                 }
             }
         }
+    }
+
+    /// The "secondary" scans of the rows/columns 2 and 3 8x8 units back.
+    fn scan_secondary_matches(
+        &self,
+        q: &ScanQuery,
+        extent: &ScanExtent,
+        n_rows: &mut u32,
+        n_cols: &mut u32,
+        found: &mut ScanMatches,
+    ) {
+        let (x4, y4, bw4, bh4) = (q.x4, q.y4, q.bw4, q.bh4);
         for n in 2..=3u32 {
-            if n > n_rows && n as i32 <= max_rows {
-                n_rows += self.walk_row(
+            if n > *n_rows && n as i32 <= extent.max_rows {
+                *n_rows += self.walk_row(
                     (y4 + 1 - 2 * n) | 1,
                     x4 | 1,
                     bw4,
-                    w4,
-                    1 + max_rows - n as i32,
+                    extent.w4,
+                    1 + extent.max_rows - n as i32,
                     if bw4 >= 16 { 4 } else { 2 },
-                    &mut |cell, _| have_row_mvs |= matches(cell),
+                    &mut |cell, _| found.row_mvs |= q.matches(cell),
                 );
             }
-            if n > n_cols && n as i32 <= max_cols {
-                n_cols += self.walk_col(
+            if n > *n_cols && n as i32 <= extent.max_cols {
+                *n_cols += self.walk_col(
                     (x4 + 1 - 2 * n) | 1,
                     y4 | 1,
                     bh4,
-                    h4,
-                    1 + max_cols - n as i32,
+                    extent.h4,
+                    1 + extent.max_cols - n as i32,
                     if bh4 >= 16 { 4 } else { 2 },
-                    &mut |cell, _| have_col_mvs |= matches(cell),
+                    &mut |cell, _| found.col_mvs |= q.matches(cell),
                 );
             }
         }
-
-        let ref_match_count = u8::from(have_row_mvs) + u8::from(have_col_mvs);
-        (nearest_match, ref_match_count, have_newmv)
     }
 
     /// `(refmv_ctx, newmv_ctx)` per rav1d `rav1d_refmvs_find`'s context build-up (`src/refmvs.rs`).
