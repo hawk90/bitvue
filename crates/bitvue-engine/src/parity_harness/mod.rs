@@ -375,92 +375,30 @@ pub fn calculate_parity_score(
             .get(&item.id)
             .copied()
             .unwrap_or(ParityResult::NotTested);
-        let category_weight = get_category_weight(&item.category, weights);
-        let severity_weight = item.severity.weight();
-        let item_max_score = category_weight * severity_weight;
-
-        let item_score = match result {
-            ParityResult::Pass => item_max_score,
-            ParityResult::Fail => 0.0,
-            ParityResult::Blocked => 0.0,
-            ParityResult::Skipped => 0.0,
-            ParityResult::NotTested => 0.0,
-        };
+        let scored = score_item(item, result, weights);
 
         // Track hard fails (P0 failures)
         if item.severity == Severity::P0 && result == ParityResult::Fail {
             hard_fails.push(item.id.clone());
         }
 
-        // Update category totals
-        let cat_score = by_category.entry(item.category).or_insert(CategoryScore {
-            score: 0.0,
-            max_possible: 0.0,
-            percentage: 0.0,
-            passed: 0,
-            failed: 0,
-            blocked: 0,
-        });
-        cat_score.max_possible += item_max_score;
-        cat_score.score += item_score;
-        match result {
-            ParityResult::Pass => cat_score.passed += 1,
-            ParityResult::Fail => cat_score.failed += 1,
-            ParityResult::Blocked => cat_score.blocked += 1,
-            _ => {}
-        }
+        add_to_category(&mut by_category, &scored);
+        add_to_severity(&mut by_severity, &scored);
 
-        // Update severity totals
-        let sev_score = by_severity.entry(item.severity).or_insert(SeverityScore {
-            score: 0.0,
-            max_possible: 0.0,
-            percentage: 0.0,
-            passed: 0,
-            failed: 0,
-        });
-        sev_score.max_possible += item_max_score;
-        sev_score.score += item_score;
-        match result {
-            ParityResult::Pass => sev_score.passed += 1,
-            ParityResult::Fail => sev_score.failed += 1,
-            _ => {}
-        }
-
-        total_score += item_score;
-        max_possible += item_max_score;
-
-        items.push(ScoredParityItem {
-            id: item.id.clone(),
-            category: item.category,
-            severity: item.severity,
-            result,
-            weighted_score: item_score,
-            max_possible_score: item_max_score,
-            notes: Vec::new(),
-        });
+        total_score += scored.weighted_score;
+        max_possible += scored.max_possible_score;
+        items.push(scored);
     }
 
     // Calculate percentages
     for cat_score in by_category.values_mut() {
-        cat_score.percentage = if cat_score.max_possible > 0.0 {
-            (cat_score.score / cat_score.max_possible) * 100.0
-        } else {
-            0.0
-        };
+        cat_score.percentage = score_percentage(cat_score.score, cat_score.max_possible);
     }
     for sev_score in by_severity.values_mut() {
-        sev_score.percentage = if sev_score.max_possible > 0.0 {
-            (sev_score.score / sev_score.max_possible) * 100.0
-        } else {
-            0.0
-        };
+        sev_score.percentage = score_percentage(sev_score.score, sev_score.max_possible);
     }
 
-    let percentage = if max_possible > 0.0 {
-        (total_score / max_possible) * 100.0
-    } else {
-        0.0
-    };
+    let percentage = score_percentage(total_score, max_possible);
 
     // Parity ready = no hard fails and all P0 items pass
     let parity_ready = hard_fails.is_empty();
@@ -474,6 +412,83 @@ pub fn calculate_parity_score(
         items,
         hard_fails,
         parity_ready,
+    }
+}
+
+/// What one item is worth, and what it earned for `result` (only a pass earns anything).
+fn score_item(
+    item: &ParityItem,
+    result: ParityResult,
+    weights: &ScoringWeights,
+) -> ScoredParityItem {
+    let category_weight = get_category_weight(&item.category, weights);
+    let severity_weight = item.severity.weight();
+    let item_max_score = category_weight * severity_weight;
+
+    let item_score = match result {
+        ParityResult::Pass => item_max_score,
+        ParityResult::Fail => 0.0,
+        ParityResult::Blocked => 0.0,
+        ParityResult::Skipped => 0.0,
+        ParityResult::NotTested => 0.0,
+    };
+
+    ScoredParityItem {
+        id: item.id.clone(),
+        category: item.category,
+        severity: item.severity,
+        result,
+        weighted_score: item_score,
+        max_possible_score: item_max_score,
+        notes: Vec::new(),
+    }
+}
+
+fn add_to_category(
+    by_category: &mut HashMap<ParityCategory, CategoryScore>,
+    scored: &ScoredParityItem,
+) {
+    let cat_score = by_category.entry(scored.category).or_insert(CategoryScore {
+        score: 0.0,
+        max_possible: 0.0,
+        percentage: 0.0,
+        passed: 0,
+        failed: 0,
+        blocked: 0,
+    });
+    cat_score.max_possible += scored.max_possible_score;
+    cat_score.score += scored.weighted_score;
+    match scored.result {
+        ParityResult::Pass => cat_score.passed += 1,
+        ParityResult::Fail => cat_score.failed += 1,
+        ParityResult::Blocked => cat_score.blocked += 1,
+        _ => {}
+    }
+}
+
+fn add_to_severity(by_severity: &mut HashMap<Severity, SeverityScore>, scored: &ScoredParityItem) {
+    let sev_score = by_severity.entry(scored.severity).or_insert(SeverityScore {
+        score: 0.0,
+        max_possible: 0.0,
+        percentage: 0.0,
+        passed: 0,
+        failed: 0,
+    });
+    sev_score.max_possible += scored.max_possible_score;
+    sev_score.score += scored.weighted_score;
+    match scored.result {
+        ParityResult::Pass => sev_score.passed += 1,
+        ParityResult::Fail => sev_score.failed += 1,
+        _ => {}
+    }
+}
+
+/// `score` as a percentage of `max_possible`, 0 when nothing could be scored.
+fn score_percentage(score: f64, max_possible: f64) -> f64 {
+    if max_possible > 0.0 {
+        (score / max_possible) * 100.0
+    } else {
+        0.0
     }
 }
 
