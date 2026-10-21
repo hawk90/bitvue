@@ -17,6 +17,8 @@ mod mode_context;
 mod scan_tests;
 mod single_stack;
 #[cfg(test)]
+mod single_stack_tests;
+#[cfg(test)]
 mod tests;
 
 use super::drl::{CompoundMvStackEntry, MvStackEntry};
