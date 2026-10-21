@@ -405,3 +405,7 @@ mod tests {
         assert_eq!(frame_units(&packet, false), vec![frame]);
     }
 }
+
+#[cfg(test)]
+#[path = "stream_state_tests.rs"]
+mod stream_state_tests;
