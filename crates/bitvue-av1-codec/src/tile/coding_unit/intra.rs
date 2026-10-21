@@ -25,28 +25,69 @@ pub(super) fn read_intra_mode_info(
     frame: &FrameCodingParams,
     cu: &mut CodingUnit,
 ) -> Result<u8> {
-    let BlockRect { width, height, .. } = rect;
+    let mode_symbol = read_luma_mode(decoder, tile_ctx, mi, frame, cu)?;
+
+    // `HasChroma` (dav1d `decode_b`): blocks narrower or shorter than 8 luma samples share one
+    // chroma block with their neighbours, and only the last one (odd 4x4 column/row) codes it.
+    let has_chroma = super::contexts::has_chroma(mi, &frame.tx_type_flags);
+    let uv_mode_symbol = if has_chroma {
+        read_chroma_mode(decoder, rect, mi, frame, mode_symbol)?
+    } else {
+        0
+    };
+
+    read_palette_info(
+        decoder,
+        tile_ctx,
+        mi,
+        frame,
+        cu,
+        (mode_symbol, uv_mode_symbol, has_chroma),
+    )?;
+    let tx_type_mode = read_filter_intra(decoder, rect, mi, frame, cu, mode_symbol)?;
+
+    // Real per-pixel palette color-index map read (spec: right after the mode-info tail
+    // above, before `tx_size` -- `read_palette_mode_info`'s doc) -- required for bitstream
+    // sync whenever either plane actually selected palette mode.
+    if cu.palette.y_size > 0 || cu.palette.uv_size > 0 {
+        read_palette_tokens(
+            decoder,
+            mi.x4,
+            mi.y4,
+            mi.width,
+            mi.height,
+            has_chroma,
+            &cu.palette,
+            frame.mi_rows,
+            frame.mi_cols,
+        )?;
+    }
+
+    super::tx_size::read_intra_tx_size(decoder, tile_ctx, rect, mi, frame, cu)?;
+    Ok(tx_type_mode)
+}
+
+/// `y_mode` and `angle_delta_y`; records the mode in the neighbour context and returns the raw
+/// symbol.
+fn read_luma_mode(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut TileContext,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    cu: &mut CodingUnit,
+) -> Result<u8> {
     let MiRect {
         x4,
         y4,
         width: width_4x4,
         height: height_4x4,
     } = mi;
-    let FrameCodingParams {
-        is_key_frame,
-        allow_screen_content_tools,
-        enable_filter_intra,
-        tx_type_flags,
-        mi_rows,
-        mi_cols,
-        ..
-    } = *frame;
     // Read INTRA prediction mode -- real per-context CDF + adaptation. Key frames use
     // `kfym` (real above/left neighbor-mode-class context, `read_intra_mode`'s doc);
     // non-key-frame intra CUs use a real block-size-class context instead (`y_mode_cdf`,
     // `read_intra_mode_inter_frame`'s doc) -- a real, deliberate CDF-source swap on the
     // SAME unified intra mode-info path, not two independent implementations.
-    let mode_symbol = if is_key_frame {
+    let mode_symbol = if frame.is_key_frame {
         let (above_class, left_class) = tile_ctx.intra_mode_context(x4, y4);
         decoder.read_intra_mode(above_class, left_class)?
     } else {
@@ -62,36 +103,59 @@ pub(super) fn read_intra_mode_info(
     if width_4x4.ilog2() + height_4x4.ilog2() >= 2 && (1..=8).contains(&mode_symbol) {
         decoder.read_angle_delta(mode_symbol - 1)?;
     }
+    Ok(mode_symbol)
+}
 
-    // `HasChroma` (dav1d `decode_b`): blocks narrower or shorter than 8 luma samples share one
-    // chroma block with their neighbours, and only the last one (odd 4x4 column/row) codes it.
-    let has_chroma = super::contexts::has_chroma(mi, &tx_type_flags);
-    let ss_x = u32::from(tx_type_flags.subsampling_x);
-    let ss_y = u32::from(tx_type_flags.subsampling_y);
-
-    // uv_mode / cfl_alpha / angle_delta_uv -- real per-context CDF + adaptation, only read
-    // at all when `has_chroma`. `cfl_allowed` (dav1d): lossless -> the chroma block is exactly
-    // 4x4 (`cbw4 == 1 && cbh4 == 1`); otherwise both luma dims `<= 32`. This crate only tracks
-    // frame-wide `coded_lossless`, not per-segment.
-    let mut uv_mode_symbol: u8 = 0;
-    if has_chroma {
-        let cfl_allowed = if tx_type_flags.coded_lossless {
-            (width_4x4 + ss_x) >> ss_x == 1 && (height_4x4 + ss_y) >> ss_y == 1
-        } else {
-            width <= 32 && height <= 32
-        };
-        uv_mode_symbol = decoder.read_uv_mode(cfl_allowed, mode_symbol)?;
-        if uv_mode_symbol == 13 {
-            decoder.read_cfl_alphas()?;
-        } else if width_4x4.ilog2() + height_4x4.ilog2() >= 2 && (1..=8).contains(&uv_mode_symbol) {
-            decoder.read_angle_delta(uv_mode_symbol - 1)?;
-        }
+/// uv_mode / cfl_alpha / angle_delta_uv -- real per-context CDF + adaptation, only called when
+/// the block has chroma. Returns the raw `uv_mode` symbol. `cfl_allowed` (dav1d): lossless ->
+/// the chroma block is exactly 4x4 (`cbw4 == 1 && cbh4 == 1`); otherwise both luma dims `<= 32`.
+/// This crate only tracks frame-wide `coded_lossless`, not per-segment.
+fn read_chroma_mode(
+    decoder: &mut SymbolDecoder,
+    rect: BlockRect,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    mode_symbol: u8,
+) -> Result<u8> {
+    let flags = &frame.tx_type_flags;
+    let (width_4x4, height_4x4) = (mi.width, mi.height);
+    let ss_x = u32::from(flags.subsampling_x);
+    let ss_y = u32::from(flags.subsampling_y);
+    let cfl_allowed = if flags.coded_lossless {
+        (width_4x4 + ss_x) >> ss_x == 1 && (height_4x4 + ss_y) >> ss_y == 1
+    } else {
+        rect.width <= 32 && rect.height <= 32
+    };
+    let uv_mode_symbol = decoder.read_uv_mode(cfl_allowed, mode_symbol)?;
+    if uv_mode_symbol == 13 {
+        decoder.read_cfl_alphas()?;
+    } else if width_4x4.ilog2() + height_4x4.ilog2() >= 2 && (1..=8).contains(&uv_mode_symbol) {
+        decoder.read_angle_delta(uv_mode_symbol - 1)?;
     }
+    Ok(uv_mode_symbol)
+}
 
-    // palette_mode_info (spec 5.11.46) -- real spec eligibility gate (`read_pal_indices`'s
-    // call site in dav1d's `decode_b`): `allow_screen_content_tools`, `max(bw4,bh4)<=16`
-    // (both dims `<=64px`), `bw4+bh4>=4` (excludes only 4x4/4x8/8x4).
-    let palette_eligible = allow_screen_content_tools
+/// palette_mode_info (spec 5.11.46): reads it when the block is eligible, otherwise clears the
+/// palette sizes the block covers. `modes` is `(y_mode, uv_mode, has_chroma)`.
+fn read_palette_info(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut TileContext,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    cu: &mut CodingUnit,
+    modes: (u8, u8, bool),
+) -> Result<()> {
+    let MiRect {
+        x4,
+        y4,
+        width: width_4x4,
+        height: height_4x4,
+    } = mi;
+    let (mode_symbol, uv_mode_symbol, has_chroma) = modes;
+    // Real spec eligibility gate (`read_pal_indices`'s call site in dav1d's `decode_b`):
+    // `allow_screen_content_tools`, `max(bw4,bh4)<=16` (both dims `<=64px`), `bw4+bh4>=4`
+    // (excludes only 4x4/4x8/8x4).
+    let palette_eligible = frame.allow_screen_content_tools
         && width_4x4.max(height_4x4) <= 16
         && width_4x4 + height_4x4 >= 4;
     if palette_eligible {
@@ -115,43 +179,33 @@ pub(super) fn read_intra_mode_info(
         tile_ctx.set_pal_size(0, x4, y4, width_4x4, height_4x4, 0);
         tile_ctx.set_pal_size(1, x4, y4, width_4x4, height_4x4, 0);
     }
+    Ok(())
+}
 
-    // filter_intra_mode_info -- real per-`BlockSize` CDF + adaptation. Real spec gate:
-    // `y_mode == DC_PRED`, no Y palette, both dims `<=32px`
-    // (`max(log2(bw4),log2(bh4))<=3`), and the sequence header enables it.
-    // The mode the transform-type CDF is indexed by: the luma mode, except that a filter-intra
-    // block (`y_mode == FILTER_PRED`) uses the intra mode its filter corresponds to
-    // (dav1d's `dav1d_filter_mode_to_y_mode`: DC, V, H, HOR_DOWN, DC).
+/// filter_intra_mode_info -- real per-`BlockSize` CDF + adaptation. Real spec gate:
+/// `y_mode == DC_PRED`, no Y palette, both dims `<=32px` (`max(log2(bw4),log2(bh4))<=3`), and the
+/// sequence header enables it. Returns the mode the transform-type CDF is indexed by: the luma
+/// mode, except that a filter-intra block (`y_mode == FILTER_PRED`) uses the intra mode its
+/// filter corresponds to (dav1d's `dav1d_filter_mode_to_y_mode`: DC, V, H, HOR_DOWN, DC).
+fn read_filter_intra(
+    decoder: &mut SymbolDecoder,
+    rect: BlockRect,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    cu: &CodingUnit,
+    mode_symbol: u8,
+) -> Result<u8> {
     let mut tx_type_mode = mode_symbol;
     if mode_symbol == 0
         && cu.palette.y_size == 0
-        && width_4x4.ilog2().max(height_4x4.ilog2()) <= 3
-        && enable_filter_intra
-        && decoder.read_use_filter_intra(block_size_for_dimensions(width, height))?
+        && mi.width.ilog2().max(mi.height.ilog2()) <= 3
+        && frame.enable_filter_intra
+        && decoder.read_use_filter_intra(block_size_for_dimensions(rect.width, rect.height))?
     {
         const FILTER_MODE_TO_Y_MODE: [u8; 5] = [0, 1, 2, 6, 0];
         let filter_mode = decoder.read_filter_intra_mode()?;
         tx_type_mode = FILTER_MODE_TO_Y_MODE[usize::from(filter_mode).min(4)];
     }
-
-    // Real per-pixel palette color-index map read (spec: right after the mode-info tail
-    // above, before `tx_size` -- `read_palette_mode_info`'s doc) -- required for bitstream
-    // sync whenever either plane actually selected palette mode.
-    if cu.palette.y_size > 0 || cu.palette.uv_size > 0 {
-        read_palette_tokens(
-            decoder,
-            x4,
-            y4,
-            width_4x4,
-            height_4x4,
-            has_chroma,
-            &cu.palette,
-            mi_rows,
-            mi_cols,
-        )?;
-    }
-
-    super::tx_size::read_intra_tx_size(decoder, tile_ctx, rect, mi, frame, cu)?;
     Ok(tx_type_mode)
 }
 
@@ -212,3 +266,7 @@ fn block_size_for_dimensions(width: u32, height: u32) -> crate::tile::BlockSize 
         _ => Block4x4,
     }
 }
+
+#[cfg(test)]
+#[path = "intra_tests.rs"]
+mod intra_tests;
