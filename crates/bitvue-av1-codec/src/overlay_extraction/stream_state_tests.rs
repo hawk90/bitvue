@@ -130,3 +130,12 @@ stream_case!(
     4,
     62663505108442518
 );
+
+#[test]
+fn quantizer_category_steps_up_just_above_20_60_and_120() {
+    let cats: Vec<u8> = [i16::MIN, 0, 20, 21, 60, 61, 120, 121, 255]
+        .into_iter()
+        .map(quantizer_category)
+        .collect();
+    assert_eq!(cats, [0, 0, 0, 1, 1, 2, 2, 3, 3]);
+}
