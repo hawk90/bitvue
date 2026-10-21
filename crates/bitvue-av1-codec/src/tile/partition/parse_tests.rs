@@ -132,3 +132,42 @@ fn the_sweep_reaches_trees_edges_and_errors() {
         "{split} {terminal} {clipped}"
     );
 }
+
+#[test]
+fn a_split_just_below_the_depth_limit_fails_in_its_children() {
+    // The children of a split get `depth + 1`, so a split at `MAX - 1` must fail when the first
+    // child is checked, while every non-split node there parses normally.
+    let (mut failed_children, mut parsed) = (0, 0);
+    for seed in 0..60u64 {
+        let data = noise(seed, 64);
+        let mut state = TileState {
+            decoder: SymbolDecoder::new(&data).unwrap(),
+            mv_ctx: MvPredictorContext::new(1, 1),
+            tile_ctx: TileContext::new(64, 64),
+        };
+        let result = parse_partition_recursive(
+            &mut state,
+            0,
+            0,
+            BlockSize::Block64x64,
+            16,
+            16,
+            MAX_PARTITION_DEPTH - 1,
+            &mut |_, _| Ok(()),
+        );
+        match result {
+            Ok(Some(node)) => {
+                assert_ne!(node.partition, PartitionType::Split);
+                parsed += 1;
+            }
+            Err(BitvueError::InvalidData(m)) if m.contains("depth exceeded") => {
+                failed_children += 1
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    assert!(
+        failed_children > 0 && parsed > 0,
+        "{failed_children} {parsed}"
+    );
+}
