@@ -184,30 +184,13 @@ fn read_var_tx_size(
     };
 
     if is_split && max_class > 1 {
-        let (sub_w, sub_h) = match from_w.cmp(&from_h) {
-            std::cmp::Ordering::Greater => (from_w / 2, from_h),
-            std::cmp::Ordering::Less => (from_w, from_h / 2),
-            std::cmp::Ordering::Equal => (from_w / 2, from_h / 2),
-        };
-        let (half_w4, half_h4) = (sub_w / 4, sub_h / 4);
-        read_var_tx_size(
-            decoder,
-            tile_ctx,
-            x4,
-            y4,
-            sub_w,
-            sub_h,
-            depth + 1,
-            mi_rows,
-            mi_cols,
-            out,
-        )?;
-        if from_w >= from_h {
+        let (sub_w, sub_h) = split_size(from_w, from_h);
+        for (dx4, dy4) in split_children(from_w, from_h) {
             read_var_tx_size(
                 decoder,
                 tile_ctx,
-                x4 + half_w4,
-                y4,
+                x4 + dx4,
+                y4 + dy4,
                 sub_w,
                 sub_h,
                 depth + 1,
@@ -215,41 +198,65 @@ fn read_var_tx_size(
                 mi_cols,
                 out,
             )?;
-        }
-        if from_h >= from_w {
-            read_var_tx_size(
-                decoder,
-                tile_ctx,
-                x4,
-                y4 + half_h4,
-                sub_w,
-                sub_h,
-                depth + 1,
-                mi_rows,
-                mi_cols,
-                out,
-            )?;
-            if from_w >= from_h {
-                read_var_tx_size(
-                    decoder,
-                    tile_ctx,
-                    x4 + half_w4,
-                    y4 + half_h4,
-                    sub_w,
-                    sub_h,
-                    depth + 1,
-                    mi_rows,
-                    mi_cols,
-                    out,
-                )?;
-            }
         }
         return Ok(());
     }
 
     let (leaf_w, leaf_h) = if is_split { (4, 4) } else { (from_w, from_h) };
+    push_leaves(
+        tile_ctx,
+        x4,
+        y4,
+        from_w / 4,
+        from_h / 4,
+        leaf_w,
+        leaf_h,
+        out,
+    );
+    Ok(())
+}
+
+/// Size of each child of a split node: only the larger dimension is halved (both when square).
+fn split_size(from_w: u32, from_h: u32) -> (u32, u32) {
+    match from_w.cmp(&from_h) {
+        std::cmp::Ordering::Greater => (from_w / 2, from_h),
+        std::cmp::Ordering::Less => (from_w, from_h / 2),
+        std::cmp::Ordering::Equal => (from_w / 2, from_h / 2),
+    }
+}
+
+/// Offsets (in 4x4 units) of a split node's children, in decode order: two for a rectangle,
+/// four for a square.
+fn split_children(from_w: u32, from_h: u32) -> Vec<(u32, u32)> {
+    let (sub_w, sub_h) = split_size(from_w, from_h);
+    let (half_w4, half_h4) = (sub_w / 4, sub_h / 4);
+    let mut children = vec![(0, 0)];
+    if from_w >= from_h {
+        children.push((half_w4, 0));
+    }
+    if from_h >= from_w {
+        children.push((0, half_h4));
+        if from_w >= from_h {
+            children.push((half_w4, half_h4));
+        }
+    }
+    children
+}
+
+/// Covers the `w4` x `h4` (4x4 units) footprint at `(x4, y4)` with `leaf_w` x `leaf_h` leaves,
+/// recording each one's transform class in the tile context.
+#[allow(clippy::too_many_arguments)]
+fn push_leaves(
+    tile_ctx: &mut crate::tile::TileContext,
+    x4: u32,
+    y4: u32,
+    w4: u32,
+    h4: u32,
+    leaf_w: u32,
+    leaf_h: u32,
+    out: &mut Vec<TxBlock>,
+) {
     let (leaf_w4, leaf_h4) = (leaf_w / 4, leaf_h / 4);
-    let (w4, h4) = (from_w / 4, from_h / 4);
     let (leaf_w_class, leaf_h_class) = (tx_size_class(leaf_w) as u8, tx_size_class(leaf_h) as u8);
     let mut ly = y4;
     while ly < y4 + h4 {
@@ -266,7 +273,6 @@ fn read_var_tx_size(
         }
         ly += leaf_h4;
     }
-    Ok(())
 }
 
 #[cfg(test)]
