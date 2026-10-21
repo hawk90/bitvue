@@ -137,7 +137,10 @@ pub fn extract_required_obus(
     }
 
     // Add context frames after target
-    let context_end = (request.target_frame + request.context_after).min(graph.frame_count() - 1);
+    let context_end = request
+        .target_frame
+        .saturating_add(request.context_after)
+        .min(graph.frame_count() - 1);
     for frame_idx in request.target_frame + 1..=context_end {
         if let Some(frame) = graph.frames.get(frame_idx) {
             required_obu_indices.insert(frame.obu_index);
@@ -500,6 +503,24 @@ mod tests {
         assert_eq!(
             extract(&obus, &request(3, 0, 5, false)).obu_indices,
             vec![0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn a_context_after_of_usize_max_means_everything_after_the_target() {
+        let obus = vec![key(1), inter(1), inter(1), inter(1)];
+        assert_eq!(
+            extract(&obus, &request(1, 0, usize::MAX, false)).obu_indices,
+            vec![0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn a_context_before_of_usize_max_means_everything_before_the_target() {
+        let obus = vec![key(1), inter(1), inter(1), inter(1)];
+        assert_eq!(
+            extract(&obus, &request(2, usize::MAX, 0, false)).obu_indices,
+            vec![0, 1, 2]
         );
     }
 
