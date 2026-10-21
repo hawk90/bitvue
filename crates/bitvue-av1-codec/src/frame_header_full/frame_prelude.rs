@@ -153,3 +153,7 @@ fn read_screen_content_flags(
     } || frame_is_intra;
     Ok((allow_screen_content_tools, force_integer_mv))
 }
+
+#[cfg(test)]
+#[path = "frame_prelude_tests.rs"]
+mod frame_prelude_tests;
