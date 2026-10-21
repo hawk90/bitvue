@@ -104,8 +104,6 @@ pub fn extract_required_obus(
     graph: &DependencyGraph,
     obus: &[Obu],
 ) -> ExtractionResult {
-    let mut required_obu_indices = HashSet::new();
-
     // Validate target frame
     if request.target_frame >= graph.frame_count() {
         // Invalid target, return empty result
@@ -116,75 +114,73 @@ pub fn extract_required_obus(
         };
     }
 
+    let mut required_obu_indices = frame_window_obus(request, graph);
+    if request.include_sequence_header {
+        add_first_sequence_header(&mut required_obu_indices, obus);
+    }
+    add_preceding_temporal_delimiters(&mut required_obu_indices, obus);
+    summarize_selection(required_obu_indices, obus)
+}
+
+/// OBU indices of the frames from the nearest key frame to the target, plus the requested
+/// context frames before and after it.
+fn frame_window_obus(request: &ExtractionRequest, graph: &DependencyGraph) -> HashSet<usize> {
+    let mut indices = HashSet::new();
+    let mut include_frames = |frames: std::ops::Range<usize>| {
+        for frame_idx in frames {
+            if let Some(frame) = graph.frames.get(frame_idx) {
+                indices.insert(frame.obu_index);
+            }
+        }
+    };
+
     // Find nearest prior key frame
     let key_frame_idx = graph
         .find_nearest_key_frame(request.target_frame)
         .unwrap_or(0);
+    include_frames(key_frame_idx..request.target_frame + 1);
 
-    // Include all frames from key frame to target
-    for frame_idx in key_frame_idx..=request.target_frame {
-        if let Some(frame) = graph.frames.get(frame_idx) {
-            required_obu_indices.insert(frame.obu_index);
-        }
-    }
-
-    // Add context frames before target
     let context_start = request.target_frame.saturating_sub(request.context_before);
-    for frame_idx in context_start..request.target_frame {
-        if let Some(frame) = graph.frames.get(frame_idx) {
-            required_obu_indices.insert(frame.obu_index);
-        }
-    }
+    include_frames(context_start..request.target_frame);
 
-    // Add context frames after target
     let context_end = request
         .target_frame
         .saturating_add(request.context_after)
         .min(graph.frame_count() - 1);
-    for frame_idx in request.target_frame + 1..=context_end {
-        if let Some(frame) = graph.frames.get(frame_idx) {
-            required_obu_indices.insert(frame.obu_index);
-        }
-    }
+    include_frames(request.target_frame + 1..context_end + 1);
+    indices
+}
 
-    // Include sequence header if requested
-    if request.include_sequence_header {
-        for (idx, obu) in obus.iter().enumerate() {
-            if obu.header.obu_type == ObuType::SequenceHeader {
-                required_obu_indices.insert(idx);
-                break;
-            }
-        }
+fn add_first_sequence_header(indices: &mut HashSet<usize>, obus: &[Obu]) {
+    if let Some(idx) = obus
+        .iter()
+        .position(|obu| obu.header.obu_type == ObuType::SequenceHeader)
+    {
+        indices.insert(idx);
     }
+}
 
-    // Include temporal delimiters and metadata for required frames
-    let mut temporal_delimiters = Vec::new();
-    for &obu_idx in &required_obu_indices {
-        // Include temporal delimiter before this frame
-        if obu_idx > 0 {
-            if let Some(prev_obu) = obus.get(obu_idx - 1) {
-                if prev_obu.header.obu_type == ObuType::TemporalDelimiter {
-                    temporal_delimiters.push(obu_idx - 1);
-                }
-            }
-        }
-    }
+/// Adds the temporal delimiter directly before each selected OBU (judged on the selection as it
+/// was before any delimiter is added).
+fn add_preceding_temporal_delimiters(indices: &mut HashSet<usize>, obus: &[Obu]) {
+    let delimiters: Vec<usize> = indices
+        .iter()
+        .filter(|&&obu_idx| obu_idx > 0)
+        .filter(|&&obu_idx| {
+            obus.get(obu_idx - 1)
+                .is_some_and(|prev| prev.header.obu_type == ObuType::TemporalDelimiter)
+        })
+        .map(|&obu_idx| obu_idx - 1)
+        .collect();
+    indices.extend(delimiters);
+}
 
-    // Add temporal delimiters to required set
-    for idx in temporal_delimiters {
-        required_obu_indices.insert(idx);
-    }
-
-    // Convert to sorted vector
-    // Pre-allocate with known capacity to avoid reallocation
-    let mut obu_indices = Vec::with_capacity(required_obu_indices.len());
-    obu_indices.extend(required_obu_indices);
+fn summarize_selection(indices: HashSet<usize>, obus: &[Obu]) -> ExtractionResult {
+    let mut obu_indices: Vec<usize> = indices.into_iter().collect();
     obu_indices.sort_unstable();
 
-    // Count frames and estimate size
     let mut frame_count = 0;
     let mut estimated_size = 0;
-
     for &idx in &obu_indices {
         if let Some(obu) = obus.get(idx) {
             estimated_size += obu.total_size as usize;
