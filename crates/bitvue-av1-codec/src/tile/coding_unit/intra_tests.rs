@@ -97,7 +97,7 @@ fn sweep(seed: u64, n: usize) -> u64 {
     for i in 0..n {
         let r = u64::from_le_bytes(rolls[i * 8..i * 8 + 8].try_into().unwrap());
         let s = setup(r);
-        let data = noise(seed ^ (i as u64 + 1) * 0x51ED, 96);
+        let data = noise(seed ^ ((i as u64 + 1) * 0x51ED), 96);
         let mut tile_ctx = TileContext::new(64, 64);
         let (out, cu, next) = run(&data, &s, &mut tile_ctx);
         match out {
@@ -167,16 +167,15 @@ fn screen_content_off_never_reads_a_palette() {
 
 #[test]
 fn the_sweep_reaches_every_branch_of_the_function() {
-    let (mut ok, mut err, mut pal_y, mut pal_uv, mut filter, mut cfl_or_chroma) =
-        (0, 0, 0, 0, 0, 0);
+    let (mut ok, mut pal_y, mut pal_uv, mut filter, mut cfl_or_chroma) = (0, 0, 0, 0, 0);
     let rolls = noise(0x5eed, 3000 * 8);
     for i in 0..3000 {
         let r = u64::from_le_bytes(rolls[i * 8..i * 8 + 8].try_into().unwrap());
         let s = setup(r);
-        let data = noise(0x5eed ^ (i as u64 + 1) * 0x51ED, 96);
+        let data = noise(0x5eed ^ ((i as u64 + 1) * 0x51ED), 96);
         let (out, cu, _) = run(&data, &s, &mut TileContext::new(64, 64));
-        match out {
-            Ok(tx_mode) => {
+        if let Ok(tx_mode) = out {
+            {
                 ok += 1;
                 if cu.palette.y_size > 0 {
                     pal_y += 1;
@@ -191,7 +190,6 @@ fn the_sweep_reaches_every_branch_of_the_function() {
                     cfl_or_chroma += 1;
                 }
             }
-            Err(_) => err += 1,
         }
     }
     assert!(ok > 0 && pal_y > 0 && pal_uv > 0 && filter > 0 && cfl_or_chroma > 0);
