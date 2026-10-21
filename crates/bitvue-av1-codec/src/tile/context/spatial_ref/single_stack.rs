@@ -1,5 +1,6 @@
 //! The single-reference candidate stack (dav1d `refmvs_find`).
 
+use super::mode_context::{ScanExtent, ScanQuery};
 use super::*;
 
 impl SpatialRefContext {
@@ -30,96 +31,43 @@ impl SpatialRefContext {
         ref0: i8,
         use_ref_frame_mvs: bool,
     ) -> ([MvStackEntry; 8], usize) {
+        let query = ScanQuery {
+            x4,
+            y4,
+            bw4,
+            bh4,
+            ref0,
+            ref1: -1,
+        };
+        let extent = self.scan_extent(&query);
         let mut stack = [MvStackEntry::default(); 8];
         let mut cnt = 0usize;
-        let w4 = bw4.min(16).min(self.col_end.saturating_sub(x4)).max(1);
-        let h4 = bh4.min(16).min(self.row_end.saturating_sub(y4)).max(1);
 
-        // `n_rows`/`n_cols` stay `u32::MAX` while the row/column is outside the tile.
-        let mut n_rows = u32::MAX;
-        let mut n_cols = u32::MAX;
-        let max_rows = if y4 > self.row_start {
-            (y4 - self.row_start)
-                .div_ceil(2)
-                .min(2 + u32::from(bh4 > 1))
-        } else {
-            0
-        } as i32;
-        let max_cols = if x4 > self.col_start {
-            (x4 - self.col_start)
-                .div_ceil(2)
-                .min(2 + u32::from(bw4 > 1))
-        } else {
-            0
-        } as i32;
-
-        if y4 > self.row_start {
-            n_rows = self.scan_row_weighted(
-                &mut stack,
-                &mut cnt,
-                ref0,
-                y4 - 1,
-                x4,
-                bw4,
-                w4,
-                max_rows,
-                if bw4 >= 16 { 4 } else { 1 },
-            );
-        }
-        if x4 > self.col_start {
-            n_cols = self.scan_col_weighted(
-                &mut stack,
-                &mut cnt,
-                ref0,
-                x4 - 1,
-                y4,
-                bh4,
-                h4,
-                max_cols,
-                if bh4 >= 16 { 4 } else { 1 },
-            );
-        }
-        // Top-right: only a decoded cell can be there (dav1d's `EDGE_I444_TOP_HAS_RIGHT`).
-        if n_rows != u32::MAX && bw4.max(bh4) <= 16 && x4 + bw4 < self.col_end {
-            if let Some(cell) = self.cell(x4 + bw4, y4 - 1) {
-                Self::add_spatial_candidate(&mut stack, &mut cnt, 4, cell, ref0);
-            }
-        }
+        let (mut n_rows, mut n_cols) =
+            self.scan_single_primary(&query, &extent, &mut stack, &mut cnt);
 
         let nearest_cnt = cnt;
         for cand in &mut stack[..nearest_cnt] {
             cand.weight += 640;
         }
 
-        // Temporal candidates (`refmvs.c:416-452`).
-        if use_ref_frame_mvs && ref0 >= 0 {
-            if let Some(temporal) = &self.temporal {
-                for (mv, _) in Self::temporal_samples(
-                    temporal,
-                    x4,
-                    y4,
-                    bw4,
-                    bh4,
-                    w4,
-                    h4,
-                    ref0,
-                    self.col_start,
-                    self.col_end,
-                    self.row_end,
-                ) {
-                    Self::push_mv_candidate(&mut stack, &mut cnt, 2, mv);
-                }
-            }
+        if use_ref_frame_mvs {
+            self.add_single_temporal(&query, &extent, &mut stack, &mut cnt);
         }
-
-        // Top-left, then the secondary rows/columns -- only where both edges exist.
-        if n_rows != u32::MAX && n_cols != u32::MAX {
-            if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
-                Self::add_spatial_candidate(&mut stack, &mut cnt, 4, cell, ref0);
-            }
-        }
+        self.scan_single_top_left(&query, n_rows, n_cols, &mut stack, &mut cnt);
         (n_rows, n_cols) = self.scan_secondary_weighted(
-            &mut stack, &mut cnt, x4, y4, bw4, bh4, w4, h4, ref0, max_rows, max_cols, n_rows,
+            &mut stack,
+            &mut cnt,
+            x4,
+            y4,
+            bw4,
+            bh4,
+            extent.w4,
+            extent.h4,
+            ref0,
+            extent.max_rows,
+            extent.max_cols,
+            n_rows,
             n_cols,
         );
 
@@ -128,11 +76,106 @@ impl SpatialRefContext {
         stack[..nearest_cnt].sort_by_key(|c| -c.weight);
         stack[nearest_cnt..cnt].sort_by_key(|c| -c.weight);
 
-        self.add_other_ref_candidates(&mut stack, &mut cnt, x4, y4, w4, h4, ref0, n_rows, n_cols);
+        self.add_other_ref_candidates(
+            &mut stack, &mut cnt, x4, y4, extent.w4, extent.h4, ref0, n_rows, n_cols,
+        );
 
         self.clamp_stack_to_frame(&mut stack, cnt, x4, y4, bw4, bh4);
 
         (stack, cnt)
+    }
+
+    /// The nearest group: the row above, the column to the left and the top-right cell (only a
+    /// decoded cell can be there, dav1d's `EDGE_I444_TOP_HAS_RIGHT`). Returns `(n_rows, n_cols)`,
+    /// each `u32::MAX` while the row/column is outside the tile.
+    fn scan_single_primary(
+        &self,
+        q: &ScanQuery,
+        extent: &ScanExtent,
+        stack: &mut [MvStackEntry; 8],
+        cnt: &mut usize,
+    ) -> (u32, u32) {
+        let mut n_rows = u32::MAX;
+        let mut n_cols = u32::MAX;
+        if q.y4 > self.row_start {
+            n_rows = self.scan_row_weighted(
+                stack,
+                cnt,
+                q.ref0,
+                q.y4 - 1,
+                q.x4,
+                q.bw4,
+                extent.w4,
+                extent.max_rows,
+                if q.bw4 >= 16 { 4 } else { 1 },
+            );
+        }
+        if q.x4 > self.col_start {
+            n_cols = self.scan_col_weighted(
+                stack,
+                cnt,
+                q.ref0,
+                q.x4 - 1,
+                q.y4,
+                q.bh4,
+                extent.h4,
+                extent.max_cols,
+                if q.bh4 >= 16 { 4 } else { 1 },
+            );
+        }
+        if n_rows != u32::MAX && q.bw4.max(q.bh4) <= 16 && q.x4 + q.bw4 < self.col_end {
+            if let Some(cell) = self.cell(q.x4 + q.bw4, q.y4 - 1) {
+                Self::add_spatial_candidate(stack, cnt, 4, cell, q.ref0);
+            }
+        }
+        (n_rows, n_cols)
+    }
+
+    /// Temporal candidates (`refmvs.c:416-452`), weight 2.
+    fn add_single_temporal(
+        &self,
+        q: &ScanQuery,
+        extent: &ScanExtent,
+        stack: &mut [MvStackEntry; 8],
+        cnt: &mut usize,
+    ) {
+        if q.ref0 < 0 {
+            return;
+        }
+        let Some(temporal) = &self.temporal else {
+            return;
+        };
+        for (mv, _) in Self::temporal_samples(
+            temporal,
+            q.x4,
+            q.y4,
+            q.bw4,
+            q.bh4,
+            extent.w4,
+            extent.h4,
+            q.ref0,
+            self.col_start,
+            self.col_end,
+            self.row_end,
+        ) {
+            Self::push_mv_candidate(stack, cnt, 2, mv);
+        }
+    }
+
+    /// The top-left cell -- only where both the row above and the column to the left exist.
+    fn scan_single_top_left(
+        &self,
+        q: &ScanQuery,
+        n_rows: u32,
+        n_cols: u32,
+        stack: &mut [MvStackEntry; 8],
+        cnt: &mut usize,
+    ) {
+        if n_rows != u32::MAX && n_cols != u32::MAX {
+            if let Some(cell) = self.cell(q.x4 - 1, q.y4 - 1) {
+                Self::add_spatial_candidate(stack, cnt, 4, cell, q.ref0);
+            }
+        }
     }
 
     /// The secondary rows/columns 3 and 5 units back, skipped where an earlier scan already covered them.
