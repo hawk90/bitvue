@@ -151,3 +151,10 @@ fn a_reduced_still_picture_header_reads_only_the_flags_it_has() {
     );
     assert_eq!(run.position, 1);
 }
+
+#[test]
+fn reading_zero_bits_is_free_so_the_order_hint_guard_is_only_an_early_out() {
+    let mut r = BitReader::new(&[]);
+    assert_eq!(r.read_bits(0).unwrap(), 0);
+    assert_eq!(r.position(), 0);
+}
