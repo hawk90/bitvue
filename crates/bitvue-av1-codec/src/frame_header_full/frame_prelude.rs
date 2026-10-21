@@ -30,42 +30,14 @@ pub(super) fn read_frame_prelude(
         .map(|v| v as u32 + 1)
         .unwrap_or(0);
 
-    let frame_type = if seq.reduced_still_picture_header {
-        FrameType::Key
-    } else {
-        FrameType::from_av1_bits(reader.read_bits(2)?)
-    };
+    let (frame_type, show_frame, showable_frame, error_resilient_mode) =
+        read_frame_visibility(reader, seq)?;
     let frame_is_intra = frame_type.is_intra();
-    let show_frame = if seq.reduced_still_picture_header {
-        true
-    } else {
-        reader.read_bit()?
-    };
-    let showable_frame = if seq.reduced_still_picture_header {
-        false
-    } else if show_frame {
-        frame_type != FrameType::Key
-    } else {
-        reader.read_bit()?
-    };
-    let error_resilient_mode = if seq.reduced_still_picture_header {
-        false
-    } else if frame_type == FrameType::Switch || (frame_type == FrameType::Key && show_frame) {
-        true
-    } else {
-        reader.read_bit()?
-    };
 
     let disable_cdf_update = reader.read_bit()?;
     let (allow_screen_content_tools, force_integer_mv) =
         read_screen_content_flags(reader, seq, frame_is_intra)?;
-
-    if seq.frame_id_numbers_present {
-        let id_len = seq.additional_frame_id_length_minus_1.unwrap_or(0) as u32
-            + seq.delta_frame_id_length_minus_2.unwrap_or(0) as u32
-            + 3;
-        reader.read_bits_u64(id_len as u8)?; // current_frame_id
-    }
+    skip_current_frame_id(reader, seq)?;
 
     let frame_size_override_flag = if frame_type == FrameType::Switch {
         true
@@ -99,20 +71,12 @@ pub(super) fn read_frame_prelude(
         ));
     }
 
-    let refresh_frame_flags: u32 =
-        if frame_type == FrameType::Switch || (frame_type == FrameType::Key && show_frame) {
-            0xFF
-        } else {
-            reader.read_bits(8)?
-        };
-    if (!frame_is_intra || refresh_frame_flags != 0xFF)
-        && error_resilient_mode
-        && seq.enable_order_hint
-    {
-        for _ in 0..NUM_REF_FRAMES {
-            reader.read_bits(order_hint_bits as u8)?; // ref_order_hint[i]
-        }
-    }
+    let refresh_frame_flags = read_refresh_frame_flags(
+        reader,
+        seq,
+        (frame_type, show_frame, error_resilient_mode),
+        order_hint_bits,
+    )?;
 
     Ok(FramePrelude {
         frame_type,
@@ -128,6 +92,76 @@ pub(super) fn read_frame_prelude(
         primary_ref_frame,
         refresh_frame_flags,
     })
+}
+
+/// `frame_type`, `show_frame`, `showable_frame` and `error_resilient_mode`, in that order.
+fn read_frame_visibility(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+) -> Result<(FrameType, bool, bool, bool)> {
+    let frame_type = if seq.reduced_still_picture_header {
+        FrameType::Key
+    } else {
+        FrameType::from_av1_bits(reader.read_bits(2)?)
+    };
+    let show_frame = if seq.reduced_still_picture_header {
+        true
+    } else {
+        reader.read_bit()?
+    };
+    let showable_frame = if seq.reduced_still_picture_header {
+        false
+    } else if show_frame {
+        frame_type != FrameType::Key
+    } else {
+        reader.read_bit()?
+    };
+    let error_resilient_mode = if seq.reduced_still_picture_header {
+        false
+    } else if frame_type == FrameType::Switch || (frame_type == FrameType::Key && show_frame) {
+        true
+    } else {
+        reader.read_bit()?
+    };
+    Ok((frame_type, show_frame, showable_frame, error_resilient_mode))
+}
+
+/// `current_frame_id`: consumed but not kept.
+fn skip_current_frame_id(reader: &mut BitReader, seq: &SequenceHeader) -> Result<()> {
+    if seq.frame_id_numbers_present {
+        let id_len = seq.additional_frame_id_length_minus_1.unwrap_or(0) as u32
+            + seq.delta_frame_id_length_minus_2.unwrap_or(0) as u32
+            + 3;
+        reader.read_bits_u64(id_len as u8)?;
+    }
+    Ok(())
+}
+
+/// `refresh_frame_flags` and, for error-resilient frames that do not refresh every slot, the
+/// `ref_order_hint[]` list (consumed but not kept). `state` is
+/// `(frame_type, show_frame, error_resilient_mode)`.
+fn read_refresh_frame_flags(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+    state: (FrameType, bool, bool),
+    order_hint_bits: u32,
+) -> Result<u32> {
+    let (frame_type, show_frame, error_resilient_mode) = state;
+    let refresh_frame_flags: u32 =
+        if frame_type == FrameType::Switch || (frame_type == FrameType::Key && show_frame) {
+            0xFF
+        } else {
+            reader.read_bits(8)?
+        };
+    if (!frame_type.is_intra() || refresh_frame_flags != 0xFF)
+        && error_resilient_mode
+        && seq.enable_order_hint
+    {
+        for _ in 0..NUM_REF_FRAMES {
+            reader.read_bits(order_hint_bits as u8)?; // ref_order_hint[i]
+        }
+    }
+    Ok(refresh_frame_flags)
 }
 
 /// `allow_screen_content_tools` and `force_integer_mv`.
