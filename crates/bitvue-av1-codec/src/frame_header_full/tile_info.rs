@@ -116,3 +116,7 @@ pub(super) fn read_tile_info(
         tile_size_bytes,
     })
 }
+
+#[cfg(test)]
+#[path = "tile_info_tests.rs"]
+mod tile_info_tests;
