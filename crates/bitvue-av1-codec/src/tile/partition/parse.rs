@@ -315,3 +315,7 @@ pub fn partition_tree_to_grid(
 
     grid
 }
+
+#[cfg(test)]
+#[path = "parse_tests.rs"]
+mod parse_tests;
