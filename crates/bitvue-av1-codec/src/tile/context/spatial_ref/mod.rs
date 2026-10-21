@@ -9,6 +9,8 @@
 
 mod candidates;
 mod compound_stack;
+#[cfg(test)]
+mod compound_stack_tests;
 mod match_ref;
 mod mode_context;
 #[cfg(test)]
