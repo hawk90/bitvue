@@ -3,6 +3,13 @@
 
 use super::*;
 
+mod context;
+mod stats;
+
+use context::coeff_base_eob_context;
+pub(crate) use context::tx_size_ctx;
+pub use stats::ResidualBlockStats;
+
 impl<'a> SymbolDecoder<'a> {
     /// Read one transform block's residual coefficients (AV1 spec Section 5.11.39 `coeffs()`),
     /// returning summary statistics rather than a full per-position coefficient array -- this
@@ -444,105 +451,9 @@ impl<'a> SymbolDecoder<'a> {
     }
 }
 
-/// `coeff_base_eob`'s context (0..=3): purely a function of `eob` (the raw last-scan-index value,
-/// see `read_residual_block`'s doc for why this is `real coefficient count - 1`, not a count) and
-/// tx size, no neighbor/level state needed (unlike `coeff_base`/`coeff_br`, still deferred -- see
-/// `read_residual_block`'s doc). Source: rav1d's `decode_coefs` (`memorysafety/rav1d`,
-/// BSD-2-Clause, `src/recon_tmpl.c`): the single-coefficient case (`eob == 0`) is a distinct
-/// "dc-only" branch that reads `eob_cdf[0]` -- context `0` hardcoded, NOT the generic formula
-/// (which would otherwise give `1`, since `0` is never `>` either positive threshold) -- only
-/// `eob >= 1` goes through `1 + (eob > 2<<tx2dszctx) + (eob > 4<<tx2dszctx)`, where `tx2dszctx` is
-/// `2 * min(tx_size_class, 3)` for a square transform (real AV1 caps the 2D coefficient scan's
-/// size class at 32x32).
-fn coeff_base_eob_context(eob: u32, tx_width_px: u32, tx_height_px: u32) -> u8 {
-    if eob == 0 {
-        return 0;
-    }
-    // dav1d: `tx2dszctx = min(lw, TX_32X32) + min(lh, TX_32X32)` (log2 of px / 4 per side).
-    let tx2dszctx =
-        (cdf::tx_size_class(tx_width_px).min(3) + cdf::tx_size_class(tx_height_px).min(3)) as u32;
-    1 + u8::from(eob > (2 << tx2dszctx)) + u8::from(eob > (4 << tx2dszctx))
-}
-
-/// Summary statistics for one transform block's residual coefficients -- see
-/// `SymbolDecoder::read_residual_block`'s doc for what this deliberately does and doesn't capture
-/// (aggregate magnitude, not per-position values or real pixel-domain energy).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ResidualBlockStats {
-    /// True if `txb_skip` (all_zero) was signaled -- every other field is 0 in that case.
-    pub all_zero: bool,
-    /// Number of nonzero coefficient levels read.
-    pub nonzero_count: u32,
-    /// Sum of absolute coefficient levels (a rough energy proxy).
-    pub sum_abs_level: u64,
-    /// Largest single coefficient level read.
-    pub max_level: u16,
-    /// The raw `dc_sign` bit read for this block's DC coefficient (`Some(1)`=negative,
-    /// `Some(0)`=positive), or `None` if no `dc_sign` bit was read at all (`all_zero`, or the DC
-    /// position's level decoded to `0`) -- feeds `TileContext::set_residual_ctx`'s
-    /// `dc_sign_symbol` param, see its doc for the "neutral" convention this maps to.
-    pub dc_sign_value: Option<u8>,
-}
-
-impl ResidualBlockStats {
-    /// Accounts for one non-zero coefficient of absolute value `level`.
-    fn add_level(&mut self, level: u32) {
-        self.nonzero_count += 1;
-        self.sum_abs_level += u64::from(level);
-        self.max_level = self.max_level.max(level.min(u32::from(u16::MAX)) as u16);
-    }
-}
-
-/// Spec `txSzCtx` (dav1d `TxfmInfo.ctx`) of a transform: `(Tx_Size_Sqr + Tx_Size_Sqr_Up + 1) >> 1`,
-/// i.e. the average of the smaller and the larger side's size class (log2 of px / 4), rounded up.
-/// It selects the coefficient CDF family. Equal to the larger side's class for square and 2:1
-/// transforms and one lower for 4:1 ones.
-pub(crate) fn tx_size_ctx(tx_width_px: u32, tx_height_px: u32) -> usize {
-    let a = cdf::tx_size_class(tx_width_px);
-    let b = cdf::tx_size_class(tx_height_px);
-    (a.min(b) + a.max(b) + 1) >> 1
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_coeff_base_eob_context_increases_with_eob() {
-        // tx_size_px=16 -> tx_size_class=2 -> tx2dszctx=4 -> thresholds 2<<4=32, 4<<4=64.
-        assert_eq!(coeff_base_eob_context(10, 16, 16), 1); // below both thresholds
-        assert_eq!(coeff_base_eob_context(40, 16, 16), 2); // above first only
-        assert_eq!(coeff_base_eob_context(100, 16, 16), 3); // above both
-    }
-
-    /// dav1d: `tx2dszctx = min(lw, 3) + min(lh, 3)` -- the sum of the two sides' size classes, not
-    /// twice the larger one. A 4x8 transform has `tx2dszctx = 0 + 1 = 1` (thresholds 4 and 8), where
-    /// a square 8x8 has 2.
-    #[test]
-    fn test_coeff_base_eob_context_uses_the_sum_of_both_sides() {
-        assert_eq!(coeff_base_eob_context(5, 4, 8), 2); // 4 < 5 <= 8
-        assert_eq!(coeff_base_eob_context(9, 4, 8), 3); // 9 > 8
-        assert_eq!(coeff_base_eob_context(5, 8, 8), 1); // 8x8: thresholds 8 and 16
-    }
-
-    #[test]
-    fn test_coeff_base_eob_context_caps_tx2dszctx_at_32x32() {
-        // 32x32 and 64x64 share the same tx2dszctx (real AV1 caps the 2D coefficient scan's size
-        // class at 32x32) -- same context for the same `eob`.
-        assert_eq!(
-            coeff_base_eob_context(500, 32, 32),
-            coeff_base_eob_context(500, 64, 64)
-        );
-    }
-
-    /// `eob == 0` (rav1d's "dc-only" branch, a single-coefficient transform block) is context `0`,
-    /// NOT the generic formula's result (`1`, since `0` is never `>` either positive threshold) --
-    /// see this function's doc for the desync this closes.
-    #[test]
-    fn test_coeff_base_eob_context_dc_only_is_context_zero() {
-        assert_eq!(coeff_base_eob_context(0, 16, 16), 0);
-        assert_eq!(coeff_base_eob_context(0, 32, 32), 0);
-    }
 
     /// A tile whose equiprobable bools are all `false` up to `zeros` times, then `true`: `data`
     /// is all-zero bytes with one byte set; found by decoding (the arithmetic decoder does not
