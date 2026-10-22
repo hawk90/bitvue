@@ -6,7 +6,7 @@ use bitvue_engine::Result;
 
 /// `floor(log2(x))` for `x >= 1` (dav1d's `ulog2`, used by the palette new-color delta bit-width
 /// shrink -- `read_pal_plane_colors`'s doc).
-fn ulog2(x: u32) -> u32 {
+pub(super) fn ulog2(x: u32) -> u32 {
     31 - x.max(1).leading_zeros()
 }
 
@@ -18,7 +18,7 @@ fn ulog2(x: u32) -> u32 {
 /// *contents* wrong doesn't desync, only which colors get reused vs. re-signaled -- but see
 /// `read_pal_plane_colors`'s doc for why `n_cache` itself, and thus bit *position*, does depend on
 /// getting the SB64-boundary `above_count` masking right).
-fn build_pal_cache(
+pub(super) fn build_pal_cache(
     above_colors: [u16; 8],
     above_count: u8,
     left_colors: [u16; 8],

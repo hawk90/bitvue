@@ -2,6 +2,9 @@
 //! colour reads, ordering and the per-pixel colour-index map.
 
 mod mode_info;
+#[cfg(test)]
+#[path = "mode_info_tests.rs"]
+mod mode_info_tests;
 mod tokens;
 
 pub(in crate::tile::coding_unit) use mode_info::read_palette_mode_info;
