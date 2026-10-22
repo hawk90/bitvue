@@ -279,3 +279,5 @@ mod edge_cases {
         assert!(parse_obu(&data, 10).is_err());
     }
 }
+
+bitvue_test_alloc::install!();

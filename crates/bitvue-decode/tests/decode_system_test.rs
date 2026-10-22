@@ -257,3 +257,5 @@ fn test_decode_output_queue() {
 
     assert!(queue.frames.len() <= queue.capacity);
 }
+
+bitvue_test_alloc::install!();

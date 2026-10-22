@@ -660,3 +660,5 @@ fn test_remove_emulation_prevention_with_real_data() {
         ]
     );
 }
+
+bitvue_test_alloc::install!();

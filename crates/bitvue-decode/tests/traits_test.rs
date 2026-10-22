@@ -332,3 +332,5 @@ fn test_resource_manager_trait() {
     manager.release(id);
     assert_eq!(manager.available_count(), 3);
 }
+
+bitvue_test_alloc::install!();

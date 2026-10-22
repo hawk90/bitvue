@@ -315,3 +315,5 @@ fn test_pixel_format() {
 
     assert_eq!(format.bytes_per_pixel(), 2);
 }
+
+bitvue_test_alloc::install!();

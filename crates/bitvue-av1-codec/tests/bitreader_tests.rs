@@ -361,3 +361,5 @@ mod signed {
         assert_eq!(reader.read_su(4).unwrap(), -1);
     }
 }
+
+bitvue_test_alloc::install!();

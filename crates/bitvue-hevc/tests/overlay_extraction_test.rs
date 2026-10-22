@@ -643,3 +643,5 @@ fn test_ctu_add_cu() {
 
     assert_eq!(ctu.coding_units.len(), 1);
 }
+
+bitvue_test_alloc::install!();

@@ -380,3 +380,5 @@ fn test_parse_vp9_with_reference_frames() {
     let result = parse_vp9(&data);
     assert!(result.is_ok() || result.is_err());
 }
+
+bitvue_test_alloc::install!();

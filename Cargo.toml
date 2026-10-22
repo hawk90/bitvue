@@ -20,6 +20,7 @@ members = [
     "crates/bitvue-cli",        # CLI tool (terminal interface)
     "crates/bitvue-mcp",        # Model Context Protocol server
     "crates/bitvue-benchmarks", # Criterion-based performance benchmarks
+    "crates/bitvue-test-alloc", # Test-only capped global allocator (aborts runaway allocation)
 
     # Individual codec parsers (Pure Rust)
     "crates/bitvue-avc",        # AVC/H.264 parser

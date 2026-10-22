@@ -94,3 +94,5 @@ fn test_parse_hevc_mixed_start_code_lengths() {
     let result = parse_hevc(&data);
     assert!(result.is_ok());
 }
+
+bitvue_test_alloc::install!();

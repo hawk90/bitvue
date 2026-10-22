@@ -246,3 +246,5 @@ fn test_syntax_node_with_capacity() {
     let array_node = SyntaxNode::new("Array", SyntaxNodeType::Array);
     assert!(array_node.children.capacity() >= 8); // Pre-allocated capacity
 }
+
+bitvue_test_alloc::install!();

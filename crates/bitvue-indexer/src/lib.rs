@@ -703,3 +703,6 @@ fn frame_unit(
 mod ivf_av1_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

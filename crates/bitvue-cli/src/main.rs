@@ -468,3 +468,6 @@ mod tests {
         assert!(matches!(cli.command, Commands::Analyze { frame: 7, .. }));
     }
 }
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

@@ -16,3 +16,5 @@ fn basic_types_work() {
     let frame = FrameType::SI;
     assert!(matches!(frame, FrameType::SI));
 }
+
+bitvue_test_alloc::install!();

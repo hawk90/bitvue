@@ -158,3 +158,5 @@ fn test_read_f_basic() {
     let mut reader = BitReader::new(&data);
     assert_eq!(reader.read_f(8).unwrap(), 0b11001100);
 }
+
+bitvue_test_alloc::install!();

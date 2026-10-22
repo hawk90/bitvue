@@ -216,3 +216,6 @@ mod tests {
         assert!(json.get("result").is_none());
     }
 }
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

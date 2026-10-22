@@ -1,0 +1,8 @@
+# cargo-mutants config. The memory guard lives HERE so that a bare `cargo mutants` is protected too.
+# A mutant like `offset += n` -> `offset *= n` loops forever allocating and kernel-panicked the
+# machine twice on 2026-10-22. See scripts/mem_guard_runner.sh (2 GB RSS cap per test binary,
+# BITVUE_MEM_LIMIT_MB to change) and scripts/run_mutants.sh (adds jobs/timeout + killed-mutant report).
+additional_cargo_args = ["--config", "target.'cfg(unix)'.runner=\"scripts/mem_guard_runner.sh\""]
+# Floor for the auto-derived test timeout. Runaway allocation is killed in seconds by the guards, so
+# this only bounds pure spin loops; it must stay above macOS's slow first launch of new binaries.
+minimum_test_timeout = 60

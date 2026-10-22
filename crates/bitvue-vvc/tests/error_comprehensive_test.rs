@@ -495,3 +495,5 @@ fn test_error_vvc_ctu_size() {
     assert!(msg.contains("CTU size"));
     assert!(msg.contains("100"));
 }
+
+bitvue_test_alloc::install!();

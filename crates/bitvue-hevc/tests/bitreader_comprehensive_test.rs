@@ -54,3 +54,5 @@ fn test_read_se_zero() {
     let mut reader = BitReader::new(&data);
     assert_eq!(reader.read_se().unwrap(), 0);
 }
+
+bitvue_test_alloc::install!();

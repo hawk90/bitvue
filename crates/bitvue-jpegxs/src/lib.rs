@@ -22,3 +22,6 @@ pub use overlay_extraction::{
     extract_transform_map, DequantMap, MctInfo, NltInfo, PrecinctMap, TransformMap,
 };
 pub use picture_header::{parse_pih, DecompLevels, PictureHeader, SliceGeometry};
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

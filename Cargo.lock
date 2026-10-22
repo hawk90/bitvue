@@ -301,6 +301,7 @@ dependencies = [
  "bitvue-engine",
  "bitvue-formats",
  "bitvue-metrics",
+ "bitvue-test-alloc",
 ]
 
 [[package]]
@@ -310,6 +311,7 @@ dependencies = [
  "abseil",
  "bitvue-engine",
  "bitvue-formats",
+ "bitvue-test-alloc",
  "criterion",
  "proptest",
  "proptest-derive",
@@ -325,6 +327,7 @@ version = "0.12.0"
 dependencies = [
  "abseil",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tempfile",
@@ -338,6 +341,7 @@ version = "0.12.0"
 dependencies = [
  "abseil",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tempfile",
@@ -371,6 +375,7 @@ dependencies = [
  "bitvue-hevc",
  "bitvue-jpegxs",
  "bitvue-metrics",
+ "bitvue-test-alloc",
  "bitvue-vc3",
  "bitvue-vp9",
  "clap",
@@ -393,6 +398,7 @@ dependencies = [
  "bitvue-avc",
  "bitvue-hevc",
  "bitvue-mpeg2-codec",
+ "bitvue-test-alloc",
  "bitvue-vp9",
  "bitvue-vvc",
 ]
@@ -403,6 +409,7 @@ version = "0.12.0"
 dependencies = [
  "anyhow",
  "bitvue-av1-codec",
+ "bitvue-test-alloc",
  "serde",
  "thiserror",
 ]
@@ -414,6 +421,7 @@ dependencies = [
  "abseil",
  "bitvue-av1-codec",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "dav1d",
  "ffmpeg-next",
  "image",
@@ -428,6 +436,7 @@ dependencies = [
 name = "bitvue-engine"
 version = "0.12.0"
 dependencies = [
+ "bitvue-test-alloc",
  "bytes",
  "chrono",
  "lru",
@@ -447,6 +456,7 @@ dependencies = [
  "bitvue-avc",
  "bitvue-engine",
  "bitvue-hevc",
+ "bitvue-test-alloc",
  "tempfile",
  "thiserror",
 ]
@@ -457,6 +467,7 @@ version = "0.12.0"
 dependencies = [
  "abseil",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tempfile",
@@ -470,6 +481,7 @@ version = "0.12.0"
 dependencies = [
  "bitvue-av1-codec",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "tempfile",
 ]
 
@@ -479,6 +491,7 @@ version = "0.12.0"
 dependencies = [
  "abseil",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tempfile",
@@ -494,6 +507,7 @@ dependencies = [
  "async-trait",
  "bitvue-av1-codec",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tokio",
@@ -506,6 +520,7 @@ name = "bitvue-metrics"
 version = "0.12.0"
 dependencies = [
  "bitvue-engine",
+ "bitvue-test-alloc",
  "rayon",
  "serde",
  "vmaf-head-sys",
@@ -516,6 +531,7 @@ name = "bitvue-mpeg2-codec"
 version = "0.12.0"
 dependencies = [
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tempfile",
@@ -527,6 +543,7 @@ dependencies = [
 name = "bitvue-protocol"
 version = "0.12.0"
 dependencies = [
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "thiserror",
@@ -543,6 +560,7 @@ dependencies = [
  "bitvue-indexer",
  "bitvue-metrics",
  "bitvue-protocol",
+ "bitvue-test-alloc",
  "image",
  "serde",
  "serde_json",
@@ -550,11 +568,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitvue-test-alloc"
+version = "0.12.0"
+
+[[package]]
 name = "bitvue-vc3"
 version = "0.12.0"
 dependencies = [
  "abseil",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tempfile",
@@ -568,6 +591,7 @@ version = "0.12.0"
 dependencies = [
  "abseil",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tempfile",
@@ -581,6 +605,7 @@ version = "0.12.0"
 dependencies = [
  "abseil",
  "bitvue-engine",
+ "bitvue-test-alloc",
  "serde",
  "serde_json",
  "tempfile",

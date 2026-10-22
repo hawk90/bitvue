@@ -26,6 +26,7 @@ tracing = { workspace = true }
 twox-hash = "2.1.5"
 
 [dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }
 criterion = "0.8.2"
 proptest = "1.12.0"
 proptest-derive = "0.9.0"

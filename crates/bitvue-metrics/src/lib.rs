@@ -637,3 +637,6 @@ mod tests {
         assert!((result.2 - 1.0).abs() < 0.01);
     }
 }
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

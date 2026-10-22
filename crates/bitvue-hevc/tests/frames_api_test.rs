@@ -119,3 +119,5 @@ fn test_hevc_frame_type_from_slice() {
     assert_eq!(HevcFrameType::from_slice_type("B"), HevcFrameType::B);
     assert_eq!(HevcFrameType::from_slice_type("X"), HevcFrameType::Unknown);
 }
+
+bitvue_test_alloc::install!();

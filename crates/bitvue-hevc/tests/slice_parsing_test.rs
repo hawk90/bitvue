@@ -575,3 +575,5 @@ fn test_slice_header_complete_i_slice() {
     assert!(header.slice_type.is_intra());
     assert!(!header.slice_type.is_inter());
 }
+
+bitvue_test_alloc::install!();

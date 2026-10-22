@@ -161,3 +161,5 @@ fn test_parse_slice_header_with_start_code_pattern() {
     // Should handle gracefully
     assert!(result.is_ok() || result.is_err());
 }
+
+bitvue_test_alloc::install!();

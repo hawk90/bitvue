@@ -217,3 +217,5 @@ fn test_parse_avc_multiple_nal_before_sps() {
     let result = parse_avc(&data);
     assert!(result.is_ok());
 }
+
+bitvue_test_alloc::install!();

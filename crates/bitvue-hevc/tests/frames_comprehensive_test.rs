@@ -580,3 +580,5 @@ fn test_hevc_frames_array_workflow() {
     assert_eq!(nodes[0].frame_index, Some(0));
     assert_eq!(nodes[1].frame_index, Some(1));
 }
+
+bitvue_test_alloc::install!();

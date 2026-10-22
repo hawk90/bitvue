@@ -477,3 +477,5 @@ fn test_all_mb_type_variants() {
         let _ = mb_type.to_partition_type();
     }
 }
+
+bitvue_test_alloc::install!();

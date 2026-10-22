@@ -399,3 +399,5 @@ fn test_slice_header_complete_b_slice() {
     assert!(header.slice_type.is_b());
     assert!(header.direct_spatial_mv_pred_flag);
 }
+
+bitvue_test_alloc::install!();

@@ -190,3 +190,5 @@ fn test_syntax_node_frame() {
     assert_eq!(frame.node_type, syntax::SyntaxNodeType::Frame);
     assert_eq!(frame.children.len(), 4);
 }
+
+bitvue_test_alloc::install!();

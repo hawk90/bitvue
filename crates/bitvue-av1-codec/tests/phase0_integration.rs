@@ -376,3 +376,5 @@ fn test_phase0_bidirectional_trisync() {
 
     println!("\n🎉 Bidirectional Tri-sync Test PASSED!");
 }
+
+bitvue_test_alloc::install!();

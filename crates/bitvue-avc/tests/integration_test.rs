@@ -310,3 +310,5 @@ fn test_nal_header_parsing() {
         );
     }
 }
+
+bitvue_test_alloc::install!();

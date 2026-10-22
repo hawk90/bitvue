@@ -365,3 +365,5 @@ fn test_parse_hevc_with_multiple_sequences() {
     let result = parse_hevc(&data);
     assert!(result.is_ok() || result.is_err());
 }
+
+bitvue_test_alloc::install!();

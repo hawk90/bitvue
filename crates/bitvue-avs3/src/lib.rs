@@ -58,3 +58,6 @@ pub use syntax::{picture_header_syntax, sequence_header_syntax};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

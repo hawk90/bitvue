@@ -368,3 +368,5 @@ fn test_roi_metrics() {
     assert!(roi.contains_point(150, 150));
     assert!(!roi.contains_point(50, 50));
 }
+
+bitvue_test_alloc::install!();

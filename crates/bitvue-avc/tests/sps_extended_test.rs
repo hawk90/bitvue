@@ -346,3 +346,5 @@ fn test_sps_delta_pic_order_always_zero_flag() {
         let _ = result;
     }
 }
+
+bitvue_test_alloc::install!();

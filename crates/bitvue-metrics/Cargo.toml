@@ -35,3 +35,6 @@ vmaf = ["dep:vmaf-head-sys"]
 
 # Enable multi-threaded CPU metrics
 parallel = ["dep:rayon"]
+
+[dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }

@@ -197,3 +197,5 @@ fn test_hevc_error_source_parse() {
     };
     assert!(err.source().is_none());
 }
+
+bitvue_test_alloc::install!();

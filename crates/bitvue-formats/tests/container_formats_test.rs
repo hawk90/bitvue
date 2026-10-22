@@ -758,3 +758,5 @@ fn test_avc_mp4_tauri_flow() {
         }
     }
 }
+
+bitvue_test_alloc::install!();

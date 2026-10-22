@@ -230,3 +230,5 @@ fn test_vps_constraint_flags() {
     assert!(!vps.profile_tier_level.general_non_packed_constraint_flag);
     assert!(!vps.profile_tier_level.general_frame_only_constraint_flag);
 }
+
+bitvue_test_alloc::install!();

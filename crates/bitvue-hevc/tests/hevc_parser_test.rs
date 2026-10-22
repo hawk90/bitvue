@@ -259,3 +259,5 @@ fn test_hevc_bit_depth() {
         assert!(depth == 8 || depth == 10 || depth == 12);
     }
 }
+
+bitvue_test_alloc::install!();

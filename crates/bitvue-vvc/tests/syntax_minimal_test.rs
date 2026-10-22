@@ -59,3 +59,5 @@ fn test_build_syntax_tree_empty() {
     // build_syntax_tree adds NAL Units array node even when empty
     assert!(!tree.children.is_empty());
 }
+
+bitvue_test_alloc::install!();

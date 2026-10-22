@@ -144,3 +144,5 @@ fn test_syntax_node_some_value() {
     assert!(node.value.is_some());
     assert_eq!(node.value.unwrap(), "value");
 }
+
+bitvue_test_alloc::install!();

@@ -160,3 +160,5 @@ fn test_error_display_io_error() {
     let display = format!("{:?}", err);
     assert!(display.contains("io error") || display.contains("IO error"));
 }
+
+bitvue_test_alloc::install!();

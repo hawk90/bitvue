@@ -202,3 +202,5 @@ fn create_minimal_hevc_stream() -> Vec<u8> {
 
     data
 }
+
+bitvue_test_alloc::install!();

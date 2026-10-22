@@ -533,3 +533,5 @@ fn test_pps_ref_idx_defaults() {
     assert_eq!(pps.num_ref_idx_l0_default_active_minus1, 15);
     assert_eq!(pps.num_ref_idx_l1_default_active_minus1, 10);
 }
+
+bitvue_test_alloc::install!();

@@ -432,3 +432,5 @@ fn test_parse_vvc_with_gdr() {
     let result = parse_vvc(&data);
     assert!(result.is_ok());
 }
+
+bitvue_test_alloc::install!();

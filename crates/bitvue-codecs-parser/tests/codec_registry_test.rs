@@ -278,3 +278,5 @@ fn test_codec_performance_tier() {
     assert_eq!(get_encoding_complexity("AV1"), ComplexityTier::VeryHigh);
     assert!(get_encoding_complexity("HEVC") < get_encoding_complexity("AV1"));
 }
+
+bitvue_test_alloc::install!();

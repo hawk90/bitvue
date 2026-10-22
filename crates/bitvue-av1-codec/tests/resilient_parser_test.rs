@@ -326,3 +326,5 @@ fn test_resilient_parser_diagnostic_count_field() {
         "Individual error should have count=1"
     );
 }
+
+bitvue_test_alloc::install!();

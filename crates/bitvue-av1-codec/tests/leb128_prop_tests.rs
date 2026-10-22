@@ -66,3 +66,5 @@ proptest! {
         }
     }
 }
+
+bitvue_test_alloc::install!();

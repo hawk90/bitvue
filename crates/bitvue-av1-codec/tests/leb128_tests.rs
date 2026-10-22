@@ -237,3 +237,5 @@ mod size {
         }
     }
 }
+
+bitvue_test_alloc::install!();

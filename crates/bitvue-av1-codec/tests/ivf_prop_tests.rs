@@ -62,3 +62,5 @@ proptest! {
         prop_assert!(frame_idx >= 0);
     }
 }
+
+bitvue_test_alloc::install!();
