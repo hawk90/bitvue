@@ -259,94 +259,129 @@ impl ParsedFrame {
                         seq_header = Some(seq_hdr);
                     }
                 }
-                ObuType::Frame => {
-                    // OBU_FRAME packs frame_header() + byte_alignment() + tile_group() into one
-                    // payload (spec 5.10) -- unlike a standalone FrameHeader OBU, the tile bytes
-                    // live right here, after header_size_bytes. Most real encoders (including
-                    // this crate's own IVF test fixture) emit this combined form rather than
-                    // separate FrameHeader+TileGroup OBUs, so without this split, tile_data stays
-                    // empty and every real-CU-parsing consumer (QP/MV/partition/prediction-mode/
-                    // transform grids, deblocking boundary strength) silently falls back to
-                    // scaffold data -- found via `get_deblocking_analysis` returning a decode
-                    // error on real fixture frames that should have real tile data.
-                    //
-                    // `header_size_bytes` for the tile_data cut MUST come from `full_hdr`
-                    // (`parse_frame_header_full`), not `parse_frame_header_basic` -- confirmed via
-                    // a real dav1d oracle build (`DEBUG_BLOCK_INFO`) that `basic`'s value is
-                    // exactly what its own doc admits: an approximation for non-KEY frames that
-                    // skips `frame_size()`/`tile_info()`/`segmentation_params()`/
-                    // `loop_filter_params()`/`cdef_params()`/`lr_params()`/
-                    // `global_motion_params()`/etc. entirely. On the real fixture's frame 13 this
-                    // undershoots by 11 bytes (`basic`=8, `full`=19, oracle's independently-derived
-                    // true offset=19) -- every inter frame's `tile_data` has silently started 11+
-                    // bytes into what's still frame-header bits, handing the symbol decoder
-                    // garbage from its very first read. This was the actual root cause behind the
-                    // "compounding entropy desync" investigated over many sessions as a
-                    // coeff_base/coeff_br context-precision suspicion -- that suspicion was never
-                    // reached because the decoder was never even starting from real tile bytes for
-                    // inter frames. `basic` is kept only for `is_intra_only`/`base_qp`/
-                    // `delta_q_enabled` when `seq_header` isn't available yet (a Frame OBU can't
-                    // spec-legally precede a Sequence Header, so this fallback path is defensive,
-                    // not a real-stream case).
-                    // A temporal unit can hold several frames (a hidden ARF followed by the shown
-                    // frame): every field below describes the frame parsed last, so the tile
-                    // bytes of an earlier one must not stay in front of them.
-                    tile_data.clear();
-                    frame.tile_groups.clear();
-                    if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
-                        frame.apply_basic_header(&frame_hdr);
-                        if seq_header.is_none() && frame_hdr.header_size_bytes < obu.payload.len() {
-                            tile_data
-                                .extend_from_slice(&obu.payload[frame_hdr.header_size_bytes..]);
-                        }
-                    }
-                    if let Some(seq) = &seq_header {
-                        if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
-                        {
-                            frame.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
-                            if full_hdr.header_size_bytes < obu.payload.len() {
-                                let start = tile_data.len();
-                                tile_data
-                                    .extend_from_slice(&obu.payload[full_hdr.header_size_bytes..]);
-                                frame.tile_groups.push(start..tile_data.len());
-                            }
-                        }
-                    }
-                }
-                ObuType::FrameHeader => {
-                    // Same reset as for `ObuType::Frame`: this header starts a new frame, so the
-                    // tile groups gathered for an earlier frame of the packet are not its own.
-                    tile_data.clear();
-                    frame.tile_groups.clear();
-                    if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
-                        frame.apply_basic_header(&frame_hdr);
-                    }
-                    if let Some(seq) = &seq_header {
-                        if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
-                        {
-                            frame.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
-                        }
-                    }
-                }
-                ObuType::TileGroup => {
-                    let start = tile_data.len();
-                    tile_data.extend_from_slice(&obu.payload);
-                    frame.tile_groups.push(start..tile_data.len());
-                }
+                ObuType::Frame => frame.absorb_frame_obu(
+                    &obu.payload,
+                    seq_header.as_ref(),
+                    ref_state,
+                    &prev_ref_order_hint,
+                    &mut tile_data,
+                ),
+                ObuType::FrameHeader => frame.absorb_frame_header_obu(
+                    &obu.payload,
+                    seq_header.as_ref(),
+                    ref_state,
+                    &prev_ref_order_hint,
+                    &mut tile_data,
+                ),
+                ObuType::TileGroup => frame.absorb_tile_group_obu(&obu.payload, &mut tile_data),
                 _ => {}
             }
 
             offset = payload_end;
         }
 
-        // Calculate superblock grid dimensions
-        if frame.dimensions.width > 0 && frame.dimensions.sb_size > 0 {
-            frame.dimensions.sb_cols = frame.dimensions.width.div_ceil(frame.dimensions.sb_size);
-            frame.dimensions.sb_rows = frame.dimensions.height.div_ceil(frame.dimensions.sb_size);
-        }
+        frame.finish_superblock_grid();
 
         frame.tile_data = Arc::from(tile_data);
         Ok(frame)
+    }
+
+    /// An `OBU_FRAME`: the header and the first tile group in one payload.
+    fn absorb_frame_obu(
+        &mut self,
+        payload: &[u8],
+        seq: Option<&crate::SequenceHeader>,
+        ref_state: &mut RefFrameState,
+        prev_ref_order_hint: &[u32; 8],
+        tile_data: &mut Vec<u8>,
+    ) {
+        // OBU_FRAME packs frame_header() + byte_alignment() + tile_group() into one
+        // payload (spec 5.10) -- unlike a standalone FrameHeader OBU, the tile bytes
+        // live right here, after header_size_bytes. Most real encoders (including
+        // this crate's own IVF test fixture) emit this combined form rather than
+        // separate FrameHeader+TileGroup OBUs, so without this split, tile_data stays
+        // empty and every real-CU-parsing consumer (QP/MV/partition/prediction-mode/
+        // transform grids, deblocking boundary strength) silently falls back to
+        // scaffold data -- found via `get_deblocking_analysis` returning a decode
+        // error on real fixture frames that should have real tile data.
+        //
+        // `header_size_bytes` for the tile_data cut MUST come from `full_hdr`
+        // (`parse_frame_header_full`), not `parse_frame_header_basic` -- confirmed via
+        // a real dav1d oracle build (`DEBUG_BLOCK_INFO`) that `basic`'s value is
+        // exactly what its own doc admits: an approximation for non-KEY frames that
+        // skips `frame_size()`/`tile_info()`/`segmentation_params()`/
+        // `loop_filter_params()`/`cdef_params()`/`lr_params()`/
+        // `global_motion_params()`/etc. entirely. On the real fixture's frame 13 this
+        // undershoots by 11 bytes (`basic`=8, `full`=19, oracle's independently-derived
+        // true offset=19) -- every inter frame's `tile_data` has silently started 11+
+        // bytes into what's still frame-header bits, handing the symbol decoder
+        // garbage from its very first read. This was the actual root cause behind the
+        // "compounding entropy desync" investigated over many sessions as a
+        // coeff_base/coeff_br context-precision suspicion -- that suspicion was never
+        // reached because the decoder was never even starting from real tile bytes for
+        // inter frames. `basic` is kept only for `is_intra_only`/`base_qp`/
+        // `delta_q_enabled` when `seq_header` isn't available yet (a Frame OBU can't
+        // spec-legally precede a Sequence Header, so this fallback path is defensive,
+        // not a real-stream case).
+        // A temporal unit can hold several frames (a hidden ARF followed by the shown
+        // frame): every field below describes the frame parsed last, so the tile
+        // bytes of an earlier one must not stay in front of them.
+        tile_data.clear();
+        self.tile_groups.clear();
+        if let Ok(frame_hdr) = parse_frame_header_basic(payload) {
+            self.apply_basic_header(&frame_hdr);
+            if seq.is_none() && frame_hdr.header_size_bytes < payload.len() {
+                tile_data.extend_from_slice(&payload[frame_hdr.header_size_bytes..]);
+            }
+        }
+        if let Some(seq) = seq {
+            if let Ok(full_hdr) = parse_frame_header_full(payload, seq, ref_state) {
+                self.apply_full_header(&full_hdr, seq, prev_ref_order_hint);
+                if full_hdr.header_size_bytes < payload.len() {
+                    let start = tile_data.len();
+                    tile_data.extend_from_slice(&payload[full_hdr.header_size_bytes..]);
+                    self.tile_groups.push(start..tile_data.len());
+                }
+            }
+        }
+    }
+
+    /// A standalone `OBU_FRAME_HEADER`; its tile groups follow as `OBU_TILE_GROUP`s.
+    fn absorb_frame_header_obu(
+        &mut self,
+        payload: &[u8],
+        seq: Option<&crate::SequenceHeader>,
+        ref_state: &mut RefFrameState,
+        prev_ref_order_hint: &[u32; 8],
+        tile_data: &mut Vec<u8>,
+    ) {
+        // Same reset as for `ObuType::Frame`: this header starts a new frame, so the
+        // tile groups gathered for an earlier frame of the packet are not its own.
+        tile_data.clear();
+        self.tile_groups.clear();
+        if let Ok(frame_hdr) = parse_frame_header_basic(payload) {
+            self.apply_basic_header(&frame_hdr);
+        }
+        if let Some(seq) = seq {
+            if let Ok(full_hdr) = parse_frame_header_full(payload, seq, ref_state) {
+                self.apply_full_header(&full_hdr, seq, prev_ref_order_hint);
+            }
+        }
+    }
+
+    /// An `OBU_TILE_GROUP`: its payload is appended to `tile_data`, with a range of its own.
+    fn absorb_tile_group_obu(&mut self, payload: &[u8], tile_data: &mut Vec<u8>) {
+        let start = tile_data.len();
+        tile_data.extend_from_slice(payload);
+        self.tile_groups.push(start..tile_data.len());
+    }
+
+    /// The frame's size in superblocks, once the sequence header has given its size.
+    fn finish_superblock_grid(&mut self) {
+        if self.dimensions.width > 0 && self.dimensions.sb_size > 0 {
+            self.dimensions.sb_cols = self.dimensions.width.div_ceil(self.dimensions.sb_size);
+            self.dimensions.sb_rows = self.dimensions.height.div_ceil(self.dimensions.sb_size);
+        }
     }
 }
 
