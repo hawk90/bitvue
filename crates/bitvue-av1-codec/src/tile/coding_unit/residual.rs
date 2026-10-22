@@ -163,6 +163,21 @@ fn chroma_tiling(mi: MiRect) -> ChromaTiling {
     }
 }
 
+/// The index into the block's per-4x4 luma transform types of the sample co-located with chroma
+/// transform block `(tile_col, tile_row)`; chroma units are two luma 4x4s wide, and a block
+/// narrower than that clamps to its last row/column.
+fn colocated_luma_index(
+    tile_col: u32,
+    tile_row: u32,
+    chroma_tx_w4: u32,
+    chroma_tx_h4: u32,
+    mi: MiRect,
+) -> usize {
+    let lx = (tile_col * chroma_tx_w4 * 2).min(mi.width.saturating_sub(1));
+    let ly = (tile_row * chroma_tx_h4 * 2).min(mi.height.saturating_sub(1));
+    (ly * mi.width + lx) as usize
+}
+
 fn read_chroma_residual(
     decoder: &mut SymbolDecoder,
     tile_ctx: &mut TileContext,
@@ -229,10 +244,14 @@ fn read_chroma_residual(
                     let class = if cu.is_intra() && !cu.use_intrabc {
                         TxClass1d::TwoD
                     } else {
-                        let lx = (tile_col * chroma_tx_w4 * 2).min(mi.width.saturating_sub(1));
-                        let ly = (tile_row * chroma_tx_h4 * 2).min(mi.height.saturating_sub(1));
-                        luma_types[(ly * mi.width + lx) as usize]
-                            .chroma_class(chroma_tx_w, chroma_tx_h)
+                        luma_types[colocated_luma_index(
+                            tile_col,
+                            tile_row,
+                            chroma_tx_w4,
+                            chroma_tx_h4,
+                            mi,
+                        )]
+                        .chroma_class(chroma_tx_w, chroma_tx_h)
                     };
                     let block = decoder.read_chroma_residual_block(
                         chroma_tx_w,
@@ -772,5 +791,39 @@ mod tests {
         assert_eq!(tile(16, 16), (32, 32, 1, 1)); // 64x64 luma
         assert_eq!(tile(32, 32), (32, 32, 2, 2)); // 128x128 luma
         assert_eq!(tile(32, 8), (32, 16, 2, 1)); // each axis is capped on its own
+    }
+
+    #[test]
+    fn a_block_with_several_tx_rows_and_columns_steps_by_the_tx_size_in_both_axes() {
+        let (rect, mi) = rect(0, 0, 4, 4); // 16x16 pixels
+        let mut cu = CodingUnit::new(0, 0, 16, 16);
+        cu.tx_size = TxSize::Tx8x8;
+        assert_eq!(
+            luma_tx_positions(&cu, rect, mi),
+            vec![(0, 0, 8, 8), (2, 0, 8, 8), (0, 2, 8, 8), (2, 2, 8, 8)]
+        );
+    }
+
+    #[test]
+    fn the_colocated_luma_type_of_a_chroma_block_is_found_at_twice_its_offset_and_clamped() {
+        let mi = MiRect {
+            x4: 0,
+            y4: 0,
+            width: 32,
+            height: 32,
+        }; // 128x128 luma
+        assert_eq!(colocated_luma_index(0, 0, 8, 8, mi), 0);
+        assert_eq!(colocated_luma_index(1, 0, 8, 8, mi), 16);
+        assert_eq!(colocated_luma_index(0, 1, 8, 8, mi), 16 * 32);
+        assert_eq!(colocated_luma_index(1, 1, 8, 8, mi), 16 * 32 + 16);
+        // A narrow block clamps to its last column / row.
+        let narrow = MiRect {
+            x4: 0,
+            y4: 0,
+            width: 3,
+            height: 5,
+        };
+        assert_eq!(colocated_luma_index(1, 1, 1, 1, narrow), 2 * 3 + 2);
+        assert_eq!(colocated_luma_index(3, 3, 1, 1, narrow), 4 * 3 + 2);
     }
 }
