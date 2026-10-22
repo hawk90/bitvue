@@ -34,49 +34,50 @@ pub(super) fn read_size_and_refs(
     seq: &SequenceHeader,
     input: &SizeAndRefsInput,
 ) -> Result<SizeAndRefs> {
+    if input.frame_is_intra {
+        read_intra_size(reader, seq, input)
+    } else {
+        read_inter_size_and_refs(reader, seq, input)
+    }
+}
+
+/// An intra frame: its size, and `allow_intrabc` when screen content tools are on and the frame is
+/// not superres-scaled.
+fn read_intra_size(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+    input: &SizeAndRefsInput,
+) -> Result<SizeAndRefs> {
+    let mut allow_intrabc = false;
+    let size = read_frame_size(reader, seq, input.frame_size_override_flag)?;
+    read_render_size(reader)?;
+    if input.allow_screen_content_tools && size.upscaled_width == size.width {
+        allow_intrabc = reader.read_bit()?;
+    }
+    Ok(SizeAndRefs {
+        size,
+        allow_intrabc,
+        ref_frame_idx: [0u32; REFS_PER_FRAME],
+        allow_high_precision_mv: false,
+        subpel_filter_switchable: false,
+        switchable_motion_mode: false,
+        use_ref_frame_mvs: false,
+    })
+}
+
+/// An inter frame: the reference list, the size, and the inter tools.
+fn read_inter_size_and_refs(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+    input: &SizeAndRefsInput,
+) -> Result<SizeAndRefs> {
     let SizeAndRefsInput {
-        frame_is_intra,
         frame_size_override_flag,
-        allow_screen_content_tools,
         force_integer_mv,
         error_resilient_mode,
+        ..
     } = *input;
-    if frame_is_intra {
-        let mut allow_intrabc = false;
-        let size = read_frame_size(reader, seq, frame_size_override_flag)?;
-        read_render_size(reader)?;
-        if allow_screen_content_tools && size.upscaled_width == size.width {
-            allow_intrabc = reader.read_bit()?;
-        }
-        return Ok(SizeAndRefs {
-            size,
-            allow_intrabc,
-            ref_frame_idx: [0u32; REFS_PER_FRAME],
-            allow_high_precision_mv: false,
-            subpel_filter_switchable: false,
-            switchable_motion_mode: false,
-            use_ref_frame_mvs: false,
-        });
-    }
-
-    let mut ref_frame_idx = [0u32; REFS_PER_FRAME];
-    let frame_refs_short_signaling = if seq.enable_order_hint {
-        reader.read_bit()?
-    } else {
-        false
-    };
-    if frame_refs_short_signaling {
-        return Err(err(
-            "frame_refs_short_signaling (set_frame_refs) is not supported by parse_frame_header_full",
-        ));
-    }
-    for slot in ref_frame_idx.iter_mut() {
-        *slot = reader.read_bits(3)?;
-        if seq.frame_id_numbers_present {
-            let delta_len = seq.delta_frame_id_length_minus_2.unwrap_or(0) as u32 + 2;
-            reader.read_bits(delta_len as u8)?; // delta_frame_id_minus_1
-        }
-    }
+    let ref_frame_idx = read_ref_frame_idx(reader, seq)?;
     if frame_size_override_flag && !error_resilient_mode {
         // frame_size_with_refs(): if found_ref via any ref frame's stored size, reuse it;
         // otherwise frame_size()+render_size(). This parser doesn't track ref frame
@@ -117,6 +118,33 @@ pub(super) fn read_size_and_refs(
         switchable_motion_mode,
         use_ref_frame_mvs,
     })
+}
+
+/// `frame_refs_short_signaling` (unsupported) and the seven `ref_frame_idx[]` entries, each
+/// followed by its `delta_frame_id_minus_1` when frame ids are present.
+fn read_ref_frame_idx(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+) -> Result<[u32; REFS_PER_FRAME]> {
+    let mut ref_frame_idx = [0u32; REFS_PER_FRAME];
+    let frame_refs_short_signaling = if seq.enable_order_hint {
+        reader.read_bit()?
+    } else {
+        false
+    };
+    if frame_refs_short_signaling {
+        return Err(err(
+            "frame_refs_short_signaling (set_frame_refs) is not supported by parse_frame_header_full",
+        ));
+    }
+    for slot in ref_frame_idx.iter_mut() {
+        *slot = reader.read_bits(3)?;
+        if seq.frame_id_numbers_present {
+            let delta_len = seq.delta_frame_id_length_minus_2.unwrap_or(0) as u32 + 2;
+            reader.read_bits(delta_len as u8)?; // delta_frame_id_minus_1
+        }
+    }
+    Ok(ref_frame_idx)
 }
 
 #[cfg(test)]
