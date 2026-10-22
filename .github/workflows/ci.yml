@@ -2,7 +2,7 @@ name: CI
 
 # Pipeline shape (everything below `changes` runs in parallel -- there is no serial gate chain):
 #
-#   changes ─┬─ rust-lint   fmt + clippy + bench compile + `--locked`     (ubuntu, ~2 min)
+#   changes ─┬─ rust-lint   test-allocator check + fmt + clippy + bench compile + `--locked` (ubuntu, ~2 min)
 #            ├─ rust-test   one job per crate per OS (19 x 3, 12 at a time, as in #37)
 #            ├─ rust-vmaf   bitvue-metrics with the optional `vmaf` feature, 3 OSes
 #            ├─ rust-vvdec  bitvue-decode with the optional `vvdec` feature (real VVC stream), 2 OSes
@@ -67,10 +67,13 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
+              - '.cargo/**'
+              - 'codecov.yml'
               # fixtures and scripts that the tests and the parity job read
               - 'test_data/**'
               - 'scripts/parity_check.sh'
               - 'scripts/run_regression_suite.sh'
+              - 'scripts/check_test_alloc.sh'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
             # fuzz/ is not a workspace member, so no other job compiles it; it breaks whenever a
@@ -115,6 +118,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Cheap grep, so it runs before anything is built. Without it a new test binary can skip the
+      # capped allocator and nothing but the slower RSS guard would stop a runaway mutant in it.
+      - name: Every test binary installs the capped allocator
+        run: scripts/check_test_alloc.sh
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           components: rustfmt, clippy
