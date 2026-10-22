@@ -20,25 +20,23 @@ describe("useSamplePaths", () => {
     vi.mocked(getSamplePath).mockImplementation(
       async (filename: string) => `/samples/${filename}`,
     );
-    const filenames = ["foreman_av1.ivf"];
+    const filenames = ["sample_av1.ivf"];
 
     const { result } = renderHook(() => useSamplePaths(filenames));
 
     await waitFor(() => {
-      expect(result.current["foreman_av1.ivf"]).toBe(
-        "/samples/foreman_av1.ivf",
-      );
+      expect(result.current["sample_av1.ivf"]).toBe("/samples/sample_av1.ivf");
     });
   });
 
   it("resolves to null (not a crash) when the bridge call rejects", async () => {
     vi.mocked(getSamplePath).mockRejectedValue(new Error("no bridge"));
-    const filenames = ["foreman_av1.ivf"];
+    const filenames = ["sample_av1.ivf"];
 
     const { result } = renderHook(() => useSamplePaths(filenames));
 
     await waitFor(() => {
-      expect(result.current["foreman_av1.ivf"]).toBeNull();
+      expect(result.current["sample_av1.ivf"]).toBeNull();
     });
   });
 

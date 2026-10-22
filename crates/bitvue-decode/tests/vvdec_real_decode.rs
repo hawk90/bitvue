@@ -5,10 +5,10 @@
 //! defined its own stand-in structs inside the tests and never touched the decoder, which is how
 //! a header mismatch (UB in `VvcDecoder::new`) survived.
 //!
-//! The fixture `tests/fixtures/vvc/foreman_176x144_9f_10bit.266` is a 4 353-byte Annex B stream
-//! (9 frames, 10-bit 4:2:0, reordered B-pyramid) encoded with vvenc 1.14 from the first frames of
-//! `samples/foreman_h264.mp4`. The expected hashes are SHA-256 of each output frame as 16-bit
-//! little-endian planar Y, Cb, Cr, produced by `vvdecapp` 3.2.0; FFmpeg's native VVC decoder
+//! The fixture `tests/fixtures/vvc/sample_176x144_9f_10bit.266` is a 3 470-byte Annex B stream
+//! (9 frames, 10-bit 4:2:0, reordered B-pyramid) encoded with vvenc 1.14 (`--preset faster -q 32`) from the first frames of
+//! `test_data/sample_h264.mp4` (FFmpeg `testsrc2`). The expected hashes are SHA-256 of each output frame as 16-bit
+//! little-endian planar Y, Cb, Cr, produced by `vvdecapp` 3.2.1; FFmpeg's native VVC decoder
 //! produced byte-identical output (equal md5 over the whole file).
 
 #![cfg(feature = "vvdec")]
@@ -16,21 +16,21 @@
 use bitvue_decode::decoder::DecodeError;
 use bitvue_decode::{DecodedFrame, Decoder, FrameType, VvcDecoder};
 
-const STREAM: &[u8] = include_bytes!("fixtures/vvc/foreman_176x144_9f_10bit.266");
+const STREAM: &[u8] = include_bytes!("fixtures/vvc/sample_176x144_9f_10bit.266");
 const WIDTH: u32 = 176;
 const HEIGHT: u32 = 144;
 
 /// SHA-256 of each frame in output (display) order.
 const EXPECTED_SHA256: [&str; 9] = [
-    "a36de5c1ce83aee1a80732579b2657f530e581f800449e1dfb310701c6d35980",
-    "f28386d9b0739cc7cb4b4ffb11a6556f5e961c45f97d5d90d44b7ab8ff63a51c",
-    "33577154656f1b405ffb9cf29990f8b162e4be13d1abd70712ae601b38931515",
-    "8207f38ca6ce576ba774809c4aa85894d00356afebc54b90d388319785bc71e3",
-    "cb80d133e191230a233375c6631720647ba8cbcbde5a871c5345d624d358c18a",
-    "8e4e48eb015f80618b7694c00627f41f8a664ba4dd991f389d10c9b89894689d",
-    "e85998f6cb2358cefea407d56a0bdc3a6150f75aa41406802a6a8ad7970f8647",
-    "434194a11540a490fb0faf8fe6d025bb5b90deb983c06be1ec4c5733f2356d50",
-    "63eb383770c61598677a102a3eb3bf91ae0570e240f43b316828baab609a1dbb",
+    "f25611b367e992d403f44259d83eae009452e0af5045cdc69871e0d0d95a180e",
+    "c50056d0ddca7c4ccd54ee3e3dff894a2b88c6788dfb5e20c32556681a434803",
+    "c505455349dae8523df9ee735969d7f88c38e5944dbcfbf8b029771e259a2afe",
+    "46da6e3a06e93c4afe5b54ff5716de2f41e18bedff6991dd3e96c15226f2b7e8",
+    "c0a4e2d239f0dabef46afd48642e047c6b6949fa7d19bd2a51d9d83f978ce435",
+    "12b32f97083715d6e10f3540ab5ea5b6aa9b7ae8814d68cd2d49081796761cd6",
+    "d4888d0c085687984436dea4236c1dde23a9023e63ecb908417cfe6889fc9c9c",
+    "a232d05672841da6a415df3c8ed08531f3cf1dc88d23051aab2ce01eec44c907",
+    "0e8a548dc614ee40f4a3663285b2e2d711a42a63b814fc8ff5f4d6e68b3105ea",
 ];
 
 // ---- a minimal SHA-256 (the test crate has no hashing dependency; this keeps it that way) ----

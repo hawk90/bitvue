@@ -303,7 +303,7 @@ purpose = "truncation at SPS boundary regression (issue #482)"
 **예외**:
 - CI에서만 다운로드하고 리포지토리에는 커밋하지 않는 대용량 corpus(예: 외부 스토리지에서 캐시로 받아오는 fuzz corpus)는 라이선스 조건이 다운로드 스크립트/CI 설정에 명시되어 있으면 충분하다.
 
-**Bitvue 판정**: Confirmed (일부) — `test_data/{avc,hevc,vp9,av1}_test.*` 4개 파일은 README/매니페스트 없이 무관한 커밋("fix(vp9): IVF container strip + MSB-first frame header parsing")에 묻어 추가됨(`git log --follow -- test_data/avc_test.h264`), 나쁜 예와 거의 동일. 반면 `samples/README.md`는 출처(Xiph.org DERF)·라이선스(public domain)·정확한 ffmpeg 생성 커맨드까지 문서화되어 있어 대비됨 — 갭은 `test_data/`에 국한.
+**Bitvue 판정**: Confirmed (일부; 2026-10-23 `test_data/README.md`로 출처 표 추가, `samples/`는 합성 클립으로 교체·통합) — `test_data/{avc,hevc,vp9,av1}_test.*` 4개 파일은 README/매니페스트 없이 무관한 커밋("fix(vp9): IVF container strip + MSB-first frame header parsing")에 묻어 추가됨(`git log --follow -- test_data/avc_test.h264`), 나쁜 예와 거의 동일. 반면 `samples/README.md`는 출처(Xiph.org DERF)·라이선스(public domain)·정확한 ffmpeg 생성 커맨드까지 문서화되어 있어 대비됨 — 갭은 `test_data/`에 국한.
 
 ---
 

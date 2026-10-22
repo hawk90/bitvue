@@ -135,7 +135,7 @@ Running benchmarks:
 ### Test Video Files
 
 `test_data/` is flat: `av1_test.ivf`, `avc_test.h264`, `hevc_test.hevc`, `vp9_test.ivf`.
-`samples/foreman_*` are app demo samples, not test fixtures.
+`test_data/sample_*` are the app's bundled demo clips (FFmpeg `testsrc2`), also used by a few container/VMAF/VVC tests.
 
 ### Fixtures
 

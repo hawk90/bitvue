@@ -153,15 +153,15 @@ const frontendDistIndex = app.isPackaged
   : path.join(repoRoot, "frontend", "dist", "index.html");
 
 // Welcome screen's "Samples" quick-open list (frontend/components/welcome/sampleCatalog.ts).
-// Packaged builds already bundle `samples/` via package.json's `build.extraResources`
-// ({from: "../samples", to: "samples"}) -- this just mirrors that same resourcesPath/repoRoot
+// Packaged builds already bundle the `sample_*` clips of `test_data/` via package.json's
+// `build.extraResources` ({from: "../test_data", to: "samples", filter: ["sample_*"]}) -- this just mirrors that same resourcesPath/repoRoot
 // split every other path in this file uses. `bitvue:getSamplePath` doesn't check existence
 // itself (matches `bitvue:pathExists`'s split responsibility), the renderer already has
 // `pathExists` for that -- relevant regardless of packaging, since the catalog currently lists
 // several filenames that don't exist as real files yet either way (see sampleCatalog.ts).
 const samplesDir = app.isPackaged
   ? path.join(process.resourcesPath, "samples")
-  : path.join(repoRoot, "samples");
+  : path.join(repoRoot, "test_data");
 
 /**
  * Where to load the renderer content from, in priority order:
