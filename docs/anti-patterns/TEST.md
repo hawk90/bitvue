@@ -63,7 +63,7 @@ fn test_parse_av1_matrix(#[case] fixture: &str) {
 **예외**:
 - 유닛 레벨에서 특정 함수 하나의 로직만 검증하는 테스트는 작은 샘플이 적절하다 — 이 안티패턴은 "이것이 스위트 전체의 유일한 검증 방식"일 때 해당한다.
 
-**Bitvue 판정**: Suspected — `crates/bitvue-test-data/src/generators.rs`가 profile/tile/interlace/film-grain/해상도 극단값을 합성 생성해 다수의 `*_edge_cases_test.rs`에서 쓰이므로 구조적 편향은 완화되어 있으나, 실제 인코딩 픽스처(`samples/README.md`)는 전부 FFmpeg(libx264/libx265/libvpx) 단일 인코더 계열만 사용 — 다중 인코더(libaom/SVT-AV1/rav1e) 습관 차이는 커버되지 않음.
+**Bitvue 판정**: Suspected — `crates/bitvue-test-data/src/generators.rs`가 profile/tile/interlace/film-grain/해상도 극단값을 합성 생성해 다수의 `*_edge_cases_test.rs`에서 쓰이므로 구조적 편향은 완화되어 있으나, 실제 인코딩 픽스처(`samples/README.md`)는 전부 FFmpeg(libx264/libx265/libvpx) 단일 인코더 계열만 사용 — 다중 인코더(libaom/SVT-AV1/rav1e) 습관 차이는 커버되지 않음. (이 크레이트는 매니페스트가 없고 어떤 크레이트에서도 쓰이지 않아 2026-10-23 삭제됨 — 아래 판단의 근거로 쓸 수 없음)
 
 ---
 
@@ -124,7 +124,7 @@ fn test_declared_size_exceeds_buffer() {
 **예외**:
 - 파서 레이어가 아니라 이미 검증된 내부 데이터 구조를 다루는 상위 레이어(예: 이미 파싱된 프레임 리스트를 정렬하는 함수)는 malformed 바이트 테스트가 불필요하다 — 신뢰 경계 안쪽이기 때문이다.
 
-**Bitvue 판정**: N/A — 반대 사례가 풍부함: 전용 `crates/bitvue-test-data/src/corruption.rs`(TruncatedHeader/TruncatedFrame/InvalidMagic/FrameSizeOverflow/BitFlip 등 `CorruptionType` enum), 저장소 전체에 malformed/truncat/corrupt/invalid 이름의 테스트 함수 81개, 여러 테스트 파일에서 `catch_unwind` 사용 확인.
+**Bitvue 판정**: N/A — 반대 사례가 풍부함: 전용 `crates/bitvue-test-data/src/corruption.rs`(TruncatedHeader/TruncatedFrame/InvalidMagic/FrameSizeOverflow/BitFlip 등 `CorruptionType` enum), 저장소 전체에 malformed/truncat/corrupt/invalid 이름의 테스트 함수 81개, 여러 테스트 파일에서 `catch_unwind` 사용 확인. (이 크레이트는 매니페스트가 없고 어떤 크레이트에서도 쓰이지 않아 2026-10-23 삭제됨 — 아래 판단의 근거로 쓸 수 없음)
 
 ---
 

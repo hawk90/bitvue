@@ -2,7 +2,7 @@
 # Every test binary must install the capped allocator (bitvue_test_alloc::install!()), otherwise a
 # runaway mutant in that binary is only caught by the slower RSS-polling guard. Lists the misses.
 cd "$(dirname "$0")/.."
-skip='bitvue-test-alloc|bitvue-test-data|bitvue-benchmarks|vendor'
+skip='bitvue-test-alloc|bitvue-benchmarks|vendor'
 missing=0
 for c in crates/*/; do
   name=$(basename "$c"); echo "$name" | grep -Eq "^($skip)$" && continue

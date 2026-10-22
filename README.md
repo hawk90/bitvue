@@ -166,6 +166,7 @@ bitvue/
 │   ├── bitvue-cli/           # CLI tool
 │   ├── bitvue-mcp/           # Model Context Protocol server
 │   ├── bitvue-benchmarks/    # Criterion-based performance benchmarks
+│   ├── bitvue-test-alloc/    # Test-only capped global allocator (aborts runaway allocation)
 │   │   # Codec parsers (pure Rust, bitstream syntax only)
 │   ├── bitvue-av1-codec/     # AV1 OBU parser
 │   ├── bitvue-avc/           # AVC/H.264 parser
@@ -186,13 +187,16 @@ bitvue/
 │   ├── electron/             # Main process (window, native menu, sidecar lifecycle, IPC)
 │   └── src/                  # Sidecar client, protocol codec
 ├── scripts/                  # Development scripts
-│   ├── setup.sh, dev.sh, clean.sh
+│   ├── setup.sh, bootstrap.sh, dev.sh, clean.sh, prune.sh
 │   ├── parity_check.sh, run_regression_suite.sh
+│   ├── run_mutants.sh, mem_guard_runner.sh, check_test_alloc.sh
+│   ├── branch_coverage.py, function_coverage.py, check_fuzz_targets.sh, fuzz_seed_corpus.py
 │   └── package_electron.sh   # Builds + packages the Electron app
-└── config/                   # Tool configurations
-    ├── clippy.toml
-    ├── deny.toml
-    └── codecov.yml
+├── docs/                     # Specs (features.yaml), parity docs, history, anti-pattern catalog
+├── fuzz/                     # cargo-fuzz targets (own Cargo.toml, outside the workspace)
+├── test_data/, samples/      # Fixture clips; samples/ is bundled into the app
+├── resources/                # App icons and Linux desktop metadata
+├── deny.toml, codecov.yml, rust-toolchain.toml, lefthook.toml   # Tool configuration (repo root)
 ```
 
 ---

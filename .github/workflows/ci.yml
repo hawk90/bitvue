@@ -170,7 +170,6 @@ jobs:
         # Every workspace member with tests. Not listed, with the reason:
         #   bitvue, bitvue-codecs       re-export facades, no tests
         #   bitvue-benchmarks           criterion benches only (compiled by rust-lint)
-        #   bitvue-test-data            fixtures only
         #   abseil (crates/vendor)      private fork, excluded everywhere (CLAUDE.md)
         crate:
           - bitvue-engine
