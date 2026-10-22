@@ -620,4 +620,6 @@ fn index_ivf_av1(
 }
 
 #[cfg(test)]
+mod ivf_av1_tests;
+#[cfg(test)]
 mod tests;
