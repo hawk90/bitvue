@@ -13,7 +13,7 @@ use super::parser::ParsedFrame;
 use super::{DecodeOutcome, ParsedCodingUnits};
 use crate::sequence::SequenceHeader;
 use crate::symbol::CdfContext;
-use crate::tile::MotionFieldState;
+use crate::tile::{CodingUnit, MotionFieldState, ProjectedMotionField};
 use bitvue_engine::BitvueError;
 use std::sync::Arc;
 
@@ -106,54 +106,81 @@ impl StreamDecodeState {
             return Ok(Arc::new(parsed));
         }
 
-        let order_hint_bits = seq.order_hint_bits_minus_1.map_or(0, |v| u32::from(v) + 1);
-        let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-        let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-        let dims = parsed.dimensions;
-
-        // Temporal motion-vector candidates: projected from the motion fields of the references.
-        let temporal = match (parsed.use_ref_frame_mvs, parsed.ref_frame_idx) {
-            (true, Some(ref_frame_idx)) => {
-                let sources = crate::tile::select_motion_field_sources(
-                    &self.motion,
-                    &prev_ref_order_hint,
-                    &ref_frame_idx,
-                    parsed.order_hint,
-                    seq.enable_order_hint,
-                    order_hint_bits,
-                );
-                let projected = crate::tile::project_motion_field(
-                    &sources,
-                    &self.motion,
-                    dims.width.div_ceil(8).max(1),
-                    dims.height.div_ceil(8).max(1),
-                );
-                let pocdiff: [i32; 7] = std::array::from_fn(|i| {
-                    crate::frame_header_full::relative_dist(
-                        parsed.order_hint,
-                        prev_ref_order_hint[ref_frame_idx[i] as usize],
-                        seq.enable_order_hint,
-                        order_hint_bits,
-                    )
-                    .clamp(-31, 31) as i32
-                });
-                Some((projected, pocdiff))
-            }
-            _ => None,
+        let order_hints = OrderHints {
+            enabled: seq.enable_order_hint,
+            bits: seq.order_hint_bits_minus_1.map_or(0, |v| u32::from(v) + 1),
+            slots: prev_ref_order_hint,
         };
+        let initial_cdf = self.initial_cdf(&parsed);
+        let temporal = self.temporal_candidates(&parsed, &order_hints);
+        let (units, outcome, final_cdf) = self.decode_tile(&parsed, temporal, &initial_cdf);
+        self.record_frame(&parsed, &order_hints, &units, &initial_cdf, &final_cdf);
 
-        // A frame with a primary reference frame starts from that reference's saved CDFs.
-        let initial_cdf = match (parsed.primary_ref_frame, parsed.ref_frame_idx) {
+        parsed.decoded = Some(ParsedCodingUnits {
+            units: Arc::new(units),
+            outcome,
+        });
+        let parsed = Arc::new(parsed);
+        self.refresh_slots(&parsed);
+        Ok(parsed)
+    }
+
+    /// The CDFs the frame's tile starts from: its primary reference frame's saved CDFs, or the
+    /// defaults for its quantizer when it has none (or that slot saved none).
+    fn initial_cdf(&self, parsed: &ParsedFrame) -> CdfContext {
+        let qcat = quantizer_category(parsed.frame_type.base_qp.unwrap_or(128) as i16);
+        match (parsed.primary_ref_frame, parsed.ref_frame_idx) {
             (slot @ 0..=6, Some(idx)) => self
                 .motion
                 .saved_cdf(idx[slot as usize])
                 .cloned()
                 .unwrap_or_else(|| CdfContext::new_with_qcat(qcat)),
             _ => CdfContext::new_with_qcat(qcat),
-        };
+        }
+    }
 
+    /// Temporal motion-vector candidates, projected from the motion fields of the references,
+    /// with the frame's `pocdiff`s. `None` for a frame that does not use them.
+    fn temporal_candidates(
+        &self,
+        parsed: &ParsedFrame,
+        order_hints: &OrderHints,
+    ) -> Option<(ProjectedMotionField, [i32; 7])> {
+        let (true, Some(ref_frame_idx)) = (parsed.use_ref_frame_mvs, parsed.ref_frame_idx) else {
+            return None;
+        };
+        let dims = parsed.dimensions;
+        let sources = crate::tile::select_motion_field_sources(
+            &self.motion,
+            &order_hints.slots,
+            &ref_frame_idx,
+            parsed.order_hint,
+            order_hints.enabled,
+            order_hints.bits,
+        );
+        let projected = crate::tile::project_motion_field(
+            &sources,
+            &self.motion,
+            dims.width.div_ceil(8).max(1),
+            dims.height.div_ceil(8).max(1),
+        );
+        let pocdiff: [i32; 7] = std::array::from_fn(|i| {
+            order_hints
+                .dist(parsed.order_hint, ref_frame_idx[i])
+                .clamp(-31, 31) as i32
+        });
+        Some((projected, pocdiff))
+    }
+
+    /// Decodes the frame's tile into coding units, its outcome and the CDFs it ended with.
+    fn decode_tile(
+        &mut self,
+        parsed: &ParsedFrame,
+        temporal: Option<(ProjectedMotionField, [i32; 7])>,
+        initial_cdf: &CdfContext,
+    ) -> (Vec<CodingUnit>, DecodeOutcome, CdfContext) {
         let decode = decode_frame(
-            &parsed,
+            parsed,
             FrameDecodeInputs {
                 temporal: temporal.as_ref().map(|(field, pocdiff)| (field, *pocdiff)),
                 initial_cdf: Some(initial_cdf.clone()),
@@ -163,53 +190,92 @@ impl StreamDecodeState {
         {
             self.last_trace = decode.as_ref().map(|d| d.trace.clone()).unwrap_or_default();
         }
-        let (units, outcome, final_cdf) = match decode {
+        match decode {
             Ok(d) => (d.units, d.outcome, d.final_cdf),
             // The tile could not even be started (too small to hold a symbol): the slots are still
             // refreshed, with nothing to inherit.
             Err(_) => (Vec::new(), DecodeOutcome::default(), initial_cdf.clone()),
-        };
+        }
+    }
 
-        // What the frame leaves behind for later frames.
+    /// What the frame leaves behind for later frames: its saved CDFs and motion field, and the
+    /// order hints of the slots it refreshes.
+    fn record_frame(
+        &mut self,
+        parsed: &ParsedFrame,
+        order_hints: &OrderHints,
+        units: &[CodingUnit],
+        initial_cdf: &CdfContext,
+        final_cdf: &CdfContext,
+    ) {
         let saved_cdf = if parsed.disable_frame_end_update_cdf {
-            initial_cdf
+            initial_cdf.clone()
         } else {
-            initial_cdf.saved_at_frame_end(&final_cdf, parsed.frame_type.is_intra_only)
+            initial_cdf.saved_at_frame_end(final_cdf, parsed.frame_type.is_intra_only)
         };
         let mfmv_sign: [bool; 7] = match parsed.ref_frame_idx {
             Some(ref_frame_idx) => std::array::from_fn(|i| {
-                crate::frame_header_full::relative_dist(
-                    prev_ref_order_hint[ref_frame_idx[i] as usize],
-                    parsed.order_hint,
-                    seq.enable_order_hint,
-                    order_hint_bits,
-                ) < 0
+                order_hints.dist_to(ref_frame_idx[i], parsed.order_hint) < 0
             }),
             None => [false; 7],
         };
-        let grid = crate::tile::store_motion_field(&units, dims.width, dims.height, &mfmv_sign);
+        let dims = parsed.dimensions;
+        let grid = crate::tile::store_motion_field(units, dims.width, dims.height, &mfmv_sign);
         self.motion
             .store_cdf(parsed.refresh_frame_flags, &saved_cdf);
         self.motion.update(
-            &prev_ref_order_hint,
+            &order_hints.slots,
             parsed.refresh_frame_flags,
             parsed.ref_frame_idx.as_ref(),
             grid,
             !parsed.frame_type.is_intra_only || parsed.allow_intrabc,
         );
+    }
 
-        parsed.decoded = Some(ParsedCodingUnits {
-            units: Arc::new(units),
-            outcome,
-        });
-        let parsed = Arc::new(parsed);
+    /// Makes every reference slot the frame refreshes hold it.
+    fn refresh_slots(&mut self, parsed: &Arc<ParsedFrame>) {
         for slot in 0..8 {
             if parsed.refresh_frame_flags & (1 << slot) != 0 {
-                self.slots[slot] = Some(Arc::clone(&parsed));
+                self.slots[slot] = Some(Arc::clone(parsed));
             }
         }
-        Ok(parsed)
     }
+}
+
+/// The order-hint parameters of the sequence and the order hints the reference slots held before
+/// the frame being decoded.
+struct OrderHints {
+    enabled: bool,
+    bits: u32,
+    slots: [u32; 8],
+}
+
+impl OrderHints {
+    /// Distance from the reference in `slot_idx` to the frame with `order_hint` (spec 7.12.3's
+    /// `get_relative_dist(order_hint, ref)`).
+    fn dist(&self, order_hint: u32, slot_idx: u8) -> i64 {
+        crate::frame_header_full::relative_dist(
+            order_hint,
+            self.slots[slot_idx as usize],
+            self.enabled,
+            self.bits,
+        )
+    }
+
+    /// The same distance with the arguments the other way round.
+    fn dist_to(&self, slot_idx: u8, order_hint: u32) -> i64 {
+        crate::frame_header_full::relative_dist(
+            self.slots[slot_idx as usize],
+            order_hint,
+            self.enabled,
+            self.bits,
+        )
+    }
+}
+
+/// The CDF quantizer category of a base quantizer index.
+fn quantizer_category(base_qp: i16) -> u8 {
+    (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8
 }
 
 #[cfg(test)]
@@ -405,3 +471,7 @@ mod tests {
         assert_eq!(frame_units(&packet, false), vec![frame]);
     }
 }
+
+#[cfg(test)]
+#[path = "stream_state_tests.rs"]
+mod stream_state_tests;
