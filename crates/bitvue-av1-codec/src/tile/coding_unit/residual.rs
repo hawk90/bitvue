@@ -35,34 +35,13 @@ fn read_luma_residual(
     cu: &CodingUnit,
     y_mode_raw: u8,
 ) -> Result<(ResidualBlockStats, Vec<LumaTxType>)> {
-    let BlockRect { width, height, .. } = rect;
     let MiRect { x4, y4, .. } = mi;
     let FrameCodingParams {
         is_key_frame,
         tx_type_flags,
         ..
     } = *frame;
-    // Real `tx_blocks` (var-tx, inter only -- see `compute_inter_tx_blocks`'s doc) gives the
-    // true per-leaf positions/sizes directly, including genuinely rectangular leaves;
-    // everything else still tiles uniformly at `cu.tx_size` (a heuristic for those CUs, not a
-    // real bitstream-derived size, still square-only).
-    let tx_positions: Vec<(u32, u32, u32, u32)> = if let Some(blocks) = &cu.tx_blocks {
-        blocks
-            .iter()
-            .map(|b| (b.x4, b.y4, b.width_px, b.height_px))
-            .collect()
-    } else {
-        let tx_px = cu.tx_size.size();
-        let tx_cols = width.div_ceil(tx_px).max(1);
-        let tx_rows = height.div_ceil(tx_px).max(1);
-        let tx_wh4 = tx_px / 4;
-        (0..tx_rows)
-            .flat_map(|tx_row| {
-                (0..tx_cols)
-                    .map(move |tx_col| (x4 + tx_col * tx_wh4, y4 + tx_row * tx_wh4, tx_px, tx_px))
-            })
-            .collect()
-    };
+    let tx_positions = luma_tx_positions(cu, rect, mi);
     // Real `txb_skip`/`dc_sign` neighbor context is only trustworthy where transform-block
     // boundaries are real (regular key-frame intra via `tx_size()`, or inter/IntraBC via real
     // `tx_blocks` -- both real bitstream-derived boundaries); other CUs keep the
@@ -134,6 +113,56 @@ fn read_luma_residual(
     Ok((summary, luma_types))
 }
 
+/// The luma transform blocks of `cu` as `(x4, y4, width_px, height_px)`, in reading order.
+fn luma_tx_positions(cu: &CodingUnit, rect: BlockRect, mi: MiRect) -> Vec<(u32, u32, u32, u32)> {
+    let BlockRect { width, height, .. } = rect;
+    let MiRect { x4, y4, .. } = mi;
+    // Real `tx_blocks` (var-tx, inter only -- see `compute_inter_tx_blocks`'s doc) gives the
+    // true per-leaf positions/sizes directly, including genuinely rectangular leaves;
+    // everything else still tiles uniformly at `cu.tx_size` (a heuristic for those CUs, not a
+    // real bitstream-derived size, still square-only).
+    if let Some(blocks) = &cu.tx_blocks {
+        blocks
+            .iter()
+            .map(|b| (b.x4, b.y4, b.width_px, b.height_px))
+            .collect()
+    } else {
+        let tx_px = cu.tx_size.size();
+        let tx_cols = width.div_ceil(tx_px).max(1);
+        let tx_rows = height.div_ceil(tx_px).max(1);
+        let tx_wh4 = tx_px / 4;
+        (0..tx_rows)
+            .flat_map(|tx_row| {
+                (0..tx_cols)
+                    .map(move |tx_col| (x4 + tx_col * tx_wh4, y4 + tx_row * tx_wh4, tx_px, tx_px))
+            })
+            .collect()
+    }
+}
+
+/// How a block's chroma plane is cut into transform blocks: their size in samples and their
+/// count per axis.
+struct ChromaTiling {
+    tx_w: u32,
+    tx_h: u32,
+    tiles_x: u32,
+    tiles_y: u32,
+}
+
+/// The chroma block of an 8x8-or-larger luma block is half its size; a 4-wide/tall block (which
+/// shares its chroma with its neighbours) still has a 4-sample chroma side. Each axis is capped at
+/// 32 samples per transform block.
+fn chroma_tiling(mi: MiRect) -> ChromaTiling {
+    let (chroma_w, chroma_h) = (((mi.width + 1) >> 1) * 4, ((mi.height + 1) >> 1) * 4);
+    let (tx_w, tx_h) = (chroma_w.min(32), chroma_h.min(32));
+    ChromaTiling {
+        tx_w,
+        tx_h,
+        tiles_x: chroma_w.div_ceil(tx_w).max(1),
+        tiles_y: chroma_h.div_ceil(tx_h).max(1),
+    }
+}
+
 fn read_chroma_residual(
     decoder: &mut SymbolDecoder,
     tile_ctx: &mut TileContext,
@@ -166,13 +195,13 @@ fn read_chroma_residual(
         && tx_type_flags.subsampling_y
         && super::contexts::has_chroma(mi, &tx_type_flags)
     {
-        // The chroma block of an 8x8-or-larger luma block is half its size; a 4-wide/tall block
-        // (which shares its chroma with its neighbours) still has a 4-sample chroma side.
-        let (chroma_w, chroma_h) = (((mi.width + 1) >> 1) * 4, ((mi.height + 1) >> 1) * 4);
-        let (chroma_tx_w, chroma_tx_h) = (chroma_w.min(32), chroma_h.min(32));
+        let ChromaTiling {
+            tx_w: chroma_tx_w,
+            tx_h: chroma_tx_h,
+            tiles_x: chroma_tiles_x,
+            tiles_y: chroma_tiles_y,
+        } = chroma_tiling(mi);
         let (chroma_tx_w4, chroma_tx_h4) = (chroma_tx_w / 4, chroma_tx_h / 4);
-        let chroma_tiles_x = chroma_w.div_ceil(chroma_tx_w).max(1);
-        let chroma_tiles_y = chroma_h.div_ceil(chroma_tx_h).max(1);
         let not_one_blk = chroma_tiles_x * chroma_tiles_y > 1;
         let (cx4_base, cy4_base) = (x4 / 2, y4 / 2);
         for plane in 0..2usize {
@@ -668,5 +697,80 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn luma_blocks_without_a_tx_list_tile_the_block_row_by_row_at_the_tx_size() {
+        let (rect, mi) = rect(2, 3, 4, 2); // 16x8 pixels at 4x4 position (2, 3)
+        let mut cu = CodingUnit::new(8, 12, 16, 8);
+        cu.tx_size = TxSize::Tx8x8;
+        assert_eq!(
+            luma_tx_positions(&cu, rect, mi),
+            vec![(2, 3, 8, 8), (4, 3, 8, 8)]
+        );
+        cu.tx_size = TxSize::Tx4x4;
+        let positions = luma_tx_positions(&cu, rect, mi);
+        assert_eq!(positions.len(), 8);
+        assert_eq!(
+            &positions[..5],
+            &[
+                (2, 3, 4, 4),
+                (3, 3, 4, 4),
+                (4, 3, 4, 4),
+                (5, 3, 4, 4),
+                (2, 4, 4, 4)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_transform_larger_than_the_block_still_gives_one_position() {
+        let (rect, mi) = rect(0, 0, 1, 1);
+        let mut cu = CodingUnit::new(0, 0, 4, 4);
+        cu.tx_size = TxSize::Tx8x8;
+        assert_eq!(luma_tx_positions(&cu, rect, mi), vec![(0, 0, 8, 8)]);
+    }
+
+    #[test]
+    fn a_tx_list_gives_its_own_positions_whatever_the_tx_size() {
+        let (rect, mi) = rect(4, 4, 4, 4);
+        let mut cu = CodingUnit::new(16, 16, 16, 16);
+        cu.tx_blocks = Some(vec![
+            TxBlock {
+                x4: 4,
+                y4: 4,
+                width_px: 16,
+                height_px: 8,
+            },
+            TxBlock {
+                x4: 4,
+                y4: 6,
+                width_px: 8,
+                height_px: 8,
+            },
+        ]);
+        assert_eq!(
+            luma_tx_positions(&cu, rect, mi),
+            vec![(4, 4, 16, 8), (4, 6, 8, 8)]
+        );
+    }
+
+    #[test]
+    fn chroma_is_half_the_luma_block_rounded_up_to_4_and_capped_at_32_per_axis() {
+        let tile = |w4, h4| {
+            let t = chroma_tiling(MiRect {
+                x4: 0,
+                y4: 0,
+                width: w4,
+                height: h4,
+            });
+            (t.tx_w, t.tx_h, t.tiles_x, t.tiles_y)
+        };
+        assert_eq!(tile(1, 1), (4, 4, 1, 1)); // 4x4 luma: still a 4x4 chroma block
+        assert_eq!(tile(2, 2), (4, 4, 1, 1));
+        assert_eq!(tile(3, 5), (8, 12, 1, 1)); // odd sizes round up
+        assert_eq!(tile(16, 16), (32, 32, 1, 1)); // 64x64 luma
+        assert_eq!(tile(32, 32), (32, 32, 2, 2)); // 128x128 luma
+        assert_eq!(tile(32, 8), (32, 16, 2, 1)); // each axis is capped on its own
     }
 }
