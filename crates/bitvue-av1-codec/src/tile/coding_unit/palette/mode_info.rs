@@ -176,11 +176,17 @@ fn read_new_entries(
                 if n_used_cache + n_new >= pal_sz {
                     break;
                 }
-                bits = bits.min(1 + ulog2(max - prev - not_pl));
+                bits = narrowed_delta_bits(bits, prev, not_pl);
             }
         }
     }
     Ok((new_entries, n_new))
+}
+
+/// The delta width after a new colour `prev`: no more bits than the room left up to 255 needs
+/// (`1 + floor(log2(255 - prev - not_pl))`). `prev + not_pl` must be below 255.
+pub(super) fn narrowed_delta_bits(bits: u32, prev: u32, not_pl: u32) -> u32 {
+    bits.min(1 + ulog2(255 - prev - not_pl))
 }
 
 /// The palette in ascending order: the reused cache colours and the new ones, both already

@@ -3,7 +3,9 @@
 //! palettes, the colour cache and the 64-row above-cache rule all take part) and hash everything
 //! read.
 
-use super::mode_info::{build_pal_cache, merge_sorted_colors, read_palette_mode_info, ulog2};
+use super::mode_info::{
+    build_pal_cache, merge_sorted_colors, narrowed_delta_bits, read_palette_mode_info, ulog2,
+};
 use crate::symbol::SymbolDecoder;
 use crate::tile::TileContext;
 
@@ -141,4 +143,25 @@ fn merging_with_one_side_empty_gives_the_other_and_stops_at_the_palette_size() {
         merge_sorted_colors(&[1, 2, 3], &[4, 5], 2),
         [1, 2, 0, 0, 0, 0, 0, 0]
     );
+}
+
+#[test]
+fn the_delta_width_shrinks_with_the_room_left_below_255() {
+    // width = 1 + floor(log2(255 - prev - not_pl)), worked out by hand for each `prev`.
+    let widths = |not_pl| -> Vec<u32> {
+        [0u32, 100, 126, 127, 190, 191, 222, 238, 246, 250, 252, 253]
+            .iter()
+            .map(|&prev| narrowed_delta_bits(8, prev, not_pl))
+            .collect()
+    };
+    assert_eq!(widths(0), vec![8, 8, 8, 8, 7, 7, 6, 5, 4, 3, 2, 2]);
+    // The Y plane's deltas are at least 1, so its room is one smaller.
+    assert_eq!(widths(1), vec![8, 8, 8, 7, 7, 6, 6, 5, 4, 3, 2, 1]);
+}
+
+#[test]
+fn the_delta_width_never_grows() {
+    assert_eq!(narrowed_delta_bits(3, 0, 0), 3);
+    assert_eq!(narrowed_delta_bits(3, 200, 0), 3);
+    assert_eq!(narrowed_delta_bits(3, 253, 1), 1);
 }
