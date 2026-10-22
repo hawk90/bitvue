@@ -13,6 +13,9 @@ pub use types::{FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame};
 use parse::collect_obus_resilient;
 
 #[cfg(test)]
+mod parse_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::frame_header_full::{parse_frame_header_full, RefFrameState};
