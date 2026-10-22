@@ -469,28 +469,8 @@ fn index_ivf_av1(
 
     let mut units = Vec::with_capacity(frames.len());
     let mut offset = header.header_size as u64;
-
-    // Real cross-frame reference-slot tracking. `ref_frame_idx` (spec 5.9.2, `u(3)`) is a DPB
-    // *slot* number (0-7), NOT a frame index -- `slot_frame_index[i]` is this crate's own
-    // lightweight tracker for "which absolute frame index is really stored in slot i right now",
-    // updated after each frame via its `refresh_frame_flags` (spec 7.20). Deliberately not added
-    // to `RefFrameState` itself (which only tracks per-slot `order_hint`, for a different need) to
-    // avoid touching that struct's 5 existing `bitvue-sidecar` callers.
-    //
-    // Getting a correct slot number in the first place needs the real spec-accurate
-    // `parse_frame_header_full` (already used by 5 sidecar command modules for exactly this
-    // reason) -- `parse_frame_header_basic` reads the same `u(3)` bits, but at a bit position
-    // that's only reliable when every field before it in the header was read exactly right;
-    // that parser's own module doc documents several fields it deliberately skips/approximates
-    // upstream of `ref_frame_idx`, so its raw slot values aren't safe to translate.
-    let seq_header = find_sequence_header(&frames);
-    let mut ref_state = RefFrameState::new();
-    let mut slot_frame_index: [Option<usize>; 8] = [None; 8];
-    // Once a full-header parse fails mid-stream, `ref_state`/`slot_frame_index` can't be trusted
-    // for any later frame either (we'd be guessing at a refresh that may not really have
-    // happened) -- rather than silently keep emitting increasingly-suspect translations, stop for
-    // the rest of the stream. frame_type/qp/etc keep working either way (unaffected by this).
-    let mut ref_state_reliable = seq_header.is_some();
+    let mut headers = FrameHeaders::new(find_sequence_header(&frames));
+    let mut slots = ReferenceSlots::default();
 
     for (frame_index, frame) in frames.iter().enumerate() {
         if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
@@ -499,16 +479,92 @@ fn index_ivf_av1(
         let chunk_size = 12u64 + frame.size as u64;
         let frame_start = offset;
 
-        let found_obu = find_frame_obu(&frame.data);
+        let parsed = headers.parse(stream, frame_index, &frame.data, &mut diagnostics);
+        let unit = frame_unit(
+            stream,
+            frame_index,
+            frame,
+            frame_start,
+            chunk_size,
+            &parsed,
+            &slots,
+        );
+        // Apply this frame's own refresh AFTER computing its ref_frames above -- a frame's
+        // `ref_frame_idx` refers to DPB state as it stood BEFORE this frame was decoded (spec
+        // 7.20's reference frame update process happens only after the current frame is done).
+        if parsed.used_full_parser {
+            if let Some(refresh_flags) =
+                parsed.header.as_ref().and_then(|fh| fh.refresh_frame_flags)
+            {
+                slots.refresh(refresh_flags, frame_index);
+            }
+        }
 
-        let full_parse = if ref_state_reliable {
+        units.push(unit);
+        offset += chunk_size;
+    }
+
+    Ok(Some((header, units, diagnostics)))
+}
+
+/// What one frame's header parse produced.
+struct ParsedFrameHeader {
+    header: Option<bitvue_av1_codec::frame_header::FrameHeader>,
+    /// Whether `header` came from the full parser (only then are its reference slots trusted).
+    used_full_parser: bool,
+}
+
+/// Parses frame headers across a stream: the full parser while its cross-frame reference state
+/// can be trusted, the approximate one otherwise.
+///
+/// `ref_frame_idx` (spec 5.9.2, `u(3)`) is a DPB *slot* number (0-7), NOT a frame index. Getting a
+/// correct slot number in the first place needs the real spec-accurate `parse_frame_header_full`
+/// (already used by 5 sidecar command modules for exactly this reason) -- `parse_frame_header_basic`
+/// reads the same `u(3)` bits, but at a bit position that's only reliable when every field before
+/// it in the header was read exactly right; that parser's own module doc documents several fields
+/// it deliberately skips/approximates upstream of `ref_frame_idx`, so its raw slot values aren't
+/// safe to translate.
+struct FrameHeaders {
+    seq_header: Option<SequenceHeader>,
+    ref_state: RefFrameState,
+    /// Once a full-header parse fails mid-stream, `ref_state` (and the slot tracker beside it)
+    /// can't be trusted for any later frame either (we'd be guessing at a refresh that may not
+    /// really have happened) -- rather than silently keep emitting increasingly-suspect
+    /// translations, stop for the rest of the stream. frame_type/qp/etc keep working either way
+    /// (unaffected by this).
+    reliable: bool,
+}
+
+impl FrameHeaders {
+    fn new(seq_header: Option<SequenceHeader>) -> Self {
+        let reliable = seq_header.is_some();
+        Self {
+            seq_header,
+            ref_state: RefFrameState::new(),
+            reliable,
+        }
+    }
+
+    /// Parses the frame header found in `chunk` and pushes a diagnostic for every way that went
+    /// wrong (no frame OBU, no parser could read it, the full parser failed so references are
+    /// dropped from here on).
+    fn parse(
+        &mut self,
+        stream: StreamId,
+        frame_index: usize,
+        chunk: &[u8],
+        diagnostics: &mut Vec<bitvue_engine::Event>,
+    ) -> ParsedFrameHeader {
+        let found_obu = find_frame_obu(chunk);
+
+        let full_parse = if self.reliable {
             found_obu.as_ref().and_then(|found| {
                 parse_frame_header_full(
                     &found.obu.payload,
-                    seq_header
+                    self.seq_header
                         .as_ref()
                         .expect("ref_state_reliable implies Some"),
-                    &mut ref_state,
+                    &mut self.ref_state,
                 )
                 .ok()
             })
@@ -516,7 +572,7 @@ fn index_ivf_av1(
             None
         };
         let used_full_parser = full_parse.is_some();
-        let frame_header = full_parse.or_else(|| {
+        let header = full_parse.or_else(|| {
             found_obu
                 .as_ref()
                 .and_then(|found| parse_frame_header_basic(&found.obu.payload).ok())
@@ -531,16 +587,16 @@ fn index_ivf_av1(
                 frame_index,
                 "No frame OBU found in this IVF chunk".to_string(),
             ));
-        } else if frame_header.is_none() {
+        } else if header.is_none() {
             diagnostics.push(frame_parse_diagnostic(
                 stream,
                 frame_index,
                 "Failed to parse this frame's AV1 frame header".to_string(),
             ));
         }
-        if ref_state_reliable && found_obu.is_some() && !used_full_parser {
+        if self.reliable && found_obu.is_some() && !used_full_parser {
             // The real parser was attempted (a sequence header exists and no earlier frame broke
-            // tracking yet) but failed on *this* frame -- `slot_frame_index` can no longer be
+            // tracking yet) but failed on *this* frame -- the slot tracker can no longer be
             // trusted for anything after it.
             diagnostics.push(frame_parse_diagnostic(
                 stream,
@@ -549,74 +605,98 @@ fn index_ivf_av1(
                  later frames in this stream will be omitted rather than guessed"
                     .to_string(),
             ));
-            ref_state_reliable = false;
+            self.reliable = false;
         }
 
-        let frame_type_str = match frame_header.as_ref().map(|fh| fh.frame_type) {
-            Some(bitvue_engine::FrameType::Key) => "I",
-            Some(bitvue_engine::FrameType::Inter) => "P",
-            Some(bitvue_engine::FrameType::BFrame) => "B",
-            Some(bitvue_engine::FrameType::IntraOnly) => "I",
-            Some(bitvue_engine::FrameType::Switch) => "I",
-            Some(bitvue_engine::FrameType::SI) => "I",
-            Some(bitvue_engine::FrameType::SP) => "P",
-            Some(bitvue_engine::FrameType::Unknown) | None => "?",
-        };
-
-        let mut unit = UnitNode::new(
-            stream,
-            "FRAME".to_string(),
-            frame_start,
-            chunk_size as usize,
-        );
-        unit.frame_index = Some(frame_index);
-        unit.frame_type = Some(Arc::from(frame_type_str));
-        unit.pts = Some(frame.timestamp);
-        unit.temporal_id = Some(frame.temporal_id);
-        unit.display_name = Arc::from(format!(
-            "Frame {frame_index} @ 0x{frame_start:08X} ({} bytes)",
-            frame.size
-        ));
-
-        if let Some(fh) = &frame_header {
-            // Only trust slot->frame-index translation when this frame's header came from the
-            // real full parser -- see this loop's header comment. Leaving `ref_frames` unset for
-            // a basic-parser fallback (rather than the old "just cast the raw slot number" bug)
-            // is the honest choice: a specific-looking wrong frame index is worse than none.
-            if used_full_parser {
-                if let Some(ref_idx) = fh.ref_frame_idx {
-                    unit.ref_frames = Some(
-                        ref_idx
-                            .iter()
-                            .filter_map(|&slot| slot_frame_index[slot as usize])
-                            .collect(),
-                    );
-                }
-            }
-            if let Some(qp) = fh.base_q_idx {
-                unit.qp_avg = Some(qp);
-            }
+        ParsedFrameHeader {
+            header,
+            used_full_parser,
         }
+    }
+}
 
-        // Apply this frame's own refresh AFTER computing its ref_frames above -- a frame's
-        // `ref_frame_idx` refers to DPB state as it stood BEFORE this frame was decoded (spec
-        // 7.20's reference frame update process happens only after the current frame is done).
-        if used_full_parser {
-            if let Some(refresh_flags) = frame_header.as_ref().and_then(|fh| fh.refresh_frame_flags)
-            {
-                for (i, slot) in slot_frame_index.iter_mut().enumerate() {
-                    if (refresh_flags >> i) & 1 == 1 {
-                        *slot = Some(frame_index);
-                    }
-                }
-            }
-        }
+/// Which absolute frame index each of the eight DPB slots holds right now, updated after each
+/// frame via its `refresh_frame_flags` (spec 7.20). Deliberately not added to `RefFrameState`
+/// itself (which only tracks per-slot `order_hint`, for a different need) to avoid touching that
+/// struct's 5 existing `bitvue-sidecar` callers.
+#[derive(Default)]
+struct ReferenceSlots([Option<usize>; 8]);
 
-        units.push(unit);
-        offset += chunk_size;
+impl ReferenceSlots {
+    /// The frame indices the given slots hold, leaving out empty slots.
+    fn frames_of(&self, ref_frame_idx: &[u8; 7]) -> Vec<usize> {
+        ref_frame_idx
+            .iter()
+            .filter_map(|&slot| self.0[slot as usize])
+            .collect()
     }
 
-    Ok(Some((header, units, diagnostics)))
+    /// Makes `frame_index` the content of every slot `refresh_flags` selects.
+    fn refresh(&mut self, refresh_flags: u8, frame_index: usize) {
+        for (i, slot) in self.0.iter_mut().enumerate() {
+            if (refresh_flags >> i) & 1 == 1 {
+                *slot = Some(frame_index);
+            }
+        }
+    }
+}
+
+/// The single-letter frame type shown for a frame ("?" when its header did not parse).
+fn frame_type_label(frame_type: Option<bitvue_engine::FrameType>) -> &'static str {
+    match frame_type {
+        Some(bitvue_engine::FrameType::Key) => "I",
+        Some(bitvue_engine::FrameType::Inter) => "P",
+        Some(bitvue_engine::FrameType::BFrame) => "B",
+        Some(bitvue_engine::FrameType::IntraOnly) => "I",
+        Some(bitvue_engine::FrameType::Switch) => "I",
+        Some(bitvue_engine::FrameType::SI) => "I",
+        Some(bitvue_engine::FrameType::SP) => "P",
+        Some(bitvue_engine::FrameType::Unknown) | None => "?",
+    }
+}
+
+/// The `UnitNode` for one IVF chunk.
+fn frame_unit(
+    stream: StreamId,
+    frame_index: usize,
+    frame: &bitvue_av1_codec::ivf::IvfFrame,
+    frame_start: u64,
+    chunk_size: u64,
+    parsed: &ParsedFrameHeader,
+    slots: &ReferenceSlots,
+) -> UnitNode {
+    let mut unit = UnitNode::new(
+        stream,
+        "FRAME".to_string(),
+        frame_start,
+        chunk_size as usize,
+    );
+    unit.frame_index = Some(frame_index);
+    unit.frame_type = Some(Arc::from(frame_type_label(
+        parsed.header.as_ref().map(|fh| fh.frame_type),
+    )));
+    unit.pts = Some(frame.timestamp);
+    unit.temporal_id = Some(frame.temporal_id);
+    unit.display_name = Arc::from(format!(
+        "Frame {frame_index} @ 0x{frame_start:08X} ({} bytes)",
+        frame.size
+    ));
+
+    if let Some(fh) = &parsed.header {
+        // Only trust slot->frame-index translation when this frame's header came from the real
+        // full parser. Leaving `ref_frames` unset for a basic-parser fallback (rather than the old
+        // "just cast the raw slot number" bug) is the honest choice: a specific-looking wrong
+        // frame index is worse than none.
+        if parsed.used_full_parser {
+            if let Some(ref_idx) = fh.ref_frame_idx {
+                unit.ref_frames = Some(slots.frames_of(&ref_idx));
+            }
+        }
+        if let Some(qp) = fh.base_q_idx {
+            unit.qp_avg = Some(qp);
+        }
+    }
+    unit
 }
 
 #[cfg(test)]
