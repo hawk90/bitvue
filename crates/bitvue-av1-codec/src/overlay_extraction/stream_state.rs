@@ -274,7 +274,7 @@ impl OrderHints {
 }
 
 /// The CDF quantizer category of a base quantizer index.
-fn quantizer_category(base_qp: i16) -> u8 {
+pub(super) fn quantizer_category(base_qp: i16) -> u8 {
     (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8
 }
 

@@ -143,14 +143,12 @@ pub(crate) fn decode_frame(
     // Every tile starts from the saved CDFs of the primary reference frame, or from the defaults
     // seeded with the real per-frame qindex-bucket (`qcat`) residual-coefficient CDFs -- see
     // `crate::symbol::cdf::CdfContext::new_with_qcat`'s doc for the dav1d selection formula.
-    let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-    let initial_cdf = inputs
-        .initial_cdf
-        .unwrap_or_else(|| crate::symbol::CdfContext::new_with_qcat(qcat));
+    let initial_cdf = inputs.initial_cdf.unwrap_or_else(|| {
+        crate::symbol::CdfContext::new_with_qcat(super::stream_state::quantizer_category(base_qp))
+    });
 
     let tiles = tile_slices(parsed)?;
     let layout = parsed.tiles.as_ref().filter(|l| l.tile_count() > 1);
-    let cols = layout.map_or(1, |l| l.tile_cols());
     let update_tile = layout.map_or(0, |l| l.context_update_tile_id);
 
     let superblocks_total = sb_cols * sb_rows;
@@ -163,16 +161,7 @@ pub(crate) fn decode_frame(
     let mut trace_segments: Vec<TraceSegment> = Vec::new();
 
     for (tile_num, bytes) in &tiles {
-        let (col_sbs, row_sbs) = match layout {
-            Some(l) => {
-                let (col, row) = ((tile_num % cols) as usize, (tile_num / cols) as usize);
-                (
-                    l.col_starts_sb[col]..l.col_starts_sb[col + 1],
-                    l.row_starts_sb[row]..l.row_starts_sb[row + 1],
-                )
-            }
-            None => (0..sb_cols, 0..sb_rows),
-        };
+        let (col_sbs, row_sbs) = tile_superblock_ranges(layout, *tile_num, sb_cols, sb_rows);
 
         let mut state = start_tile_state(
             parsed,
@@ -185,7 +174,9 @@ pub(crate) fn decode_frame(
 
         // (running QP is tracked across superblocks inside `decode_superblock_rows`)
         #[cfg(test)]
-        let tile_pos = layout.map_or((0, 0), |_| (tile_num / cols, tile_num % cols));
+        let tile_pos = layout.map_or((0, 0), |l| {
+            (tile_num / l.tile_cols(), tile_num % l.tile_cols())
+        });
         decode_superblock_rows(
             &mut state,
             &row_sbs,
@@ -206,7 +197,7 @@ pub(crate) fn decode_frame(
             last.1
                 .extend(state.decoder.decoder.range_trace.take().unwrap_or_default());
         }
-        if *tile_num == update_tile || final_cdf.is_none() {
+        if takes_final_cdf(*tile_num, update_tile, final_cdf.is_some()) {
             final_cdf = Some(state.decoder.cdf_context);
         }
     }
@@ -231,6 +222,33 @@ pub(crate) fn decode_frame(
             trace_segments.into_iter().flat_map(|(_, t)| t).collect()
         },
     })
+}
+
+/// Whether a tile's final CDFs replace the frame's saved ones: the `context_update_tile_id` tile's
+/// do, and the first tile decoded provides them when that tile is missing from the data.
+fn takes_final_cdf(tile_num: u32, update_tile: u32, have_one: bool) -> bool {
+    tile_num == update_tile || !have_one
+}
+
+/// The superblock columns and rows tile `tile_num` covers. No layout (or a single tile) means the
+/// whole frame.
+fn tile_superblock_ranges(
+    layout: Option<&crate::frame_header::TileLayout>,
+    tile_num: u32,
+    sb_cols: u32,
+    sb_rows: u32,
+) -> (std::ops::Range<u32>, std::ops::Range<u32>) {
+    match layout {
+        Some(l) => {
+            let cols = l.tile_cols();
+            let (col, row) = ((tile_num % cols) as usize, (tile_num / cols) as usize);
+            (
+                l.col_starts_sb[col]..l.col_starts_sb[col + 1],
+                l.row_starts_sb[row]..l.row_starts_sb[row + 1],
+            )
+        }
+        None => (0..sb_cols, 0..sb_rows),
+    }
 }
 
 /// `(tile row, superblock row, tile column)`: the order dav1d decodes (and traces) tiles in.
@@ -368,3 +386,5 @@ mod fixture_tests;
 mod oracle_tests;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod tile_range_tests;
