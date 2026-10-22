@@ -104,10 +104,29 @@ fn read_pal_plane_colors(
     };
     let (cache, n_cache) = build_pal_cache(above_colors, above_count, left_colors, left_count);
 
+    let (used_cache, n_used_cache) = read_cache_reuse(decoder, &cache[..n_cache], pal_sz as usize)?;
+    let (new_entries, n_new) =
+        read_new_entries(decoder, color_plane, pal_sz as usize, n_used_cache)?;
+    let colors = merge_sorted_colors(
+        &used_cache[..n_used_cache],
+        &new_entries[..n_new],
+        pal_sz as usize,
+    );
+
+    Ok((pal_sz, colors))
+}
+
+/// The `use_palette_color_cache` flags: one bool per cache entry, read until `pal_sz` entries are
+/// reused. Returns the reused colours and how many there are.
+fn read_cache_reuse(
+    decoder: &mut SymbolDecoder,
+    cache: &[u16],
+    pal_sz: usize,
+) -> Result<([u16; 8], usize)> {
     let mut used_cache = [0u16; 8];
     let mut n_used_cache = 0usize;
-    for &c in cache.iter().take(n_cache) {
-        if n_used_cache >= pal_sz as usize {
+    for &c in cache {
+        if n_used_cache >= pal_sz {
             break;
         }
         if decoder.read_bool_equi()? {
@@ -115,16 +134,28 @@ fn read_pal_plane_colors(
             n_used_cache += 1;
         }
     }
+    Ok((used_cache, n_used_cache))
+}
 
+/// The colours the cache did not supply: a literal first colour, then ascending deltas whose bit
+/// width shrinks as the remaining range does (the Y plane's deltas are at least 1, the U plane's
+/// may be 0). Returns them and how many there are (`pal_sz - n_used_cache`, or fewer when the range
+/// is exhausted early and the rest are filled with the maximum).
+fn read_new_entries(
+    decoder: &mut SymbolDecoder,
+    color_plane: usize,
+    pal_sz: usize,
+    n_used_cache: usize,
+) -> Result<([u16; 8], usize)> {
     let mut new_entries = [0u16; 8];
     let mut n_new = 0usize;
-    if n_used_cache < pal_sz as usize {
+    if n_used_cache < pal_sz {
         let not_pl = if color_plane == 0 { 1u32 } else { 0u32 };
         let max = 255u32;
         let mut prev = decoder.read_bools_n(8)?;
         new_entries[0] = prev as u16;
         n_new = 1;
-        if n_used_cache + n_new < pal_sz as usize {
+        if n_used_cache + n_new < pal_sz {
             let mut bits = 8 - 3 + decoder.read_bools_n(2)?;
             loop {
                 let delta = decoder.read_bools_n(bits)?;
@@ -134,26 +165,37 @@ fn read_pal_plane_colors(
                 if prev + not_pl >= max {
                     for slot in new_entries
                         .iter_mut()
-                        .take(pal_sz as usize - n_used_cache)
+                        .take(pal_sz - n_used_cache)
                         .skip(n_new)
                     {
                         *slot = max as u16;
                     }
-                    n_new = pal_sz as usize - n_used_cache;
+                    n_new = pal_sz - n_used_cache;
                     break;
                 }
-                if n_used_cache + n_new >= pal_sz as usize {
+                if n_used_cache + n_new >= pal_sz {
                     break;
                 }
                 bits = bits.min(1 + ulog2(max - prev - not_pl));
             }
         }
     }
+    Ok((new_entries, n_new))
+}
 
+/// The palette in ascending order: the reused cache colours and the new ones, both already
+/// ascending, merged (the cache colour wins a tie).
+pub(super) fn merge_sorted_colors(
+    used_cache: &[u16],
+    new_entries: &[u16],
+    pal_sz: usize,
+) -> [u16; 8] {
     let mut colors = [0u16; 8];
     let (mut ci, mut ni) = (0usize, 0usize);
-    for slot in colors.iter_mut().take(pal_sz as usize) {
-        *slot = if ci < n_used_cache && (ni >= n_new || used_cache[ci] <= new_entries[ni]) {
+    for slot in colors.iter_mut().take(pal_sz) {
+        *slot = if ci < used_cache.len()
+            && (ni >= new_entries.len() || used_cache[ci] <= new_entries[ni])
+        {
             let v = used_cache[ci];
             ci += 1;
             v
@@ -163,8 +205,7 @@ fn read_pal_plane_colors(
             v
         };
     }
-
-    Ok((pal_sz, colors))
+    colors
 }
 
 /// Real V-plane palette color read (spec 5.11.46, ported from dav1d's `read_pal_uv`'s V-specific

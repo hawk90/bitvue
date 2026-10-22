@@ -3,7 +3,7 @@
 //! palettes, the colour cache and the 64-row above-cache rule all take part) and hash everything
 //! read.
 
-use super::mode_info::{build_pal_cache, read_palette_mode_info, ulog2};
+use super::mode_info::{build_pal_cache, merge_sorted_colors, read_palette_mode_info, ulog2};
 use crate::symbol::SymbolDecoder;
 use crate::tile::TileContext;
 
@@ -109,4 +109,36 @@ fn ulog2_is_the_floor_of_the_base_two_logarithm_and_zero_counts_as_one() {
         .map(|&x| ulog2(x))
         .collect();
     assert_eq!(got, vec![0, 0, 1, 1, 2, 2, 3, 7, 8]);
+}
+
+#[test]
+fn merging_interleaves_the_cache_colours_and_the_new_ones_in_ascending_order() {
+    assert_eq!(
+        merge_sorted_colors(&[10, 40], &[5, 20, 50], 5),
+        [5, 10, 20, 40, 50, 0, 0, 0]
+    );
+}
+
+#[test]
+fn merging_lets_the_cache_colour_win_a_tie_and_keeps_both() {
+    assert_eq!(
+        merge_sorted_colors(&[7], &[7, 9], 3),
+        [7, 7, 9, 0, 0, 0, 0, 0]
+    );
+}
+
+#[test]
+fn merging_with_one_side_empty_gives_the_other_and_stops_at_the_palette_size() {
+    assert_eq!(
+        merge_sorted_colors(&[], &[1, 2, 3], 3),
+        [1, 2, 3, 0, 0, 0, 0, 0]
+    );
+    assert_eq!(
+        merge_sorted_colors(&[4, 5], &[], 2),
+        [4, 5, 0, 0, 0, 0, 0, 0]
+    );
+    assert_eq!(
+        merge_sorted_colors(&[1, 2, 3], &[4, 5], 2),
+        [1, 2, 0, 0, 0, 0, 0, 0]
+    );
 }
