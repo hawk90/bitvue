@@ -112,98 +112,35 @@ impl FrameIdentityExtractor for Av1FrameIdentityExtractor {
     /// rather than an error, per the resilient-parsing contract.
     fn extract_frames(&self, data: &[u8]) -> Result<Vec<FrameMetadata>, ExtractionError> {
         // Minimal inline OBU scanner — avoids a circular dependency on
-        // bitvue-av1-codec by duplicating only the 20-line OBU header parse.
+        // bitvue-av1-codec by duplicating only the OBU framing parse.
         let mut frames: Vec<FrameMetadata> = Vec::new();
         let mut offset = 0usize;
 
         while offset < data.len() {
-            // ── Parse OBU header ──────────────────────────────────────────
             let slice = &data[offset..];
-            if slice.is_empty() {
-                break;
-            }
-
-            let byte0 = slice[0];
-            // forbidden_bit (bit 7) must be 0
-            if byte0 & 0x80 != 0 {
+            let obu = match read_obu(slice) {
+                ObuRead::Obu(obu) => obu,
                 // Skip one byte and try to resync
-                offset += 1;
-                continue;
-            }
-            let obu_type = (byte0 >> 3) & 0x0F; // bits 6-3
-            let has_extension = (byte0 >> 2) & 0x01 != 0;
-            let has_size = (byte0 >> 1) & 0x01 != 0;
-
-            let header_bytes = if has_extension { 2usize } else { 1usize };
-            if slice.len() < header_bytes {
-                break;
-            }
-
-            // ── Parse OBU size (LEB128) ────────────────────────────────────
-            let payload_start = if has_size {
-                let mut size_offset = header_bytes;
-                let mut leb_bytes = 0usize;
-                loop {
-                    if size_offset >= slice.len() || leb_bytes >= 8 {
-                        // Truncated or malformed — skip
-                        break;
-                    }
-                    let b = slice[size_offset];
-                    size_offset += 1;
-                    leb_bytes += 1;
-                    if b & 0x80 == 0 {
-                        break;
-                    }
+                ObuRead::Resync => {
+                    offset += 1;
+                    continue;
                 }
-                size_offset
-            } else {
-                header_bytes
+                ObuRead::Stop => break,
             };
-
-            // Compute payload size
-            let payload_size: usize = if has_size {
-                // Decode the LEB128 we just scanned
-                let mut val = 0u64;
-                let mut shift = 0u32;
-                let mut pos = header_bytes;
-                loop {
-                    if pos >= payload_start || pos >= slice.len() {
-                        break;
-                    }
-                    let b = slice[pos] as u64;
-                    val |= (b & 0x7F) << shift;
-                    shift += 7;
-                    pos += 1;
-                    if slice[pos - 1] & 0x80 == 0 {
-                        break;
-                    }
-                }
-                val as usize
-            } else {
-                slice.len().saturating_sub(payload_start)
-            };
-
-            let total_obu_bytes = payload_start + payload_size;
-            if total_obu_bytes > slice.len() {
-                // Truncated OBU — stop
-                break;
-            }
 
             // ── Detect displayable frames ──────────────────────────────────
             // OBU types: 3 = FRAME_HEADER, 6 = FRAME
-            if obu_type == 3 || obu_type == 6 {
-                let payload = &slice[payload_start..payload_start + payload_size];
-                if let Some(show) = parse_av1_show_frame_flag(payload) {
-                    if show {
-                        frames.push(FrameMetadata {
-                            pts: None,
-                            dts: None,
-                        });
-                    }
+            if obu.obu_type == 3 || obu.obu_type == 6 {
+                let payload = &slice[obu.payload_start..obu.payload_start + obu.payload_size];
+                if let Some(true) = parse_av1_show_frame_flag(payload) {
+                    frames.push(FrameMetadata {
+                        pts: None,
+                        dts: None,
+                    });
                 }
             }
 
-            offset += total_obu_bytes;
+            offset += obu.total_bytes();
         }
 
         Ok(frames)
@@ -212,6 +149,84 @@ impl FrameIdentityExtractor for Av1FrameIdentityExtractor {
     fn codec_name(&self) -> &'static str {
         "AV1"
     }
+}
+
+/// Where one OBU lies in a byte slice that starts at its header.
+struct ObuSpan {
+    obu_type: u8,
+    payload_start: usize,
+    payload_size: usize,
+}
+
+impl ObuSpan {
+    fn total_bytes(&self) -> usize {
+        self.payload_start + self.payload_size
+    }
+}
+
+/// What the OBU at the start of a slice is.
+enum ObuRead {
+    Obu(ObuSpan),
+    /// The header is invalid (forbidden bit set): drop one byte and look again.
+    Resync,
+    /// The data ends inside the OBU: nothing more can be read.
+    Stop,
+}
+
+/// Reads the OBU header and size field at the start of `slice` (spec 5.3): the type, the optional
+/// extension byte, and a LEB128 size when the header has one (otherwise the OBU takes the rest of
+/// the slice).
+fn read_obu(slice: &[u8]) -> ObuRead {
+    let Some(&byte0) = slice.first() else {
+        return ObuRead::Stop;
+    };
+    // forbidden_bit (bit 7) must be 0
+    if byte0 & 0x80 != 0 {
+        return ObuRead::Resync;
+    }
+    let obu_type = (byte0 >> 3) & 0x0F; // bits 6-3
+    let has_extension = (byte0 >> 2) & 0x01 != 0;
+    let has_size = (byte0 >> 1) & 0x01 != 0;
+
+    let header_bytes = if has_extension { 2usize } else { 1usize };
+    if slice.len() < header_bytes {
+        return ObuRead::Stop;
+    }
+
+    let (payload_start, payload_size) = if has_size {
+        let (size, end) = read_leb128(slice, header_bytes);
+        (end, size as usize)
+    } else {
+        (header_bytes, slice.len().saturating_sub(header_bytes))
+    };
+
+    if payload_start + payload_size > slice.len() {
+        // Truncated OBU — stop
+        return ObuRead::Stop;
+    }
+    ObuRead::Obu(ObuSpan {
+        obu_type,
+        payload_start,
+        payload_size,
+    })
+}
+
+/// The LEB128 value that starts at `start` and the offset just past it. Reads at most 8 bytes and
+/// stops early at the end of `slice`; an unterminated or cut-off value is returned as read so far.
+fn read_leb128(slice: &[u8], start: usize) -> (u64, usize) {
+    let mut value = 0u64;
+    let mut shift = 0u32;
+    let mut pos = start;
+    while pos < slice.len() && pos - start < 8 {
+        let b = slice[pos];
+        pos += 1;
+        value |= u64::from(b & 0x7F) << shift;
+        shift += 7;
+        if b & 0x80 == 0 {
+            break;
+        }
+    }
+    (value, pos)
 }
 
 /// Minimal AV1 frame-header parser that extracts only the `show_frame` flag.
