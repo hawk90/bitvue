@@ -116,76 +116,91 @@ pub fn extract_deblocking_data_from_parsed(
 ) -> Result<DeblockingData, BitvueError> {
     let width = parsed.dimensions.width;
     let height = parsed.dimensions.height;
+    let without_edges = || DeblockingData {
+        width,
+        height,
+        edges: Vec::new(),
+        loop_filter: loop_filter.clone(),
+    };
 
     // Filter fully disabled for this frame (both luma level entries are 0, per spec 7.14.1) --
     // no edges get filtered regardless of block content.
     if loop_filter.level[0] == 0 && loop_filter.level[1] == 0 {
-        return Ok(DeblockingData {
-            width,
-            height,
-            edges: Vec::new(),
-            loop_filter: loop_filter.clone(),
-        });
+        return Ok(without_edges());
     }
 
     let coding_units = parse_all_coding_units(parsed)?;
     if coding_units.is_empty() {
-        return Ok(DeblockingData {
-            width,
-            height,
-            edges: Vec::new(),
-            loop_filter: loop_filter.clone(),
-        });
-    }
-
-    let grid_w = width.div_ceil(SAMPLE);
-    let grid_h = height.div_ceil(SAMPLE);
-    let index = CuSpatialIndex::new(&coding_units, grid_w, grid_h, SAMPLE, SAMPLE);
-
-    let mut edges = Vec::new();
-    for cu in coding_units.iter() {
-        if cu.x > 0 {
-            let neighbor_gx = (cu.x - 1) / SAMPLE;
-            let neighbor_gy = cu.y / SAMPLE;
-            if let Some(neighbor_idx) = index.get_cu_index(neighbor_gx, neighbor_gy) {
-                let neighbor = &coding_units[neighbor_idx];
-                let bs = boundary_strength(cu, neighbor);
-                edges.push(DeblockingEdge {
-                    x: cu.x,
-                    y: cu.y,
-                    length: cu.height.min(height.saturating_sub(cu.y)),
-                    vertical: true,
-                    boundary_strength: bs,
-                    filtered: bs > 0 && loop_filter.level[0] > 0,
-                    strength: loop_filter.level[0],
-                });
-            }
-        }
-        if cu.y > 0 {
-            let neighbor_gx = cu.x / SAMPLE;
-            let neighbor_gy = (cu.y - 1) / SAMPLE;
-            if let Some(neighbor_idx) = index.get_cu_index(neighbor_gx, neighbor_gy) {
-                let neighbor = &coding_units[neighbor_idx];
-                let bs = boundary_strength(cu, neighbor);
-                edges.push(DeblockingEdge {
-                    x: cu.x,
-                    y: cu.y,
-                    length: cu.width.min(width.saturating_sub(cu.x)),
-                    vertical: false,
-                    boundary_strength: bs,
-                    filtered: bs > 0 && loop_filter.level[1] > 0,
-                    strength: loop_filter.level[1],
-                });
-            }
-        }
+        return Ok(without_edges());
     }
 
     Ok(DeblockingData {
-        width,
-        height,
-        edges,
-        loop_filter: loop_filter.clone(),
+        edges: collect_edges(&coding_units, loop_filter, width, height),
+        ..without_edges()
     })
+}
+
+/// The edges on the left and top side of every coding unit that has a neighbour there, in coding
+/// unit order (left edge first).
+fn collect_edges(
+    coding_units: &[CodingUnit],
+    loop_filter: &LoopFilterInfo,
+    width: u32,
+    height: u32,
+) -> Vec<DeblockingEdge> {
+    let grid_w = width.div_ceil(SAMPLE);
+    let grid_h = height.div_ceil(SAMPLE);
+    let index = CuSpatialIndex::new(coding_units, grid_w, grid_h, SAMPLE, SAMPLE);
+
+    let mut edges = Vec::new();
+    for cu in coding_units {
+        if cu.x > 0 {
+            if let Some(neighbor) = index.get_cu_index((cu.x - 1) / SAMPLE, cu.y / SAMPLE) {
+                let length = cu.height.min(height.saturating_sub(cu.y));
+                edges.push(edge_to(
+                    cu,
+                    &coding_units[neighbor],
+                    true,
+                    length,
+                    loop_filter.level[0],
+                ));
+            }
+        }
+        if cu.y > 0 {
+            if let Some(neighbor) = index.get_cu_index(cu.x / SAMPLE, (cu.y - 1) / SAMPLE) {
+                let length = cu.width.min(width.saturating_sub(cu.x));
+                edges.push(edge_to(
+                    cu,
+                    &coding_units[neighbor],
+                    false,
+                    length,
+                    loop_filter.level[1],
+                ));
+            }
+        }
+    }
+    edges
+}
+
+/// The edge along `cu`'s left (`vertical`) or top side, shared with `neighbor`. `level` is the
+/// frame's filter level for the edge's orientation.
+fn edge_to(
+    cu: &CodingUnit,
+    neighbor: &CodingUnit,
+    vertical: bool,
+    length: u32,
+    level: u8,
+) -> DeblockingEdge {
+    let boundary_strength = boundary_strength(cu, neighbor);
+    DeblockingEdge {
+        x: cu.x,
+        y: cu.y,
+        length,
+        vertical,
+        boundary_strength,
+        filtered: boundary_strength > 0 && level > 0,
+        strength: level,
+    }
 }
 
 #[cfg(test)]
