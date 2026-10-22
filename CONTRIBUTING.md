@@ -190,9 +190,10 @@ bitvue/
 │   ├── tests/               # Consolidated test files
 │   ├── public/              # Static assets
 │   └── index.html
-├── src-tauri/               # Tauri backend (Rust)
+├── bitvue-desktop/          # Electron shell (main process, sidecar client)
 ├── scripts/                 # Development scripts
-└── config/                  # Tool configurations
+├── docs/                    # Specs and parity docs
+└── deny.toml, codecov.yml   # Tool configuration (repo root)
 ```
 
 ## Adding Codec Support

@@ -493,7 +493,7 @@ fn compute_linear_light_metric(reference: &Plane<u16>, distorted: &Plane<u16>, b
 **예외**:
 - 지표가 의도적으로 "코드값 압축 도메인에서의 오차"(즉 PQ 자체의 지각 균등화 특성을 활용하는 지표, 예: 단순 PQ 코드값 PSNR을 "근사 지각 지표"로 명시적으로 채택하는 경우)를 재는 것이 목적이라면 EOTF를 적용하지 않는 것이 오히려 의도된 설계다. 이 경우 지표 이름에 "linear"를 붙이지 않아야 한다.
 
-**Bitvue 판정**: N/A (재검증 결과 동일) — 저장소 전체에서 PQ EOTF/ST 2084 상수(m1/m2/c1/c2/c3)나 "linear light" 변환 함수가 전혀 구현되어 있지 않다(grep 0건 — `crates/bitvue-engine/src/metadata.rs`와 `crates/bitvue-test-data/src/generators.rs`의 `SmpteSt2084`/`Pq` 히트는 전부 라벨/열거값일 뿐 실제 EOTF 수식 아님). 이 항목이 전제하는 "linear라고 주장하지만 실제로는 EOTF를 안 거치는 함수" 자체가 아직 존재하지 않으므로, 이 특정 버그가 발생할 코드 경로가 없다.
+**Bitvue 판정**: N/A (재검증 결과 동일) — 저장소 전체에서 PQ EOTF/ST 2084 상수(m1/m2/c1/c2/c3)나 "linear light" 변환 함수가 전혀 구현되어 있지 않다(grep 0건 — `crates/bitvue-engine/src/metadata.rs`와 `crates/bitvue-test-data/src/generators.rs`의 `SmpteSt2084`/`Pq` 히트는 전부 라벨/열거값일 뿐 실제 EOTF 수식 아님). 이 항목이 전제하는 "linear라고 주장하지만 실제로는 EOTF를 안 거치는 함수" 자체가 아직 존재하지 않으므로, 이 특정 버그가 발생할 코드 경로가 없다. (이 크레이트는 매니페스트가 없고 어떤 크레이트에서도 쓰이지 않아 2026-10-23 삭제됨 — 아래 판단의 근거로 쓸 수 없음)
 
 ---
 

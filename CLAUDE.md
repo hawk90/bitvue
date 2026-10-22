@@ -16,7 +16,6 @@ with commercial tools (VQ Analyzer, VQ Probe, VEGA, StreamEye). Migrated off Tau
 | `docs/UX_PARITY_MATRIX.md` | UI/UX contracts narrative, menu tree, overlay colour scale, shortcuts ownership |
 | `docs/DEVELOPMENT_PHASES.md` | Architecture decisions (sidecar, "제품 아키텍처 확정") + Phase 0-12 goals/rationale |
 | `docs/history/` | Dated dev logs + frozen old checklist notes — history, not current state |
-| `archive_docs/` | Retired docs, kept for history — don't treat as current |
 
 Status changes go in `features.yaml` only (edit the item, keep its id, add evidence) — never ✅/❌ in Markdown.
 Don't create new parity docs.

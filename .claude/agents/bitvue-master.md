@@ -33,7 +33,7 @@ You are an expert in the Bitvue video bitstream analyzer. Bitvue is an Electron 
   - `bitvue-formats` (MP4, MKV, MPEG-TS, container detection), `bitvue-codecs`, `bitvue-codecs-parser`
   - Codec parsers: `bitvue-av1-codec` (incl. IVF), `bitvue-avc`, `bitvue-hevc`, `bitvue-vp9`, `bitvue-vvc`, `bitvue-mpeg2-codec`, `bitvue-avs3`, `bitvue-jpegxs`, `bitvue-vc3`
   - `bitvue-decode` (dav1d AV1 always; H.264/HEVC/VP9 behind feature `ffmpeg`; VVC behind `vvdec`; YUV conversion)
-  - `bitvue-metrics` (PSNR/SSIM, optional VMAF), `bitvue-indexer` (IVF/AV1), `bitvue-cli` (binary `bitvue`), `bitvue-mcp` (binary `bitvue-mcp-server`), `bitvue-benchmarks`, `bitvue-test-data`, `vendor/abseil`
+  - `bitvue-metrics` (PSNR/SSIM, optional VMAF), `bitvue-indexer` (IVF/AV1), `bitvue-cli` (binary `bitvue`), `bitvue-mcp` (binary `bitvue-mcp-server`), `bitvue-benchmarks`, `vendor/abseil`
 
 ### Data Flow
 
