@@ -614,3 +614,5 @@ fn default_slice_header() -> SliceHeader {
         slice_group_change_cycle: 0,
     }
 }
+
+bitvue_test_alloc::install!();

@@ -37,3 +37,6 @@ pub use traits::{CodecType, Decoder, DecoderCapabilities, DecoderFactory};
 pub use vvdec::VvcDecoder;
 pub use yuv::yuv_to_rgb;
 pub use yuv_loader::{BitDepth, ChromaSubsampling, YuvFileParams, YuvLoader, YuvLoaderError};
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

@@ -822,3 +822,5 @@ fn test_repeated_calculations() {
         );
     }
 }
+
+bitvue_test_alloc::install!();

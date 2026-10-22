@@ -262,3 +262,5 @@ fn test_pps_id_ranges() {
         assert_eq!(pps.seq_parameter_set_id, sps_id);
     }
 }
+
+bitvue_test_alloc::install!();

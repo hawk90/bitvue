@@ -205,3 +205,5 @@ fn test_vp9_partition_types() {
 
     assert!(partitions.len() >= 2);
 }
+
+bitvue_test_alloc::install!();

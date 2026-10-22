@@ -14,3 +14,6 @@ bitvue-hevc = { path = "../bitvue-hevc" }
 bitvue-vp9 = { path = "../bitvue-vp9" }
 bitvue-vvc = { path = "../bitvue-vvc" }
 bitvue-mpeg2-codec = { path = "../bitvue-mpeg2-codec" }
+
+[dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }

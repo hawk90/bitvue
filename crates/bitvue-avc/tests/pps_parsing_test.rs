@@ -1180,3 +1180,5 @@ fn test_pps_various_weighted_bipred() {
         let _ = pps;
     }
 }
+
+bitvue_test_alloc::install!();

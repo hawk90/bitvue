@@ -1291,3 +1291,5 @@ fn test_extract_with_three_byte_start_codes_only() {
     // Should handle 3-byte start codes correctly
     let _frames = frames;
 }
+
+bitvue_test_alloc::install!();

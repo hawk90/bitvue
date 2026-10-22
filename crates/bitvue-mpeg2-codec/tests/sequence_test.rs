@@ -349,3 +349,5 @@ fn test_complete_sequence_header() {
     assert!(seq.intra_quantiser_matrix.is_some());
     assert!(seq.non_intra_quantiser_matrix.is_some());
 }
+
+bitvue_test_alloc::install!();

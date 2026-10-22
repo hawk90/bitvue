@@ -4,3 +4,6 @@
 //! directly without going through the `bitvue` binary.
 
 pub mod commands;
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

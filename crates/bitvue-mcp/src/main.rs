@@ -66,3 +66,6 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

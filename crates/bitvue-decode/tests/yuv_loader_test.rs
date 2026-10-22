@@ -314,3 +314,5 @@ fn test_bit_depth_conversion() {
 
     assert_eq!(back_to_8bit, data_8bit);
 }
+
+bitvue_test_alloc::install!();

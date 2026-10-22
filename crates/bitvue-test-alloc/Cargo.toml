@@ -1,0 +1,7 @@
+[package]
+name = "bitvue-test-alloc"
+description = "Test-only global allocator with a hard live-bytes cap (aborts instead of exhausting RAM)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false

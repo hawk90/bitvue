@@ -10,6 +10,7 @@ bitvue-engine = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }
 tempfile = "3.27.0"
 bitvue-hevc = { path = "../bitvue-hevc" }
 bitvue-avc = { path = "../bitvue-avc" }

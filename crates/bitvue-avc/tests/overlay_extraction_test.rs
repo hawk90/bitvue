@@ -829,3 +829,5 @@ fn test_overlay_extraction_dimensions() {
         assert!(result.is_ok(), "Should handle {}x{}", width, height);
     }
 }
+
+bitvue_test_alloc::install!();

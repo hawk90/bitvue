@@ -837,3 +837,5 @@ mod lsb_bitreader_tests {
         assert_eq!(reader.position(), 16);
     }
 }
+
+bitvue_test_alloc::install!();

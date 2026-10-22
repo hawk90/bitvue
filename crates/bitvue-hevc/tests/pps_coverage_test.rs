@@ -391,3 +391,5 @@ fn test_pps_default_values() {
     assert!(!pps.output_flag_present_flag);
     assert_eq!(pps.num_extra_slice_header_bits, 0);
 }
+
+bitvue_test_alloc::install!();

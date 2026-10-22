@@ -479,3 +479,5 @@ fn test_sps_various_flags() {
     assert!(sps.sps_sao_enabled_flag);
     assert!(sps.sps_temporal_mvp_enabled_flag);
 }
+
+bitvue_test_alloc::install!();

@@ -816,3 +816,5 @@ fn test_stream_id_parameter_ignored() {
     assert_eq!(node1.key.stream, bitvue_engine::StreamId::A);
     assert_eq!(node2.key.stream, bitvue_engine::StreamId::A);
 }
+
+bitvue_test_alloc::install!();

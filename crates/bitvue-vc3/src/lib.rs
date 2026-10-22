@@ -9,3 +9,6 @@ pub use error::{Result, Vc3Error};
 pub use frames::{extract_vc3_frames, ExtractResult, Vc3Frame};
 pub use overlay_extraction::{extract_mb_grid, MbGrid};
 pub use segment::{parse_frame_header, scan_segments, CompId, FrameHeader, DNXHD_MAGIC};
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

@@ -534,3 +534,5 @@ fn test_parse_sei_unknown_payload_type() {
     // Unknown types should not have parsed data
     assert!(messages[0].parsed.is_none());
 }
+
+bitvue_test_alloc::install!();

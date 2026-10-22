@@ -221,3 +221,5 @@ fn test_extract_frame_at_index_with_valid_nal() {
     // No frame because SPS/PPS are required for slice header parsing
     assert!(result.is_none());
 }
+
+bitvue_test_alloc::install!();

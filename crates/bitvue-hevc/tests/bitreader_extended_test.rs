@@ -411,3 +411,5 @@ fn test_bitreader_inner_mut_read() {
 
     assert_eq!(reader.position(), 1);
 }
+
+bitvue_test_alloc::install!();

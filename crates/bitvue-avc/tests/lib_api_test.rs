@@ -2331,3 +2331,5 @@ fn test_parse_avc_quick_four_byte_start_code() {
     let result = parse_avc_quick(&data);
     let _ = result;
 }
+
+bitvue_test_alloc::install!();

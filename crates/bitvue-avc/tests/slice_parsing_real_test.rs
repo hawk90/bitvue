@@ -565,3 +565,5 @@ fn test_slice_header_with_separate_colour_plane() {
     // Accept either Ok or Err
     let _ = result;
 }
+
+bitvue_test_alloc::install!();

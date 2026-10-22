@@ -245,3 +245,5 @@ fn test_stream_methods() {
     assert_eq!(stream.frame_count(), 0);
     assert_eq!(stream.idr_frames().len(), 0);
 }
+
+bitvue_test_alloc::install!();

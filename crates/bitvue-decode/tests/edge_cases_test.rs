@@ -799,3 +799,5 @@ fn create_test_frame(width: u32, height: u32) -> DecodedFrame {
         chroma_format: bitvue_decode::decoder::ChromaFormat::Yuv420,
     }
 }
+
+bitvue_test_alloc::install!();

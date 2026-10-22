@@ -625,3 +625,5 @@ fn test_sps_display_dimensions_no_crop() {
 }
 
 // Additional SPS tests for coverage
+
+bitvue_test_alloc::install!();

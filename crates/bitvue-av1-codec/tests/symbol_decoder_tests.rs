@@ -242,3 +242,5 @@ fn test_symbol_decoder_multiple_reads() {
 
     println!("✅ Successfully read multiple partition symbols");
 }
+
+bitvue_test_alloc::install!();

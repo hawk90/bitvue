@@ -689,3 +689,5 @@ fn qp_grid_of_a_decoded_frame_has_no_missing_cells() {
         }
     }
 }
+
+bitvue_test_alloc::install!();

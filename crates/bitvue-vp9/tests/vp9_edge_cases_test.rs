@@ -130,3 +130,5 @@ fn test_extract_vp9_frames_consecutive_frames() {
     let result = extract_vp9_frames(&data);
     assert!(result.is_ok() || result.is_err());
 }
+
+bitvue_test_alloc::install!();

@@ -437,3 +437,5 @@ fn test_parse_hevc_stream_temporal_layers() {
     assert_eq!(nal_units[1].header.nuh_temporal_id_plus1, 3); // TID=2
     assert_eq!(nal_units[2].header.nuh_temporal_id_plus1, 5); // TID=4
 }
+
+bitvue_test_alloc::install!();

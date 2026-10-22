@@ -966,3 +966,5 @@ fn test_nal_unit_payload_processing() {
     assert_eq!(result[0].raw_payload, vec![0x42, 0x00, 0x00, 0x03, 0x00]);
     assert_eq!(result[0].payload, vec![0x42, 0x00, 0x00, 0x00]);
 }
+
+bitvue_test_alloc::install!();

@@ -419,3 +419,5 @@ fn test_slice_header_temporal_mvp() {
     assert!(!header.collocated_from_l0_flag);
     assert_eq!(header.collocated_ref_idx, 2);
 }
+
+bitvue_test_alloc::install!();

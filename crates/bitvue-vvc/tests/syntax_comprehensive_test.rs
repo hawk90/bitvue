@@ -426,3 +426,5 @@ fn test_syntax_node_all_node_types() {
         assert_eq!(node.node_type, node_type);
     }
 }
+
+bitvue_test_alloc::install!();

@@ -272,3 +272,6 @@ mod tests {
         assert!(read_frame(&mut reader).unwrap().is_none());
     }
 }
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

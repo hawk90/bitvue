@@ -346,3 +346,5 @@ fn test_pps_various_seq_parameter_set_ids() {
         assert!(result.is_ok());
     }
 }
+
+bitvue_test_alloc::install!();

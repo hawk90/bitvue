@@ -344,3 +344,5 @@ fn soak_one_decoder_many_frames_do_not_grow_memory() {
         assert_eq!(decoder.decode_all(STREAM).unwrap().len(), 9);
     }
 }
+
+bitvue_test_alloc::install!();

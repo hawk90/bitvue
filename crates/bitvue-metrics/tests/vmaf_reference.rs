@@ -68,3 +68,5 @@ fn pooled_score_matches_libvmaf() {
         "got {score:.6}, libvmaf says {EXPECTED_POOLED:.6}"
     );
 }
+
+bitvue_test_alloc::install!();

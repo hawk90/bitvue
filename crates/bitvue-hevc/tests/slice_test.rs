@@ -304,3 +304,5 @@ fn test_parse_slice_header_idr_nal() {
     // Test data is too short for full parsing, should error
     assert!(result.is_err());
 }
+
+bitvue_test_alloc::install!();

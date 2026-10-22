@@ -247,3 +247,5 @@ fn test_parse_sei_mixed_start_code_lengths() {
     let result = parse_sei(&data);
     assert!(result.is_ok() || result.is_err());
 }
+
+bitvue_test_alloc::install!();

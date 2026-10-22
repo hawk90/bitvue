@@ -342,3 +342,5 @@ fn create_minimal_sps() -> Sps {
         vui_parameters: None,
     }
 }
+
+bitvue_test_alloc::install!();

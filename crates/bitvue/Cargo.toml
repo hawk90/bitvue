@@ -25,3 +25,6 @@ bitvue-metrics = { path = "../bitvue-metrics" }
 
 # Integration
 bitvue-codecs-parser = { path = "../bitvue-codecs-parser" }
+
+[dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }

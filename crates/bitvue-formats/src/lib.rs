@@ -72,3 +72,6 @@ pub use mkv::MkvInfo;
 pub use mp4::{BoxHeader, Mp4Info};
 pub use resource_budget::{AllocationError, ResourceBudget};
 pub use ts::{TsInfo, VideoSample};
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

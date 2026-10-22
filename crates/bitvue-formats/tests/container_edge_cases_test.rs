@@ -458,3 +458,5 @@ mod platform_specific_tests {
         tempfile::TempDir::new().unwrap()
     }
 }
+
+bitvue_test_alloc::install!();

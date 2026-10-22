@@ -276,3 +276,5 @@ fn test_hevc_stream_count_methods() {
     // Test various count methods
     assert_eq!(stream.slices.len(), 0); // No VCL NALs
 }
+
+bitvue_test_alloc::install!();

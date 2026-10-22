@@ -193,3 +193,5 @@ fn stdout_carries_only_json_rpc_messages() {
         assert_eq!(v["jsonrpc"], "2.0", "not a JSON-RPC message: {line}");
     }
 }
+
+bitvue_test_alloc::install!();

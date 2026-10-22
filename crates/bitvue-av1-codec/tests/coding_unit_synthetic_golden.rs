@@ -493,3 +493,5 @@ fn deep_streams_reach_the_rare_syntax() {
         "no block split into mixed-size transform blocks"
     );
 }
+
+bitvue_test_alloc::install!();

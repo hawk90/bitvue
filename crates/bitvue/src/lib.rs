@@ -68,3 +68,6 @@ pub mod prelude {
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

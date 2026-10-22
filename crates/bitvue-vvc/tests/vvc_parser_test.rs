@@ -111,3 +111,5 @@ fn test_vvc_trail_frame_detection() {
     assert_eq!(nal_units[0].header.nal_unit_type, NalUnitType::TrailNut);
     assert!(nal_units[0].is_vcl(), "TRAIL_NUT should be VCL");
 }
+
+bitvue_test_alloc::install!();

@@ -262,3 +262,5 @@ fn test_avc_timing_info() {
     let fps = timing.time_scale as f64 / (2.0 * timing.num_units_in_tick as f64);
     assert_eq!(fps, 30.0);
 }
+
+bitvue_test_alloc::install!();

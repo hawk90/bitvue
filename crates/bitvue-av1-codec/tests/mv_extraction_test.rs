@@ -242,3 +242,5 @@ fn test_mv_extraction_with_spec_cdfs() {
         eprintln!("  This is normal for some test files - they may only contain I-frames");
     }
 }
+
+bitvue_test_alloc::install!();

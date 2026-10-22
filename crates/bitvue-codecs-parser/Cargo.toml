@@ -15,3 +15,6 @@ serde = { workspace = true }
 # Error handling
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }

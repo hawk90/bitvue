@@ -96,3 +96,5 @@ fn test_parse_nal_units_no_start_codes_returns_empty() {
     let units = result.unwrap();
     assert!(units.is_empty());
 }
+
+bitvue_test_alloc::install!();

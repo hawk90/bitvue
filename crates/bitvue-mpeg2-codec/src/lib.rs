@@ -436,3 +436,6 @@ mod tests {
         assert_eq!(stream.sequence_headers.len(), 0);
     }
 }
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

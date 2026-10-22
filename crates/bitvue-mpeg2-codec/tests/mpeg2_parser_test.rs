@@ -195,3 +195,5 @@ fn test_mpeg2_progressive_sequence() {
 
     assert!(ext.progressive_sequence);
 }
+
+bitvue_test_alloc::install!();

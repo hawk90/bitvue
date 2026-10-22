@@ -144,3 +144,5 @@ fn create_minimal_vp9_stream() -> Vec<u8> {
 
     data
 }
+
+bitvue_test_alloc::install!();

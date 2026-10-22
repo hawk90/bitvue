@@ -221,3 +221,5 @@ fn test_complex_vvc_tree() {
     assert_eq!(vvc.children[1].name, "sps");
     assert_eq!(vvc.children[2].name, "pps");
 }
+
+bitvue_test_alloc::install!();

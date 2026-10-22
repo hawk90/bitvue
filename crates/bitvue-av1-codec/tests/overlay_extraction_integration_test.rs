@@ -237,3 +237,5 @@ fn test_overlay_extraction_caching_works() {
     assert_eq!(qp_grid1.grid_h, qp_grid2.grid_h);
     assert_eq!(qp_grid1.qp, qp_grid2.qp);
 }
+
+bitvue_test_alloc::install!();

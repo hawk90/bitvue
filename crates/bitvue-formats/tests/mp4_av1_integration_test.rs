@@ -150,3 +150,5 @@ fn test_detect_mp4_container_format() {
     println!("Detected format: {:?}", format);
     assert_eq!(format, bitvue_formats::ContainerFormat::MP4);
 }
+
+bitvue_test_alloc::install!();

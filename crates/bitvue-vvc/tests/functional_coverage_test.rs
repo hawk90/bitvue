@@ -213,3 +213,5 @@ fn test_profile_variants() {
         let _ = profile;
     }
 }
+
+bitvue_test_alloc::install!();

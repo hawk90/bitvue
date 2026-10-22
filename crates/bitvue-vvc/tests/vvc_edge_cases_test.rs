@@ -184,3 +184,5 @@ fn test_parse_vvc_zero_temporal_id() {
     // Should handle gracefully
     assert!(result.is_ok() || result.is_err());
 }
+
+bitvue_test_alloc::install!();

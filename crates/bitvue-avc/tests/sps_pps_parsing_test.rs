@@ -1141,3 +1141,5 @@ fn test_sps_edge_case_large_dimensions() {
     assert_eq!(sps.pic_width(), 10880);
     assert_eq!(sps.pic_height(), 10880);
 }
+
+bitvue_test_alloc::install!();

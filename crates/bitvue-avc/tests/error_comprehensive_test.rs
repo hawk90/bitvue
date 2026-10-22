@@ -394,3 +394,5 @@ fn test_all_error_variants_are_distinct() {
     // Verify each error is created correctly
     assert_eq!(errors.len(), 10);
 }
+
+bitvue_test_alloc::install!();

@@ -272,3 +272,5 @@ const GOLDEN_TRANSFORM: &[u64] = &[
     0x04d358011d83fec6,
     0x549855abd53e3ae4,
 ];
+
+bitvue_test_alloc::install!();

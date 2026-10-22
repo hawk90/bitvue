@@ -23,3 +23,5 @@ mod private_tests {
     // For now, test what we can access through public API
     // This file will be expanded once we add test-only exports to lib.rs
 }
+
+bitvue_test_alloc::install!();

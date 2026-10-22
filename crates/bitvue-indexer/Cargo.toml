@@ -10,4 +10,5 @@ bitvue-engine = { workspace = true }
 bitvue-av1-codec = { workspace = true }
 
 [dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }
 tempfile = { workspace = true }

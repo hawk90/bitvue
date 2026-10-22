@@ -383,3 +383,5 @@ fn test_parse_pps_various_qp_deltas() {
         let _ = result;
     }
 }
+
+bitvue_test_alloc::install!();

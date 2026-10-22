@@ -503,3 +503,5 @@ fn test_sps_max_ref_frames() {
     let sps = create_test_sps();
     assert_eq!(sps.max_num_ref_frames, 1);
 }
+
+bitvue_test_alloc::install!();

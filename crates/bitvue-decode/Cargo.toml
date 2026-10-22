@@ -17,6 +17,7 @@ ffmpeg-next = { version = "9", optional = true }
 rayon = "1.12.0"
 
 [dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }
 tempfile = { workspace = true }
 
 [features]

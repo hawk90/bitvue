@@ -297,3 +297,5 @@ fn test_stream_dimensions() {
     assert!(stream.dimensions().is_none());
     assert_eq!(stream.frame_count(), 0);
 }
+
+bitvue_test_alloc::install!();

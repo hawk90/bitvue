@@ -13,3 +13,6 @@ pub use bitvue_av1_codec::*;
 
 // Placeholder for BOSS_03
 // Full codec parser traits will be implemented in BOSS_03
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

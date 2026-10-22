@@ -568,3 +568,5 @@ fn test_sps_conformance_window_offsets() {
     assert_eq!(sps.conf_win_top_offset, 5);
     assert_eq!(sps.conf_win_bottom_offset, 15);
 }
+
+bitvue_test_alloc::install!();

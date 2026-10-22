@@ -19,3 +19,6 @@ pub use bitvue_vvc as vvc;
 
 // MPEG-2
 pub use bitvue_mpeg2_codec as mpeg2;
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

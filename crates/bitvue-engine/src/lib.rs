@@ -194,3 +194,6 @@ pub use workspace::*;
 // Consolidated tests (moved from tests/ to avoid linker OOM)
 #[cfg(test)]
 pub mod tests;
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

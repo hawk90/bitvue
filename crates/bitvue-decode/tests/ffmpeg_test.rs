@@ -293,3 +293,5 @@ fn test_stream_info() {
 
     assert_eq!(stream.duration_seconds(), 60.0);
 }
+
+bitvue_test_alloc::install!();

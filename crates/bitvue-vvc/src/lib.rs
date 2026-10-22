@@ -268,3 +268,6 @@ pub struct VvcQuickInfo {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+bitvue_test_alloc::install!();

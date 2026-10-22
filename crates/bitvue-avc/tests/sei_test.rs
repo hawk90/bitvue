@@ -379,3 +379,5 @@ fn test_sei_payload_type_all_known_values() {
         );
     }
 }
+
+bitvue_test_alloc::install!();

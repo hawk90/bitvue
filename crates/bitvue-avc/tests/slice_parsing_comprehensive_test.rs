@@ -3030,3 +3030,5 @@ fn test_parse_slice_header_si_slice_type() {
     let result = parse_slice_header(&data, &sps_map, &pps_map, NalUnitType::NonIdrSlice, 0);
     let _ = result;
 }
+
+bitvue_test_alloc::install!();

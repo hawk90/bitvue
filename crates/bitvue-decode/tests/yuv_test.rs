@@ -321,3 +321,5 @@ fn test_yuv_copy_plane() {
     copy_plane(&src, &mut dst, 100, 10, 200, 200);
     assert_eq!(dst[0], 1);
 }
+
+bitvue_test_alloc::install!();

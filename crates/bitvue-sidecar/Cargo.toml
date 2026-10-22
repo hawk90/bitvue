@@ -22,4 +22,5 @@ base64 = { workspace = true }
 image = { workspace = true }
 
 [dev-dependencies]
+bitvue-test-alloc = { path = "../bitvue-test-alloc" }
 tempfile = { workspace = true }

@@ -319,3 +319,5 @@ fn test_node_with_values_and_positions() {
     assert_eq!(node.children[1].bit_offset, Some(200));
     assert_eq!(node.children[1].bit_length, Some(30));
 }
+
+bitvue_test_alloc::install!();

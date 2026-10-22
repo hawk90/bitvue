@@ -172,3 +172,5 @@ fn all_in_flight_responses_arrive_even_when_stdin_closes_immediately_after() {
     let status = child.wait().expect("sidecar process failed to exit");
     assert!(status.success(), "sidecar exited with {status:?}");
 }
+
+bitvue_test_alloc::install!();

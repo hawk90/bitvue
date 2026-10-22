@@ -523,3 +523,5 @@ fn vp9_ivf_decoded_as_av1_does_not_panic() {
     };
     let _ = run(cfg); // must not panic
 }
+
+bitvue_test_alloc::install!();

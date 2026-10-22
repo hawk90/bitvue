@@ -201,3 +201,5 @@ fn test_extract_annex_b_frames_trailing_ones() {
     let result = extract_annex_b_frames(&data);
     assert!(result.is_ok() || result.is_err());
 }
+
+bitvue_test_alloc::install!();

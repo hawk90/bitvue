@@ -571,3 +571,5 @@ fn test_super_block_sizes() {
         assert_eq!(sb.size, size);
     }
 }
+
+bitvue_test_alloc::install!();

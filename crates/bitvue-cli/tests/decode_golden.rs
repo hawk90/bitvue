@@ -149,3 +149,5 @@ fn yuv_dump_honours_frames_limit() {
         );
     }
 }
+
+bitvue_test_alloc::install!();
