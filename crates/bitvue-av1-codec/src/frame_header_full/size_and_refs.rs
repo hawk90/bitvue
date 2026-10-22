@@ -118,3 +118,7 @@ pub(super) fn read_size_and_refs(
         use_ref_frame_mvs,
     })
 }
+
+#[cfg(test)]
+#[path = "size_and_refs_tests.rs"]
+mod size_and_refs_tests;
