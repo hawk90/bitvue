@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Every test binary must install the capped allocator (bitvue_test_alloc::install!()), otherwise a
 # runaway mutant in that binary is only caught by the slower RSS-polling guard. Lists the misses.
+# Run by CI (rust-lint). A text match only: a mention in a comment passes, and binaries with a custom
+# [[test]] path or under src/bin/ are not looked at -- extend the file list below if one appears.
 cd "$(dirname "$0")/.."
 skip='bitvue-test-alloc|bitvue-benchmarks|vendor'
 missing=0
