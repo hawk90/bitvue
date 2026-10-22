@@ -62,3 +62,26 @@ clip_case!(
     "av1_aomenc_tilegroups.ivf",
     6928590870512926212
 );
+
+fn grid_of(width: u32, height: u32, sb_size: u32) -> (u32, u32) {
+    let mut frame = ParsedFrame::scaffold(std::sync::Arc::from(&[][..]));
+    frame.dimensions.width = width;
+    frame.dimensions.height = height;
+    frame.dimensions.sb_size = sb_size;
+    frame.finish_superblock_grid();
+    (frame.dimensions.sb_cols, frame.dimensions.sb_rows)
+}
+
+#[test]
+fn superblock_grid_rounds_partial_superblocks_up() {
+    assert_eq!(grid_of(64, 64, 64), (1, 1));
+    assert_eq!(grid_of(65, 129, 64), (2, 3));
+    assert_eq!(grid_of(352, 288, 128), (3, 3));
+}
+
+#[test]
+fn superblock_grid_is_left_alone_until_both_size_and_superblock_size_are_known() {
+    // The scaffold's own 30 x 17 grid stays when either input is missing.
+    assert_eq!(grid_of(0, 1080, 64), (30, 17));
+    assert_eq!(grid_of(1920, 1080, 0), (30, 17));
+}

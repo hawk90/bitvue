@@ -377,7 +377,7 @@ impl ParsedFrame {
     }
 
     /// The frame's size in superblocks, once the sequence header has given its size.
-    fn finish_superblock_grid(&mut self) {
+    pub(super) fn finish_superblock_grid(&mut self) {
         if self.dimensions.width > 0 && self.dimensions.sb_size > 0 {
             self.dimensions.sb_cols = self.dimensions.width.div_ceil(self.dimensions.sb_size);
             self.dimensions.sb_rows = self.dimensions.height.div_ceil(self.dimensions.sb_size);
