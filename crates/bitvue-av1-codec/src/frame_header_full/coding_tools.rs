@@ -19,6 +19,7 @@ pub(super) struct CodingToolsInput<'a> {
     pub(super) ref_frame_idx: &'a [u32; REFS_PER_FRAME],
     pub(super) coded_lossless: bool,
     pub(super) all_lossless: bool,
+    pub(super) primary_ref_frame: u32,
 }
 
 pub(super) struct CodingTools {
@@ -32,6 +33,7 @@ pub(super) struct CodingTools {
     pub(super) allow_warped_motion: bool,
     pub(super) reduced_tx_set: bool,
     pub(super) gm_type: [u8; 8],
+    pub(super) gm_params: GmParams,
     pub(super) film_grain: FilmGrainInfo,
 }
 
@@ -53,6 +55,7 @@ pub(super) fn read_coding_tools(
         ref_frame_idx,
         coded_lossless,
         all_lossless,
+        primary_ref_frame,
     } = *input;
     let loop_filter = parse_loop_filter_params(
         reader,
@@ -93,10 +96,16 @@ pub(super) fn read_coding_tools(
     // showing this crate's key-frame `header_size_bytes` (25) didn't match the oracle's
     // independently-derived true tile-data offset (17) for the real fixture's frame 0, an 8-byte
     // (64-bit) overshoot consistent with this exact miscount.
-    let gm_type = if !frame_is_intra {
-        parse_global_motion_params(reader, allow_high_precision_mv)?
+    let (gm_type, gm_params) = if !frame_is_intra {
+        // `PrevGmParams` (spec `load_previous` / `setup_past_independence`).
+        let prev = if primary_ref_frame == PRIMARY_REF_NONE {
+            [GM_IDENTITY_PARAMS; 8]
+        } else {
+            ref_state.gm_params[ref_frame_idx[primary_ref_frame as usize] as usize % NUM_REF_FRAMES]
+        };
+        parse_global_motion_params(reader, allow_high_precision_mv, &prev)?
     } else {
-        [GM_TYPE_IDENTITY; 8]
+        ([GM_TYPE_IDENTITY; 8], [GM_IDENTITY_PARAMS; 8])
     };
 
     let film_grain = parse_film_grain_params(reader, seq, show_frame, showable_frame, frame_type)?;
@@ -112,6 +121,7 @@ pub(super) fn read_coding_tools(
         allow_warped_motion,
         reduced_tx_set,
         gm_type,
+        gm_params,
         film_grain,
     })
 }

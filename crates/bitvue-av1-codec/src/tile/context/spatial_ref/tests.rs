@@ -390,7 +390,7 @@ fn test_intra_cells_keep_their_size_for_the_neighbour_scan() {
     ctx.set_intra_block(4, 4, 4, 4);
     let mut stack = [MvStackEntry::default(); 8];
     let mut cnt = 0;
-    let rows = ctx.scan_row_weighted(&mut stack, &mut cnt, 0, 7, 4, 4, 4, 3, 1);
+    let rows = ctx.scan_row_weighted(&mut stack, &mut cnt, 0, None, 7, 4, 4, 4, 3, 1);
     assert_eq!(rows, 2);
     assert_eq!(cnt, 0, "an intra block is never a candidate");
 }

@@ -18,10 +18,10 @@ impl SpatialRefContext {
     /// 4. each group sorted by weight, descending, stably;
     /// 5. fewer than 2 candidates: neighbours using other references are added (sign-flipped by
     ///    `sign_bias`) with weight 2;
-    /// 6. clamp to the frame, pad with the global MV (zero here: no global-motion parameters).
+    /// 6. clamp to the frame, pad with the global MV.
     ///
-    /// Not covered: global-motion candidates (`mf & 1` blocks) and `fix_mv_precision` of temporal
-    /// candidates -- both need frame-header state this context does not carry.
+    /// Global motion: `GLOBALMV` neighbours contribute the block's global MV instead of their own
+    /// (see [`Self::add_spatial_candidate`]).
     pub fn single_ref_mv_stack(
         &self,
         x4: u32,
@@ -31,6 +31,7 @@ impl SpatialRefContext {
         ref0: i8,
         use_ref_frame_mvs: bool,
     ) -> ([MvStackEntry; 8], usize) {
+        let gmv = self.global_candidate(ref0, x4, y4, bw4, bh4);
         let query = ScanQuery {
             x4,
             y4,
@@ -38,6 +39,7 @@ impl SpatialRefContext {
             bh4,
             ref0,
             ref1: -1,
+            gmvs: [gmv, None],
         };
         let extent = self.scan_extent(&query);
         let mut stack = [MvStackEntry::default(); 8];
@@ -65,6 +67,7 @@ impl SpatialRefContext {
             extent.w4,
             extent.h4,
             ref0,
+            gmv,
             extent.max_rows,
             extent.max_cols,
             n_rows,
@@ -81,6 +84,13 @@ impl SpatialRefContext {
         );
 
         self.clamp_stack_to_frame(&mut stack, cnt, x4, y4, bw4, bh4);
+
+        // Missing candidates read as the global MV (spec 7.10.2: `RefStackMv[idx][0] =
+        // GlobalMvs[0]` for `idx` in `NumMvFound..2`); `cnt` still counts only real ones.
+        let global = self.global_mv(ref0, x4, y4, bw4, bh4);
+        for entry in &mut stack[cnt.min(2)..2] {
+            entry.mv = global;
+        }
 
         (stack, cnt)
     }
@@ -102,6 +112,7 @@ impl SpatialRefContext {
                 stack,
                 cnt,
                 q.ref0,
+                q.gmvs[0],
                 q.y4 - 1,
                 q.x4,
                 q.bw4,
@@ -115,6 +126,7 @@ impl SpatialRefContext {
                 stack,
                 cnt,
                 q.ref0,
+                q.gmvs[0],
                 q.x4 - 1,
                 q.y4,
                 q.bh4,
@@ -125,7 +137,7 @@ impl SpatialRefContext {
         }
         if n_rows != u32::MAX && q.bw4.max(q.bh4) <= 16 && q.x4 + q.bw4 < self.col_end {
             if let Some(cell) = self.cell(q.x4 + q.bw4, q.y4 - 1) {
-                Self::add_spatial_candidate(stack, cnt, 4, cell, q.ref0);
+                Self::add_spatial_candidate(stack, cnt, 4, cell, q.ref0, q.gmvs[0]);
             }
         }
         (n_rows, n_cols)
@@ -173,7 +185,7 @@ impl SpatialRefContext {
     ) {
         if n_rows != u32::MAX && n_cols != u32::MAX {
             if let Some(cell) = self.cell(q.x4 - 1, q.y4 - 1) {
-                Self::add_spatial_candidate(stack, cnt, 4, cell, q.ref0);
+                Self::add_spatial_candidate(stack, cnt, 4, cell, q.ref0, q.gmvs[0]);
             }
         }
     }
@@ -191,6 +203,7 @@ impl SpatialRefContext {
         w4: u32,
         h4: u32,
         ref0: i8,
+        gmv: Option<crate::tile::coding_unit::MotionVector>,
         max_rows: i32,
         max_cols: i32,
         mut n_rows: u32,
@@ -202,6 +215,7 @@ impl SpatialRefContext {
                     stack,
                     cnt,
                     ref0,
+                    gmv,
                     (y4 + 1 - 2 * n) | 1,
                     x4 | 1,
                     bw4,
@@ -215,6 +229,7 @@ impl SpatialRefContext {
                     stack,
                     cnt,
                     ref0,
+                    gmv,
                     (x4 + 1 - 2 * n) | 1,
                     y4 | 1,
                     bh4,

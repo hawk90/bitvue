@@ -164,6 +164,8 @@ pub struct ParsedFrame {
     /// `allow_high_precision_mv` (spec 5.9.2) -- see `FrameHeader::allow_high_precision_mv`.
     pub allow_high_precision_mv: bool,
     pub gm_type: [u8; 8],
+    /// `gm_params` (spec 5.9.25) -- see `FrameHeader::gm_params`.
+    pub gm_params: crate::frame_header_full::GmParams,
     /// `enable_interintra_compound`/`enable_masked_compound`/`enable_jnt_comp`/
     /// `enable_warped_motion` (sequence header) -- gate `interintra`/`compound_type`(wedge/seg)/
     /// `motion_mode`'s real eligibility. Same sourcing story as `mono_chrome` (direct from the
@@ -262,6 +264,7 @@ impl ParsedFrame {
                 force_integer_mv: self.force_integer_mv,
                 allow_high_precision_mv: self.allow_high_precision_mv,
                 gm_type: self.gm_type,
+                gm_params: self.gm_params,
             },
             mi_rows: crate::tile::partition::mi_units(self.dimensions.height),
             mi_cols: crate::tile::partition::mi_units(self.dimensions.width),

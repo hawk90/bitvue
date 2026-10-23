@@ -6,10 +6,7 @@ use super::types::{CodingUnit, RefFrame};
 use super::{compound, contexts, interp_filter, intra, intrabc, ref_frames, single_ref, var_tx};
 use crate::symbol::cdf::tx_size_class;
 use crate::symbol::SymbolDecoder;
-use crate::tile::{
-    BlockRect, FrameCodingParams, MiRect, MotionVector, MvPredictorContext, SuperblockCtx,
-    TileContext,
-};
+use crate::tile::{BlockRect, FrameCodingParams, MiRect, MotionVector, SuperblockCtx, TileContext};
 use bitvue_engine::Result;
 
 /// A block that is not inter: a key-frame or intra-in-inter-frame block, or an IntraBC block.
@@ -114,7 +111,6 @@ pub(super) fn read_intra_block_info(
 pub(super) fn read_inter_block_info(
     decoder: &mut SymbolDecoder,
     tile_ctx: &mut TileContext,
-    mv_ctx: &mut MvPredictorContext,
     rect: BlockRect,
     mi: MiRect,
     frame: &FrameCodingParams,
@@ -137,11 +133,11 @@ pub(super) fn read_inter_block_info(
     let is_compound = cu.ref_frames[1] != RefFrame::Intra;
 
     let is_warp = if is_compound {
-        compound::read_compound_mode_info(decoder, tile_ctx, mv_ctx, rect, mi, frame, cu)?;
+        compound::read_compound_mode_info(decoder, tile_ctx, rect, mi, frame, cu)?;
         false
     } else {
         // INTER frame - read prediction mode
-        single_ref::read_single_ref_mode_info(decoder, tile_ctx, mv_ctx, rect, mi, frame, cu)?
+        single_ref::read_single_ref_mode_info(decoder, tile_ctx, rect, mi, frame, cu)?
     };
 
     // filter (spec 5.11.30) -- see `interp_filter`.

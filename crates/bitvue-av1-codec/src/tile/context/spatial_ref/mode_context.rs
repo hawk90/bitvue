@@ -10,6 +10,9 @@ pub(super) struct ScanQuery {
     pub(super) bh4: u32,
     pub(super) ref0: i8,
     pub(super) ref1: i8,
+    /// The block's global MV per reference, where that reference's warp is more than a
+    /// translation (see [`SpatialRefContext::global_candidate`]); substitutes `GLOBALMV` neighbours.
+    pub(super) gmvs: [Option<crate::tile::coding_unit::MotionVector>; 2],
 }
 
 impl ScanQuery {
@@ -73,6 +76,7 @@ impl SpatialRefContext {
             bh4,
             ref0,
             ref1,
+            gmvs: [None; 2],
         };
         let extent = self.scan_extent(&query);
         let mut found = ScanMatches::default();
@@ -257,15 +261,13 @@ impl SpatialRefContext {
         let (refmv_ctx, newmv_ctx) = self.refmv_newmv_ctx(x4, y4, bw4, bh4, ref0, -1);
         // Real `globalmv_ctx` (rav1d `add_temporal_candidate`'s `!(x|y)` sample, `refmvs.c:206-
         // 207`): the temporal candidate at this block's own top-left 8x8 cell, compared against
-        // the global-motion predictor -- approximated as always-invalid/zero (this crate's
-        // established `global_motion_params` bit-skip-only approximation, matching
-        // `single_ref_mv_stack`'s temporal scan doc), so the comparison reduces to `mv != zero`.
+        // the block's global motion vector.
         // Falls back to the pre-existing `use_ref_frame_mvs`-flag approximation when no temporal
         // context was set (this struct's doc) -- unchanged behavior for every caller that doesn't
         // opt in.
         // dav1d `refmvs.c:417-428`: starts as the header's flag; the block's own top-left
         // temporal sample, if it has one, overrides it with "differs from the global MV by at
-        // least 2 samples" (the global MV is zero here: no global-motion parameters).
+        // least 2 samples".
         let mut globalmv_ctx = u16::from(use_ref_frame_mvs);
         if let (Some(t), true) = (&self.temporal, use_ref_frame_mvs && ref0 >= 0) {
             let w4 = bw4.min(16).min(self.col_end.saturating_sub(x4)).max(1);
@@ -284,7 +286,8 @@ impl SpatialRefContext {
                 self.row_end,
             );
             if let Some((mv, _)) = samples.iter().find(|(_, first)| *first) {
-                globalmv_ctx = u16::from((mv.x.abs() | mv.y.abs()) >= 16);
+                let global = self.global_mv(ref0, x4, y4, bw4, bh4);
+                globalmv_ctx = u16::from(((mv.x - global.x).abs() | (mv.y - global.y).abs()) >= 16);
             }
         }
         (refmv_ctx as u16) << 4 | globalmv_ctx << 3 | newmv_ctx as u16

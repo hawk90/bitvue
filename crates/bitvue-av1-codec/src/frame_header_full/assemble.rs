@@ -30,11 +30,13 @@ pub(super) fn refresh_ref_slots(
     refresh_frame_flags: u32,
     order_hint: u32,
     segmentation: &SegmentationInfo,
+    gm_params: &GmParams,
 ) {
     for i in 0..NUM_REF_FRAMES {
         if (refresh_frame_flags >> i) & 1 == 1 {
             ref_state.ref_order_hint[i] = order_hint;
             ref_state.segmentation[i] = SegmentationFeatures::from(segmentation);
+            ref_state.gm_params[i] = *gm_params;
         }
     }
 }
@@ -96,6 +98,7 @@ pub(super) fn assemble_frame_header(sections: HeaderSections) -> FrameHeader {
         force_integer_mv: prelude.force_integer_mv,
         allow_high_precision_mv: refs.allow_high_precision_mv,
         gm_type: tools.gm_type,
+        gm_params: tools.gm_params,
         reduced_tx_set: tools.reduced_tx_set,
         txfm_mode: tools.txfm_mode,
         use_ref_frame_mvs: refs.use_ref_frame_mvs,

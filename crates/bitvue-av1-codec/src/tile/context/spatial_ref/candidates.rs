@@ -25,14 +25,23 @@ impl SpatialRefContext {
 
     /// dav1d `add_spatial_candidate` (single reference): the neighbour's MV for `ref0`, if it has
     /// one in either slot, merged into the stack by value.
+    ///
+    /// A neighbour that is a `GLOBALMV` block at least 8x8 large contributes the *current* block's
+    /// global MV (`gmv`, when the reference's warp is more than a translation) instead of its own
+    /// (spec 7.10.2.9 `search_stack_process`; dav1d's `b->mf & 1`).
     pub(super) fn add_spatial_candidate(
         stack: &mut [MvStackEntry; 8],
         cnt: &mut usize,
         weight: i32,
         cell: &SpatialRefCell,
         ref0: i8,
+        gmv: Option<crate::tile::coding_unit::MotionVector>,
     ) {
         if let Some(mv) = Self::single_ref_candidate_mv(cell, ref0) {
+            let mv = match gmv {
+                Some(g) if cell.substitutes_global_mv() => g,
+                _ => mv,
+            };
             Self::push_mv_candidate(stack, cnt, weight, mv);
         }
     }
@@ -199,6 +208,7 @@ impl SpatialRefContext {
         stack: &mut [MvStackEntry; 8],
         cnt: &mut usize,
         ref0: i8,
+        gmv: Option<crate::tile::coding_unit::MotionVector>,
         row_y4: u32,
         x4: u32,
         bw4: u32,
@@ -207,7 +217,7 @@ impl SpatialRefContext {
         step: u32,
     ) -> u32 {
         self.walk_row(row_y4, x4, bw4, w4, max_rows, step, &mut |cell, weight| {
-            Self::add_spatial_candidate(stack, cnt, weight, cell, ref0);
+            Self::add_spatial_candidate(stack, cnt, weight, cell, ref0, gmv);
         })
     }
 
@@ -218,6 +228,7 @@ impl SpatialRefContext {
         stack: &mut [MvStackEntry; 8],
         cnt: &mut usize,
         ref0: i8,
+        gmv: Option<crate::tile::coding_unit::MotionVector>,
         col_x4: u32,
         y4: u32,
         bh4: u32,
@@ -226,7 +237,7 @@ impl SpatialRefContext {
         step: u32,
     ) -> u32 {
         self.walk_col(col_x4, y4, bh4, h4, max_cols, step, &mut |cell, weight| {
-            Self::add_spatial_candidate(stack, cnt, weight, cell, ref0);
+            Self::add_spatial_candidate(stack, cnt, weight, cell, ref0, gmv);
         })
     }
 }

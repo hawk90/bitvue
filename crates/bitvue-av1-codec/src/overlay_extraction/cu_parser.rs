@@ -78,6 +78,12 @@ fn tile_context_for(parsed: &ParsedFrame) -> crate::tile::TileContext {
     );
     tile_ctx.set_frame_extent(dims.width, dims.height);
     tile_ctx.set_sign_bias(parsed.ref_frame_sign_bias);
+    tile_ctx.set_global_motion(
+        parsed.gm_type,
+        parsed.gm_params,
+        parsed.allow_high_precision_mv,
+        parsed.force_integer_mv,
+    );
     tile_ctx.set_ref_order_distance(parsed.ref_order_distance);
     tile_ctx
 }

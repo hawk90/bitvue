@@ -29,6 +29,10 @@ impl SpatialRefContext {
             bh4,
             ref0,
             ref1,
+            gmvs: [
+                self.global_candidate(ref0, x4, y4, bw4, bh4),
+                self.global_candidate(ref1, x4, y4, bw4, bh4),
+            ],
         };
         let extent = self.scan_extent(&query);
         let mut stack = Stack::default();
@@ -61,6 +65,8 @@ impl SpatialRefContext {
             self.fill_compound_extended_candidates(
                 x4,
                 y4,
+                bw4,
+                bh4,
                 extent.w4,
                 extent.h4,
                 n_rows != u32::MAX,
@@ -85,7 +91,12 @@ impl SpatialRefContext {
         cell: &SpatialRefCell,
         weight: i32,
     ) {
-        if let Some(mv) = Self::compound_candidate_mv(cell, q.ref0, q.ref1) {
+        if let Some(mut mv) = Self::compound_candidate_mv(cell, q.ref0, q.ref1) {
+            if cell.substitutes_global_mv() {
+                for (slot, gmv) in mv.iter_mut().zip(q.gmvs) {
+                    *slot = gmv.unwrap_or(*slot);
+                }
+            }
             Self::push_compound_mv_candidate(stack, cnt, weight, mv);
         }
     }
@@ -257,7 +268,7 @@ impl SpatialRefContext {
     ///   a reference equal to `ref1` is the mirror image; any other reference is a "diff"
     ///   candidate for both components, turned around where the sign bias differs;
     /// - each component takes its "same" candidates first, then its "diff" ones, then the
-    ///   global motion vector (zero here: no global-motion parameters are kept).
+    ///   global motion vector.
     ///
     /// Pure value computation: it does not move the bitstream position, but the values feed the
     /// candidates of later blocks and the stack's DRL contexts.
@@ -266,6 +277,8 @@ impl SpatialRefContext {
         &self,
         x4: u32,
         y4: u32,
+        bw4: u32,
+        bh4: u32,
         w4: u32,
         h4: u32,
         have_top: bool,
@@ -305,13 +318,16 @@ impl SpatialRefContext {
 
         // Merge: per component, the "same" candidates, then the "diff" ones, then the global
         // motion vector.
-        let zero = crate::tile::coding_unit::MotionVector::zero();
+        let globals = [
+            self.global_mv(ref0, x4, y4, bw4, bh4),
+            self.global_mv(ref1, x4, y4, bw4, bh4),
+        ];
         let merge = |comp: usize| -> [crate::tile::coding_unit::MotionVector; 2] {
             let candidates = lists.same[..lists.same_count[comp]]
                 .iter()
                 .map(|c| c[comp])
                 .chain(lists.diff[..lists.diff_count[comp]].iter().map(|c| c[comp]));
-            let mut merged = [zero; 2];
+            let mut merged = [globals[comp]; 2];
             for (slot, mv) in merged.iter_mut().zip(candidates) {
                 *slot = mv;
             }

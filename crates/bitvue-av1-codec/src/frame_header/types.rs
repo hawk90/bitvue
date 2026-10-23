@@ -272,6 +272,8 @@ pub struct FrameHeader {
     /// (intra frames, or `parse_frame_header_basic`'s basic-vs-full caveat) -- correct, since real
     /// spec's own default for an unparsed/intra frame is all-IDENTITY too.
     pub gm_type: [u8; 8],
+    /// `gm_params` (spec 5.9.25) per `RefFrame`; the identity wherever `gm_type` is IDENTITY.
+    pub gm_params: crate::frame_header_full::GmParams,
     /// `reduced_tx_set` (spec 5.9.2) -- restricts `transform_type()` (5.11.47) to a smaller
     /// symbol alphabet when set. Always `false` from `parse_frame_header_basic` (same
     /// basic-vs-full caveat as `reference_select`); real value only from

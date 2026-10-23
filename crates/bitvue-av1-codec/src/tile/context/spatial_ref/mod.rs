@@ -4,6 +4,7 @@
 //!
 //! - `match_ref`: whether an edge neighbour matches a reference (`motion_mode`'s warp gate);
 //! - `mode_context`: `inter_mode` / `compound_mode` contexts;
+//! - `global_mv`: the frame's global motion vector for a block and which neighbours it replaces;
 //! - `candidates`: the neighbour scans and the merge-by-value stack primitives;
 //! - `single_stack` / `compound_stack`: the candidate stacks themselves.
 
@@ -11,6 +12,9 @@ mod candidates;
 mod compound_stack;
 #[cfg(test)]
 mod compound_stack_test;
+mod global_mv;
+#[cfg(test)]
+mod global_mv_test;
 mod match_ref;
 mod mode_context;
 #[cfg(test)]
@@ -50,6 +54,9 @@ pub(in crate::tile::context) struct SpatialRefCell {
     /// `single_ref_mv_stack` (DRL's real candidate list, `SymbolDecoder::read_drl_bit`'s doc),
     /// unused by the match-count-only `scan` this struct's other fields feed.
     pub(in crate::tile::context) mv0: crate::tile::coding_unit::MotionVector,
+    /// Whether the block's mode is `GLOBALMV` / `GLOBAL_GLOBALMV` (dav1d `RefMvsBlock.mf` bit 0,
+    /// before the size and warp conditions of [`SpatialRefCell::substitutes_global_mv`]).
+    pub(in crate::tile::context) is_global_mode: bool,
     pub(in crate::tile::context) mv1: crate::tile::coding_unit::MotionVector,
     /// This block's own footprint (rav1d derives this from `RefMvsBlock.bs` via
     /// `dav1d_block_dimensions`) -- needed by `single_ref_mv_stack`'s real neighbor-width-aware
@@ -116,6 +123,8 @@ pub struct SpatialRefContext {
     /// parse path), preserving this struct's prior spatial-only/`use_ref_frame_mvs`-flag-only
     /// behavior exactly. See this struct's own doc for why this piece needs cross-frame state.
     temporal: Option<TemporalMvContext>,
+    /// The frame's global motion, set once via [`SpatialRefContext::set_global_motion`].
+    global_motion: global_mv::GlobalMotion,
 }
 
 /// Per-frame temporal-candidate inputs, set once and read by every block's
@@ -146,6 +155,7 @@ impl SpatialRefContext {
             iw4: width_4x4,
             ih4: height_4x4,
             sign_bias: [false; 7],
+            global_motion: global_mv::GlobalMotion::default(),
             temporal: None,
         }
     }
@@ -232,6 +242,7 @@ impl SpatialRefContext {
             ref1,
             is_newmv,
             mv0,
+            is_global_mode: false,
             mv1,
             width_4x4: width_4x4.min(255) as u8,
             height_4x4: height_4x4.min(255) as u8,
