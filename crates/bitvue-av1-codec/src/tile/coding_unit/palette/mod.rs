@@ -3,8 +3,8 @@
 
 mod mode_info;
 #[cfg(test)]
-#[path = "mode_info_tests.rs"]
-mod mode_info_tests;
+#[path = "mode_info_test.rs"]
+mod mode_info_test;
 mod tokens;
 
 pub(in crate::tile::coding_unit) use mode_info::read_palette_mode_info;

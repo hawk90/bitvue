@@ -172,5 +172,5 @@ pub(super) fn read_tile_info(
 }
 
 #[cfg(test)]
-#[path = "tile_info_tests.rs"]
-mod tile_info_tests;
+#[path = "tile_info_test.rs"]
+mod tile_info_test;

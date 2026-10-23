@@ -609,7 +609,7 @@ fn header_summary(clip: &[u8]) -> HeaderSummary {
 /// header parsed differently: find out which field before changing the numbers. The values were
 /// recorded from the parser as it was before any split of `parse_frame_header_full`, not from
 /// an independent oracle, so they prove "unchanged", not "correct" (the clips' symbol-level
-/// agreement with dav1d, in `cu_parser/oracle_tests.rs`, is what vouches for correctness).
+/// agreement with dav1d, in `cu_parser/oracle_test.rs`, is what vouches for correctness).
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
     const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [

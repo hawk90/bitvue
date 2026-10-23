@@ -118,7 +118,7 @@ recovered or fatal failures, as the overlay extractors do.
 | Area | Tests |
 |---|---|
 | Resilient parser | `crates/bitvue-av1-codec/tests/resilient_parser_test.rs` (invalid OBU type, EOF, forbidden bit, multiple errors, error limit, offset tracking) |
-| AV1 parsing | `crates/bitvue-av1-codec/tests/{obu_tests.rs, ivf_prop_tests.rs, leb128_prop_tests.rs, bitreader_prop_tests.rs}` (proptest) |
+| AV1 parsing | `crates/bitvue-av1-codec/tests/{obu_test.rs, ivf_prop_test.rs, leb128_prop_test.rs, bitreader_prop_test.rs}` (proptest) |
 | Containers | `crates/bitvue-formats/tests/container_edge_cases_test.rs` |
 | Engine | `crates/bitvue-engine/tests/critical_edge_cases_test.rs` |
 | Sidecar | `crates/bitvue-sidecar/tests/subprocess_smoke.rs` (end to end over stdio) |

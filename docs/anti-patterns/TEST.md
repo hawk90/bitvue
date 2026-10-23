@@ -778,7 +778,7 @@ proptest! {
 **예외**:
 - 강건성(패닉 없음)이 유일한 관심사인 하위 레벨 유틸리티(예: 순수 bit-reader)에는 "panic 안 함" 수준의 property test도 그 자체로 유효하다 — 다만 그 위 레이어(파서 전체)에서는 더 강한 invariant가 필요하다.
 
-**Bitvue 판정**: Confirmed — `crates/bitvue-av1-codec/tests/{leb128,bitreader,ivf}_prop_tests.rs` 3개 파일 모두 완전 무작위 바이트 strategy에 "never panics"가 주력 invariant; `ivf_prop_tests.rs:60-62`의 `prop_frame_count_never_negative`는 `frame_idx`를 `0i64..` 범위로 생성해놓고 `frame_idx >= 0`을 단언하는 항진명제(tautology)임.
+**Bitvue 판정**: Confirmed — `crates/bitvue-av1-codec/tests/{leb128,bitreader,ivf}_prop_test.rs` 3개 파일 모두 완전 무작위 바이트 strategy에 "never panics"가 주력 invariant; `ivf_prop_test.rs:60-62`의 `prop_frame_count_never_negative`는 `frame_idx`를 `0i64..` 범위로 생성해놓고 `frame_idx >= 0`을 단언하는 항진명제(tautology)임.
 
 ---
 

@@ -392,5 +392,5 @@ impl FrameMapper {
 }
 
 #[cfg(test)]
-#[path = "av1_extractor_tests.rs"]
-mod av1_extractor_tests;
+#[path = "av1_extractor_test.rs"]
+mod av1_extractor_test;

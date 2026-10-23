@@ -189,5 +189,5 @@ fn read_screen_content_flags(
 }
 
 #[cfg(test)]
-#[path = "frame_prelude_tests.rs"]
-mod frame_prelude_tests;
+#[path = "frame_prelude_test.rs"]
+mod frame_prelude_test;
