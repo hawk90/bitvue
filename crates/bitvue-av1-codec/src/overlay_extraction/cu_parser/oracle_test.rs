@@ -790,3 +790,77 @@ fn aomenc_two_tile_groups_clip_decodes_symbol_for_symbol_like_dav1d() {
     const CLIP: &[u8] = include_bytes!("../../../../../test_data/av1_aomenc_tilegroups.ivf");
     assert_clip_decodes_like_dav1d(CLIP, &ORACLE);
 }
+
+/// Per decoded frame of `ivf` (every Frame OBU in decode order): whether any reference uses a
+/// non-identity global motion model, and how far the tile decode got.
+fn global_motion_and_outcome(ivf: &[u8]) -> Vec<(bool, crate::overlay_extraction::DecodeOutcome)> {
+    let (_hdr, frames) = crate::ivf::parse_ivf_frames(ivf).unwrap();
+    let seq_bytes = find_seq_header_bytes(&frames).expect("stream has a sequence header");
+    let seq = crate::parse_sequence_header(
+        &crate::obu::ObuIterator::new(&seq_bytes)
+            .next_obu_with_offset()
+            .unwrap()
+            .unwrap()
+            .obu
+            .payload,
+    )
+    .unwrap();
+    let mut state = crate::overlay_extraction::StreamDecodeState::new();
+    let mut out = Vec::new();
+    for chunk in &frames {
+        let units = crate::overlay_extraction::stream_state::frame_units(
+            &chunk.data,
+            seq.reduced_still_picture_header,
+        );
+        for unit in &units {
+            let obu_data = [seq_bytes.as_slice(), unit.as_slice()].concat();
+            let frame = state.decode_next(&obu_data, &seq).unwrap();
+            let outcome = frame.decoded.as_ref().expect("frame has tile data").outcome;
+            out.push((frame.gm_type.iter().any(|&t| t != 0), outcome));
+        }
+        if units.is_empty() {
+            let obu_data = [seq_bytes.as_slice(), chunk.data.as_slice()].concat();
+            state.skip_unit(&obu_data).unwrap();
+        }
+    }
+    out
+}
+
+/// `test_data/av1_aomenc_globalmotion.ivf`: 30 frames of a synthetic zoom, aomenc with
+/// `--enable-global-motion=1` (command in `test_data/README.md`). dav1d decodes all of it. Its job
+/// is to be the one clip with `gm_type != IDENTITY` frames (ROTZOOM), which no other clip has, so
+/// the checks below hold only if the clip keeps exercising global motion.
+const GLOBAL_MOTION_CLIP: &[u8] =
+    include_bytes!("../../../../../test_data/av1_aomenc_globalmotion.ivf");
+
+#[test]
+fn the_global_motion_clip_has_frames_with_a_global_motion_model() {
+    let frames = global_motion_and_outcome(GLOBAL_MOTION_CLIP);
+    assert_eq!(frames.len(), 30);
+    let with_gm: Vec<usize> = (0..frames.len()).filter(|&i| frames[i].0).collect();
+    assert_eq!(with_gm.first(), Some(&4), "first frame with global motion");
+    assert!(with_gm.len() >= 4, "frames with global motion: {with_gm:?}");
+}
+
+/// The frames before the first global-motion frame are plain inter frames: the tile decodes to the
+/// end and its padding is where the symbols put it, as in every other clip.
+#[test]
+fn the_global_motion_clip_decodes_verified_up_to_its_first_global_motion_frame() {
+    let frames = global_motion_and_outcome(GLOBAL_MOTION_CLIP);
+    for (i, (_, outcome)) in frames.iter().take(4).enumerate() {
+        assert!(outcome.is_verified(), "frame {i}: {outcome:?}");
+    }
+}
+
+/// Every frame of the clip should decode to the end with conformant padding (spec 8.2.4), which is
+/// what a symbol-for-symbol match with dav1d implies. Today the first global-motion frame stops
+/// one superblock short and everything after it is off (#324).
+#[test]
+#[ignore = "known bug #324: frames with global motion are not decoded to the end"]
+fn the_global_motion_clip_decodes_verified_on_every_frame() {
+    let frames = global_motion_and_outcome(GLOBAL_MOTION_CLIP);
+    let unverified: Vec<usize> = (0..frames.len())
+        .filter(|&i| !frames[i].1.is_verified())
+        .collect();
+    assert!(unverified.is_empty(), "unverified frames: {unverified:?}");
+}

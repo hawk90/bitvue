@@ -40,6 +40,7 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 |---|---|---|
 | `av1_aomenc_testsrc2.ivf`, `av1_rav1e_testsrc2.ivf`, `av1_svtav1_testsrc2.ivf` | same `testsrc2` pattern, 320x240, 12 frames, one per encoder (cross-encoder oracle tests vs dav1d) | `testsrc2` per the file names (command not recorded) |
 | `av1_aomenc_tilegroups.ivf`, `av1_aomenc_tiles5.ivf` | aomenc, 320x240, 12 frames, several tiles / tile groups (#129) | presumably synthetic, command not recorded |
+| `av1_aomenc_globalmotion.ivf` | aomenc 3.15.2, 352x288, 30 frames, synthetic zoom: `gm_type = ROTZOOM` on frames 4, 8, ... (the only clip with global motion; `oracle_test.rs`, #324) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |
 | `avc_test.h264`, `hevc_test.hevc`, `vp9_test.ivf` | 320x240 | x264 / x265 / libvpx; content and command not recorded |
 
@@ -47,6 +48,13 @@ The six rows marked "not recorded" predate this README (added in unrelated commi
 almost certainly synthetic (320x240 is not the size of any standard test sequence), but nothing in the
 repository proves it and the exact commands were not kept.
 Re-encode them from `testsrc2` if a file ever needs to be reproducible.
+
+`av1_aomenc_globalmotion.ivf` (FFmpeg 8, aomenc; the zoom makes aomenc pick a ROTZOOM model on some frames):
+
+```bash
+ffmpeg -y -f lavfi -i "testsrc2=s=704x576:r=30:d=2,zoompan=z='1+0.004*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=352x288:fps=30" -pix_fmt yuv420p -f yuv4mpegpipe zoom.y4m
+aomenc --cpu-used=1 --limit=30 --enable-global-motion=1 --lag-in-frames=0 --end-usage=q --cq-level=30 --ivf -o av1_aomenc_globalmotion.ivf zoom.y4m
+```
 
 ## Derived fixtures elsewhere
 
