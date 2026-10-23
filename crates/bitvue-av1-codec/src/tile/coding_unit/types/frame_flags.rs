@@ -48,6 +48,8 @@ pub struct InterModeFlags {
     pub gm_type: [u8; 8],
     /// `gm_params` (spec 5.9.25), indexed like `gm_type`.
     pub gm_params: crate::frame_header_full::GmParams,
+    /// `is_scaled(RefFrame)` per reference (spec 5.11.27); see `FrameHeader::ref_scaled`.
+    pub ref_scaled: [bool; 8],
 }
 
 impl InterModeFlags {

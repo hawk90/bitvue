@@ -52,9 +52,10 @@ pub(super) fn read_motion_mode_info(
         // left neighbor (`find_matching_ref`) -- approximated via
         // `has_matching_single_ref` (single-position check, not the full multi-neighbor
         // edge scan real dav1d does -- `TileContext::has_matching_single_ref`'s doc for
-        // why a full port is deferred). SVC reference scaling isn't modeled (assumed
-        // never scaled, matching this crate's existing no-SVC-support scope).
+        // why a full port is deferred). A scaled reference (every reference of a superres
+        // frame) is never warped: it reads `use_obmc` instead.
         let allow_warp = inter_mode_flags.allow_warped_motion
+            && !inter_mode_flags.ref_scaled[cu.ref_frames[0] as usize]
             && tile_ctx.has_matching_edge_ref(
                 x4,
                 y4,
@@ -341,6 +342,43 @@ mod tests {
             warp_seen && simple_seen,
             "seeds must decode both warp and non-warp"
         );
+    }
+
+    #[test]
+    fn a_scaled_reference_is_never_warped_so_it_reads_use_obmc() {
+        let m = mi(4, 4);
+        for seed in 1..=24u64 {
+            let data = noise(seed, 64);
+            let mut r = SymbolDecoder::new(&data).unwrap();
+            r.read_obmc(3).unwrap();
+            let after_obmc = r.read_bools_n(24).unwrap();
+            let mut f = frame(true, true);
+            // Only the block's own reference being scaled matters, not the others.
+            f.inter_mode_flags.ref_scaled = [false, true, false, false, false, false, false, false];
+            let (warp, bits) = run(
+                &data,
+                &mut tile(true, REF0),
+                m,
+                &f,
+                &cu(PredictionMode::NewMv),
+                false,
+            );
+            assert!(!warp && bits == after_obmc, "seed {seed}");
+            // Scaled elsewhere, unscaled here: still warpable.
+            f.inter_mode_flags.ref_scaled = [false, false, true, true, true, true, true, true];
+            let mut r = SymbolDecoder::new(&data).unwrap();
+            let sym = r.read_motion_mode(3).unwrap();
+            let after_mode = r.read_bools_n(24).unwrap();
+            let (warp, bits) = run(
+                &data,
+                &mut tile(true, REF0),
+                m,
+                &f,
+                &cu(PredictionMode::NewMv),
+                false,
+            );
+            assert!(warp == (sym == 2) && bits == after_mode, "seed {seed}");
+        }
     }
 
     #[test]

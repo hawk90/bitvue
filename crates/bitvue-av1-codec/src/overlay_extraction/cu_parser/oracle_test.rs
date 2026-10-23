@@ -791,15 +791,15 @@ fn aomenc_two_tile_groups_clip_decodes_symbol_for_symbol_like_dav1d() {
     assert_clip_decodes_like_dav1d(CLIP, &ORACLE);
 }
 
-/// Per decoded frame of `ivf` (every Frame OBU in decode order): its `gm_type` and `gm_params`,
-/// and how far the tile decode got.
-fn global_motion_and_outcome(
+/// `pick` applied to every decoded frame of `ivf` (every Frame OBU in decode order) and how far
+/// its tile decode got.
+fn per_frame<T>(
     ivf: &[u8],
-) -> Vec<(
-    [u8; 8],
-    crate::frame_header_full::GmParams,
-    crate::overlay_extraction::DecodeOutcome,
-)> {
+    pick: impl Fn(
+        &crate::overlay_extraction::ParsedFrame,
+        crate::overlay_extraction::DecodeOutcome,
+    ) -> T,
+) -> Vec<T> {
     let (_hdr, frames) = crate::ivf::parse_ivf_frames(ivf).unwrap();
     let seq_bytes = find_seq_header_bytes(&frames).expect("stream has a sequence header");
     let seq = crate::parse_sequence_header(
@@ -822,7 +822,7 @@ fn global_motion_and_outcome(
             let obu_data = [seq_bytes.as_slice(), unit.as_slice()].concat();
             let frame = state.decode_next(&obu_data, &seq).unwrap();
             let outcome = frame.decoded.as_ref().expect("frame has tile data").outcome;
-            out.push((frame.gm_type, frame.gm_params, outcome));
+            out.push(pick(&frame, outcome));
         }
         if units.is_empty() {
             let obu_data = [seq_bytes.as_slice(), chunk.data.as_slice()].concat();
@@ -830,6 +830,17 @@ fn global_motion_and_outcome(
         }
     }
     out
+}
+
+/// Per decoded frame of `ivf`: its `gm_type` and `gm_params`, and how far the tile decode got.
+fn global_motion_and_outcome(
+    ivf: &[u8],
+) -> Vec<(
+    [u8; 8],
+    crate::frame_header_full::GmParams,
+    crate::overlay_extraction::DecodeOutcome,
+)> {
+    per_frame(ivf, |f, outcome| (f.gm_type, f.gm_params, outcome))
 }
 
 /// `test_data/av1_aomenc_globalmotion.ivf`: 30 frames of a synthetic zoom, aomenc with
@@ -874,6 +885,48 @@ fn the_global_motion_clip_decodes_verified_on_every_frame() {
     let frames = global_motion_and_outcome(GLOBAL_MOTION_CLIP);
     let unverified: Vec<usize> = (0..frames.len())
         .filter(|&i| !frames[i].2.is_verified())
+        .collect();
+    assert!(unverified.is_empty(), "unverified frames: {unverified:?}");
+}
+
+/// `test_data/av1_aomenc_superres.ivf`: 31 frames (30 shown plus one hidden ALTREF) of `testsrc2`
+/// at 352x288, aomenc with `--superres-mode=1 --superres-denominator=9` (command in
+/// `test_data/README.md`): every frame is coded 313 columns wide and upscaled to 352. It is the
+/// one clip where the coded width differs from the sequence's and where every reference is scaled.
+const SUPERRES_CLIP: &[u8] = include_bytes!("../../../../../test_data/av1_aomenc_superres.ivf");
+
+/// The frame size the tile decode walks is the coded one (`FrameWidth`), not the sequence's
+/// maximum, and the loop-restoration units are laid out on the upscaled one.
+#[test]
+fn the_superres_clip_is_coded_narrower_than_it_is_displayed() {
+    let frames = per_frame(SUPERRES_CLIP, |f, _| {
+        (
+            f.superres,
+            f.superres_denom,
+            f.dimensions.width,
+            f.upscaled_width,
+            f.ref_scaled,
+        )
+    });
+    assert_eq!(frames.len(), 31);
+    for (i, (superres, denom, coded, upscaled, ref_scaled)) in frames.iter().enumerate() {
+        assert!(superres, "frame {i}");
+        assert_eq!((*denom, *coded, *upscaled), (9, 313, 352), "frame {i}");
+        // An inter frame's references all hold the upscaled picture, so none match its width.
+        if i > 0 {
+            assert_eq!(ref_scaled[1..], [true; 7], "frame {i}");
+        }
+    }
+}
+
+/// Every frame decodes to the end with conformant padding (spec 8.2.4). Getting there needs the
+/// coded size, the superres-aware unit grid of `read_lr` (spec 5.11.57), and `is_scaled` turning
+/// off `motion_mode` for every reference (spec 5.11.27).
+#[test]
+fn the_superres_clip_decodes_verified_on_every_frame() {
+    let outcomes = per_frame(SUPERRES_CLIP, |_, outcome| outcome);
+    let unverified: Vec<usize> = (0..outcomes.len())
+        .filter(|&i| !outcomes[i].is_verified())
         .collect();
     assert!(unverified.is_empty(), "unverified frames: {unverified:?}");
 }

@@ -728,6 +728,41 @@ mod tests {
     }
 
     #[test]
+    fn apply_full_header_takes_the_coded_size_and_the_superres_geometry_from_the_header() {
+        let (seq, payload) = first_frame();
+        let mut header =
+            parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
+        header.width = 313;
+        header.height = 288;
+        header.upscaled_width = 352;
+        header.super_resolution.enabled = true;
+        header.super_resolution.scale_denominator = 9;
+        header.ref_scaled = [false, true, true, true, false, false, false, false];
+        let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+        frame.apply_sequence_header(&seq);
+        frame.apply_full_header(&header, &seq, &[0; 8]);
+        frame.finish_superblock_grid();
+        assert_eq!(
+            (frame.dimensions.width, frame.dimensions.height),
+            (313, 288)
+        );
+        assert_eq!(
+            frame.dimensions.sb_cols,
+            313u32.div_ceil(frame.dimensions.sb_size)
+        );
+        assert_eq!((frame.superres_denom, frame.upscaled_width), (9, 352));
+        assert_eq!(frame.ref_scaled, header.ref_scaled);
+        // The loop-restoration grid is the upscaled one.
+        let params = frame.coding_params().restoration;
+        assert_eq!((params.frame_width, params.superres_denom), (352, 9));
+
+        header.super_resolution.enabled = false;
+        header.width = 352;
+        frame.apply_full_header(&header, &seq, &[0; 8]);
+        assert_eq!(frame.superres_denom, 8);
+    }
+
+    #[test]
     fn a_zero_base_index_without_coded_dc_deltas_is_lossless() {
         let (seq, payload) = first_frame();
         let mut header =

@@ -75,6 +75,7 @@ fn base_params() -> FrameCodingParams {
             allow_high_precision_mv: false,
             gm_type: [0; 8],
             gm_params: [bitvue_av1_codec::frame_header_full::GM_IDENTITY_PARAMS; 8],
+            ref_scaled: [false; 8],
         },
         mi_rows: mi,
         mi_cols: mi,

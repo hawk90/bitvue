@@ -616,32 +616,32 @@ fn every_frame_header_of_every_clip_is_unchanged() {
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
-            (274, 1, 0, 6835065019033554887),
+            (274, 1, 0, 479305632633257403),
         ),
         (
             "aomenc_testsrc2",
             include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
-            (16, 4, 3, 12677886876112957512),
+            (16, 4, 3, 17769067187657452640),
         ),
         (
             "aomenc_tilegroups",
             include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf"),
-            (12, 1, 0, 10904577993682743230),
+            (12, 1, 0, 6758289758313352778),
         ),
         (
             "aomenc_tiles5",
             include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf"),
-            (12, 1, 0, 11360768906177901460),
+            (12, 1, 0, 15996414472953264184),
         ),
         (
             "rav1e_testsrc2",
             include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
-            (17, 6, 5, 8018931030777791210),
+            (17, 6, 5, 401060472620476296),
         ),
         (
             "svtav1_testsrc2",
             include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
-            (17, 6, 5, 11331957425397377971),
+            (17, 6, 5, 16610517413735288473),
         ),
     ];
     let mismatches: Vec<String> = CLIPS
@@ -1721,4 +1721,69 @@ fn a_minimum_of_one_halves_the_area_and_the_widest_tile_is_the_first_not_the_las
     assert_eq!(layout.col_starts_sb, vec![0, 64, 66]);
     assert_eq!(layout.row_starts_sb, vec![0, 9, 18, 27, 35]);
     assert_eq!((layout.tile_cols_log2, layout.tile_rows_log2), (1, 2));
+}
+
+// ---- is_scaled(refFrame) (spec 5.11.27) ------------------------------------------------------
+
+fn size_and_refs(
+    width: u32,
+    height: u32,
+    ref_frame_idx: [u32; 7],
+) -> super::size_and_refs::SizeAndRefs {
+    super::size_and_refs::SizeAndRefs {
+        size: super::frame_size::FrameSize {
+            width,
+            height,
+            upscaled_width: width,
+            upscaled_height: height,
+            use_superres: false,
+            superres_denom: 8,
+        },
+        allow_intrabc: false,
+        ref_frame_idx,
+        allow_high_precision_mv: false,
+        subpel_filter_switchable: false,
+        switchable_motion_mode: false,
+        use_ref_frame_mvs: false,
+    }
+}
+
+#[test]
+fn a_reference_is_scaled_when_its_upscaled_size_differs_from_the_coded_size() {
+    let mut state = RefFrameState::new();
+    // Slot 0: an unscaled 352x288 picture. Slot 1: a 352-wide picture next to a 313-wide frame.
+    // Slot 2: same width, other height. Slot 3 was never refreshed.
+    state.size[0] = (352, 288);
+    state.size[1] = (352, 288);
+    state.size[2] = (352, 144);
+    let unscaled = size_and_refs(352, 288, [0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(ref_scaled_flags(&state, &unscaled), [false; 8]);
+
+    let superres = size_and_refs(313, 288, [0, 1, 2, 3, 0, 1, 2]);
+    // Index 0 is INTRA_FRAME, never scaled; 1..=7 follow `ref_frame_idx`.
+    assert_eq!(
+        ref_scaled_flags(&state, &superres),
+        [false, true, true, true, false, true, true, true],
+        "an unknown slot (3) counts as unscaled"
+    );
+
+    let taller = size_and_refs(352, 288, [2, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(ref_scaled_flags(&state, &taller)[1..3], [true, false]);
+}
+
+#[test]
+fn a_refreshed_slot_remembers_its_upscaled_size_and_show_existing_copies_it() {
+    let mut state = RefFrameState::new();
+    let gm = [GM_IDENTITY_PARAMS; 8];
+    refresh_ref_slots(
+        &mut state,
+        0b0000_0110,
+        5,
+        &Default::default(),
+        &gm,
+        (352, 288),
+    );
+    assert_eq!(state.size[..4], [(0, 0), (352, 288), (352, 288), (0, 0)]);
+    state.copy_slot_to_all(2);
+    assert_eq!(state.size, [(352, 288); 8]);
 }

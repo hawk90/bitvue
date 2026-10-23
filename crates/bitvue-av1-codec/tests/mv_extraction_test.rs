@@ -156,6 +156,7 @@ fn test_mv_extraction_with_spec_cdfs() {
                 allow_high_precision_mv: false,
                 gm_type: [0u8; 8],
                 gm_params: [bitvue_av1_codec::frame_header_full::GM_IDENTITY_PARAMS; 8],
+                ref_scaled: [false; 8],
             },
             mi_rows,
             mi_cols,
