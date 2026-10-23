@@ -143,6 +143,11 @@ pub struct ParsedFrame {
     pub loop_restoration: crate::frame_header::LoopRestorationInfo,
     /// `use_superres` (spec 5.9.8).
     pub superres: bool,
+    /// `SuperresDenom` (spec 5.9.8): 8 unless `superres`.
+    pub superres_denom: u32,
+    /// `UpscaledWidth` (spec 5.9.5): the width loop-restoration units are laid out on; equals
+    /// `dimensions.width` unless `superres`.
+    pub upscaled_width: u32,
     /// `skip_mode_present` (spec 5.9.22) -- see `crate::frame_header::FrameHeader::
     /// skip_mode_present`'s doc for what this gates in tile data. Same sourcing/fallback story
     /// as `reference_select`; `false` (i.e. "`skip_mode` never reads any bits") if the full
@@ -166,6 +171,8 @@ pub struct ParsedFrame {
     pub gm_type: [u8; 8],
     /// `gm_params` (spec 5.9.25) -- see `FrameHeader::gm_params`.
     pub gm_params: crate::frame_header_full::GmParams,
+    /// See `crate::frame_header::FrameHeader::ref_scaled`.
+    pub ref_scaled: [bool; 8],
     /// `enable_interintra_compound`/`enable_masked_compound`/`enable_jnt_comp`/
     /// `enable_warped_motion` (sequence header) -- gate `interintra`/`compound_type`(wedge/seg)/
     /// `motion_mode`'s real eligibility. Same sourcing story as `mono_chrome` (direct from the
@@ -265,6 +272,7 @@ impl ParsedFrame {
                 allow_high_precision_mv: self.allow_high_precision_mv,
                 gm_type: self.gm_type,
                 gm_params: self.gm_params,
+                ref_scaled: self.ref_scaled,
             },
             mi_rows: crate::tile::partition::mi_units(self.dimensions.height),
             mi_cols: crate::tile::partition::mi_units(self.dimensions.width),
@@ -280,11 +288,11 @@ impl ParsedFrame {
                     self.loop_restoration.uv_unit_size,
                     self.loop_restoration.uv_unit_size,
                 ],
-                frame_width: self.dimensions.width,
+                frame_width: self.upscaled_width,
                 frame_height: self.dimensions.height,
                 subsampling_x: self.subsampling_x,
                 subsampling_y: self.subsampling_y,
-                superres: self.superres,
+                superres_denom: self.superres_denom,
             },
             skip_mode_present: self.skip_mode_present,
             skip_mode_refs: self.skip_mode_refs,

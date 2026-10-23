@@ -84,6 +84,8 @@ impl ParsedFrame {
             ref_order_distance: [0; 7],
             loop_restoration: Default::default(),
             superres: false,
+            superres_denom: crate::tile::restoration::SUPERRES_NUM,
+            upscaled_width: 0,
             skip_mode_present: false,
             skip_mode_refs: [0, 0],
             subpel_filter_switchable: false,
@@ -93,6 +95,7 @@ impl ParsedFrame {
             allow_high_precision_mv: false,
             gm_type: [0u8; 8],
             gm_params: [crate::frame_header_full::GM_IDENTITY_PARAMS; 8],
+            ref_scaled: [false; 8],
             enable_interintra_compound: false,
             enable_dual_filter: false,
             enable_masked_compound: false,
@@ -156,6 +159,12 @@ impl ParsedFrame {
         // The exact header parse wins over `parse_frame_header_basic`'s
         // approximation for the two values it also supplied.
         self.delta_q_enabled = full_hdr.delta_q_present;
+        // The coded frame size (spec 5.9.5: `FrameWidth`, already divided by the superres ratio),
+        // not the sequence's maximum: the tile decode walks this grid.
+        if full_hdr.width > 0 && full_hdr.height > 0 {
+            self.dimensions.width = full_hdr.width;
+            self.dimensions.height = full_hdr.height;
+        }
         if full_hdr.base_q_idx.is_some() {
             self.frame_type.base_qp = full_hdr.base_q_idx;
         }
@@ -196,6 +205,12 @@ impl ParsedFrame {
         );
         self.loop_restoration = full_hdr.loop_restoration.clone();
         self.superres = full_hdr.super_resolution.enabled;
+        self.superres_denom = if self.superres {
+            full_hdr.super_resolution.scale_denominator as u32
+        } else {
+            crate::tile::restoration::SUPERRES_NUM
+        };
+        self.upscaled_width = full_hdr.upscaled_width;
         self.skip_mode_present = full_hdr.skip_mode_present;
         self.skip_mode_refs = full_hdr.skip_mode_refs;
         self.subpel_filter_switchable = full_hdr.subpel_filter_switchable;
@@ -205,6 +220,7 @@ impl ParsedFrame {
         self.allow_high_precision_mv = full_hdr.allow_high_precision_mv;
         self.gm_type = full_hdr.gm_type;
         self.gm_params = full_hdr.gm_params;
+        self.ref_scaled = full_hdr.ref_scaled;
     }
 
     /// Same as [`ParsedFrame::parse`], but threads a caller-supplied `RefFrameState` into the

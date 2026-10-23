@@ -17,6 +17,7 @@ pub(super) struct HeaderSections {
     pub(super) tiles: TileLayout,
     pub(super) quantizer: QuantizerSection,
     pub(super) tools: CodingTools,
+    pub(super) ref_scaled: [bool; 8],
     pub(super) header_size_bits: u64,
     pub(super) header_size_bytes: usize,
 }
@@ -31,14 +32,32 @@ pub(super) fn refresh_ref_slots(
     order_hint: u32,
     segmentation: &SegmentationInfo,
     gm_params: &GmParams,
+    size: (u32, u32),
 ) {
     for i in 0..NUM_REF_FRAMES {
         if (refresh_frame_flags >> i) & 1 == 1 {
             ref_state.ref_order_hint[i] = order_hint;
             ref_state.segmentation[i] = SegmentationFeatures::from(segmentation);
             ref_state.gm_params[i] = *gm_params;
+            ref_state.size[i] = size;
         }
     }
+}
+
+/// `is_scaled(refFrame)` (spec 5.11.27) for `LAST_FRAME..=ALTREF_FRAME`, at indices 1..=7: the
+/// reference's `RefUpscaledWidth`/`RefFrameHeight` against this frame's `FrameWidth`/`FrameHeight`
+/// in the spec's 14-bit fixed point. A slot with no recorded size counts as unscaled.
+pub(super) fn ref_scaled_flags(ref_state: &RefFrameState, refs: &SizeAndRefs) -> [bool; 8] {
+    const REF_SCALE_SHIFT: u32 = 14;
+    let scale = |ref_size: u32, size: u32| ((ref_size << REF_SCALE_SHIFT) + size / 2) / size.max(1);
+    let mut out = [false; 8];
+    for (i, &idx) in refs.ref_frame_idx.iter().enumerate() {
+        let (ref_w, ref_h) = ref_state.size[idx as usize % NUM_REF_FRAMES];
+        out[i + 1] = ref_w != 0
+            && (scale(ref_w, refs.size.width) != 1 << REF_SCALE_SHIFT
+                || scale(ref_h, refs.size.height) != 1 << REF_SCALE_SHIFT);
+    }
+    out
 }
 
 pub(super) fn assemble_frame_header(sections: HeaderSections) -> FrameHeader {
@@ -49,6 +68,7 @@ pub(super) fn assemble_frame_header(sections: HeaderSections) -> FrameHeader {
         tiles,
         quantizer,
         tools,
+        ref_scaled,
         header_size_bits,
         header_size_bytes,
     } = sections;
@@ -99,6 +119,7 @@ pub(super) fn assemble_frame_header(sections: HeaderSections) -> FrameHeader {
         allow_high_precision_mv: refs.allow_high_precision_mv,
         gm_type: tools.gm_type,
         gm_params: tools.gm_params,
+        ref_scaled,
         reduced_tx_set: tools.reduced_tx_set,
         txfm_mode: tools.txfm_mode,
         use_ref_frame_mvs: refs.use_ref_frame_mvs,

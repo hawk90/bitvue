@@ -52,15 +52,15 @@ macro_rules! clip_case {
     };
 }
 
-clip_case!(fixture_clip, "av1_test.ivf", 3468013988337790299);
-clip_case!(aomenc_clip, "av1_aomenc_testsrc2.ivf", 10288977025562034953);
-clip_case!(rav1e_clip, "av1_rav1e_testsrc2.ivf", 7604211157109146979);
-clip_case!(svtav1_clip, "av1_svtav1_testsrc2.ivf", 12189022807059049127);
-clip_case!(tiles5_clip, "av1_aomenc_tiles5.ivf", 10947468785511710317);
+clip_case!(fixture_clip, "av1_test.ivf", 9220940587400675183);
+clip_case!(aomenc_clip, "av1_aomenc_testsrc2.ivf", 7840399681042082134);
+clip_case!(rav1e_clip, "av1_rav1e_testsrc2.ivf", 15272015285328483914);
+clip_case!(svtav1_clip, "av1_svtav1_testsrc2.ivf", 7906735805087128740);
+clip_case!(tiles5_clip, "av1_aomenc_tiles5.ivf", 15462724478405930073);
 clip_case!(
     tile_groups_clip,
     "av1_aomenc_tilegroups.ivf",
-    15000507403552663874
+    4027734206924608326
 );
 
 fn grid_of(width: u32, height: u32, sb_size: u32) -> (u32, u32) {

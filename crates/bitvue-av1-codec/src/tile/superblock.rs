@@ -114,6 +114,7 @@ pub fn parse_superblock(
         &mut state.tile_ctx.restoration_refs,
         x,
         y,
+        sb_size,
     )?;
 
     // Walk the partition tree, decoding each block the moment its partition is known. Spec 5.11.4

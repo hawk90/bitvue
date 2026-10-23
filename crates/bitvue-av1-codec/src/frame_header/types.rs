@@ -274,6 +274,11 @@ pub struct FrameHeader {
     pub gm_type: [u8; 8],
     /// `gm_params` (spec 5.9.25) per `RefFrame`; the identity wherever `gm_type` is IDENTITY.
     pub gm_params: crate::frame_header_full::GmParams,
+    /// `is_scaled(refFrame)` (spec 5.11.27) per `RefFrame`: the reference's upscaled size differs
+    /// from this frame's coded size, which is every reference of a superres frame. A scaled
+    /// reference cannot be warped, so `motion_mode` is then never read. Unknown sizes (a slot no
+    /// parsed frame refreshed) count as unscaled.
+    pub ref_scaled: [bool; 8],
     /// `reduced_tx_set` (spec 5.9.2) -- restricts `transform_type()` (5.11.47) to a smaller
     /// symbol alphabet when set. Always `false` from `parse_frame_header_basic` (same
     /// basic-vs-full caveat as `reference_select`); real value only from

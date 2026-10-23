@@ -21,14 +21,15 @@ pub struct RestorationParams {
     pub types: [LoopRestorationType; 3],
     /// Restoration unit size in pixels per plane (chroma already includes `lr_uv_shift`).
     pub unit_size: [u32; 3],
-    /// Luma size of the (upscaled-before-filtering) frame. Units are laid out against it.
+    /// Luma size of the upscaled frame (`UpscaledWidth`, `FrameHeight`). Units are laid out
+    /// against it, whatever the coded width is.
     pub frame_width: u32,
     pub frame_height: u32,
     pub subsampling_x: bool,
     pub subsampling_y: bool,
-    /// `use_superres` -- unit positions then depend on the upscaling ratio, which is not
-    /// implemented; see [`read_superblock_restoration`].
-    pub superres: bool,
+    /// `SuperresDenom` (spec 5.9.8): 8 when the frame is not super-resolved, otherwise 9..=16.
+    /// A coded superblock then spans `superres_denom / 8` times its width of the unit grid.
+    pub superres_denom: u32,
 }
 
 impl RestorationParams {
@@ -41,7 +42,7 @@ impl RestorationParams {
             frame_height: 0,
             subsampling_x: false,
             subsampling_y: false,
-            superres: false,
+            superres_denom: SUPERRES_NUM,
         }
     }
 }
@@ -167,53 +168,77 @@ fn read_unit(
     Ok(())
 }
 
-/// Whether a restoration unit of `plane` starts inside the superblock whose luma origin is
-/// `(x, y)`: the plane position must be unit-aligned, and the last unit, if shorter than half a
-/// unit, is merged into its neighbour instead of starting a unit of its own.
-fn unit_starts_at(params: &RestorationParams, plane: usize, x: u32, y: u32) -> bool {
+/// `SUPERRES_NUM` (spec 3): the denominator of an unscaled frame is this, 8.
+pub const SUPERRES_NUM: u32 = 8;
+
+/// `count_units_in_frame` (spec 5.11.57): units of `unit_size` in `frame_size` samples; the last
+/// one absorbs a remainder shorter than half a unit, and there is always at least one.
+fn count_units(unit_size: u32, frame_size: u32) -> u32 {
+    ((frame_size + (unit_size >> 1)) / unit_size).max(1)
+}
+
+/// The unit rows or columns whose top-left corner lies in `[start, start + len)` (spec 5.11.57
+/// `unitRowStart..unitRowEnd`): ceil-division of the block's edges, in units, clipped to `count`.
+/// `numerator / denominator` converts the block's position to units.
+fn unit_range(start: u32, len: u32, numerator: u32, denominator: u32, count: u32) -> (u32, u32) {
+    let ceil = |v: u32| (v * numerator).div_ceil(denominator);
+    (ceil(start).min(count), ceil(start + len).min(count))
+}
+
+/// The unit rows and columns of `plane` whose top-left corner lies inside the superblock at luma
+/// `(x, y)` (spec 5.11.57 `unitRowStart..unitRowEnd`, `unitColStart..unitColEnd`).
+///
+/// Units are laid out on the upscaled frame, so with superres a coded superblock covers more
+/// columns of the unit grid than its width suggests and can start several units, or none.
+fn unit_span(
+    params: &RestorationParams,
+    plane: usize,
+    x: u32,
+    y: u32,
+    sb_size: u32,
+) -> (std::ops::Range<u32>, std::ops::Range<u32>) {
     let (ss_x, ss_y) = if plane == 0 {
         (0, 0)
     } else {
         (params.subsampling_x as u32, params.subsampling_y as u32)
     };
     let unit_size = params.unit_size[plane];
-    let half_unit = unit_size >> 1;
-    let (px, py) = (x >> ss_x, y >> ss_y);
-    let plane_w = (params.frame_width + ss_x) >> ss_x;
-    let plane_h = (params.frame_height + ss_y) >> ss_y;
-    let aligned = px & (unit_size - 1) == 0 && py & (unit_size - 1) == 0;
-    let big_enough =
-        (py == 0 || py + half_unit <= plane_h) && (px == 0 || px + half_unit <= plane_w);
-    aligned && big_enough
+    let unit_rows = count_units(unit_size, (params.frame_height + ss_y) >> ss_y);
+    let unit_cols = count_units(unit_size, (params.frame_width + ss_x) >> ss_x);
+    // A unit column is `unit_size` upscaled samples, i.e. `unit_size * 8 / denom` coded ones.
+    let (row_start, row_end) = unit_range(y >> ss_y, sb_size >> ss_y, 1, unit_size, unit_rows);
+    let (col_start, col_end) = unit_range(
+        x >> ss_x,
+        sb_size >> ss_x,
+        params.superres_denom,
+        unit_size * SUPERRES_NUM,
+        unit_cols,
+    );
+    (row_start..row_end, col_start..col_end)
 }
 
 /// Read the coefficients of all restoration units that start inside the superblock at `(x, y)`
 /// (luma pixels, `sb_size` wide), plane by plane, exactly where `decode_sb_row` does: before the
-/// superblock's first partition symbol.
-///
-/// Returns an error for superres frames, whose unit grid depends on the upscaling ratio: decoding
-/// on would misplace every later symbol.
+/// superblock's first partition symbol (spec 5.11.57 `read_lr`).
 pub fn read_superblock_restoration(
     decoder: &mut SymbolDecoder<'_>,
     params: &RestorationParams,
     refs: &mut [RestorationRef; 3],
     x: u32,
     y: u32,
+    sb_size: u32,
 ) -> Result<()> {
     for (plane, reference) in refs.iter_mut().enumerate() {
         let frame_type = params.types[plane];
         if frame_type == LoopRestorationType::None {
             continue;
         }
-        if params.superres {
-            return Err(bitvue_engine::BitvueError::Decode(
-                "loop restoration with superres is not supported".into(),
-            ));
+        let (rows, cols) = unit_span(params, plane, x, y, sb_size);
+        for _ in rows {
+            for _ in cols.clone() {
+                read_unit(decoder, plane, frame_type, reference)?;
+            }
         }
-        if !unit_starts_at(params, plane, x, y) {
-            continue;
-        }
-        read_unit(decoder, plane, frame_type, reference)?;
     }
     Ok(())
 }
@@ -248,39 +273,45 @@ mod tests {
             frame_height: h,
             subsampling_x: true,
             subsampling_y: true,
-            superres: false,
+            superres_denom: SUPERRES_NUM,
         }
+    }
+
+    /// Whether any unit of `plane` starts in the 64x64 superblock at `(x, y)`.
+    fn starts(p: &RestorationParams, plane: usize, x: u32, y: u32) -> bool {
+        let (rows, cols) = unit_span(p, plane, x, y, 64);
+        !rows.is_empty() && !cols.is_empty()
     }
 
     #[test]
     fn units_start_only_at_aligned_superblocks() {
         // 64-pixel units on 64x64 superblocks: every superblock starts one luma unit.
         let p = params([64, 32, 32], 320, 240);
-        assert!(unit_starts_at(&p, 0, 0, 0));
-        assert!(unit_starts_at(&p, 0, 64, 128));
+        assert!(starts(&p, 0, 0, 0));
+        assert!(starts(&p, 0, 64, 128));
         // Chroma units are 32 samples = 64 luma pixels here, so also one per superblock.
-        assert!(unit_starts_at(&p, 1, 64, 64));
+        assert!(starts(&p, 1, 64, 64));
         // 256-pixel luma units: only every fourth 64x64 superblock starts one.
         let p = params([256, 256, 256], 320, 240);
-        assert!(unit_starts_at(&p, 0, 0, 0));
-        assert!(!unit_starts_at(&p, 0, 64, 0));
-        assert!(!unit_starts_at(&p, 0, 0, 64));
+        assert!(starts(&p, 0, 0, 0));
+        assert!(!starts(&p, 0, 64, 0));
+        assert!(!starts(&p, 0, 0, 64));
         // Chroma plane position is halved: x=256 -> 128, not unit aligned.
-        assert!(!unit_starts_at(&p, 1, 256, 0));
+        assert!(!starts(&p, 1, 256, 0));
     }
 
     #[test]
     fn a_trailing_partial_unit_is_merged_into_the_previous_one() {
         // 320 wide with 256 units: x=256 leaves 64 < half a unit, so no unit starts there.
         let p = params([256, 256, 256], 320, 240);
-        assert!(!unit_starts_at(&p, 0, 256, 0));
+        assert!(!starts(&p, 0, 256, 0));
         // 400 wide: the remaining 144 >= 128, so a second unit starts.
         let p = params([256, 256, 256], 400, 240);
-        assert!(unit_starts_at(&p, 0, 256, 0));
+        assert!(starts(&p, 0, 256, 0));
         // Exactly half a unit left still starts one (round half up), in both directions.
         let p = params([256, 256, 256], 384, 384);
-        assert!(unit_starts_at(&p, 0, 256, 0));
-        assert!(unit_starts_at(&p, 0, 0, 256));
+        assert!(starts(&p, 0, 256, 0));
+        assert!(starts(&p, 0, 0, 256));
     }
 
     #[test]
@@ -430,7 +461,7 @@ mod tests {
             frame_height: 64,
             subsampling_x: true,
             subsampling_y: true,
-            superres: false,
+            superres_denom: SUPERRES_NUM,
         }
     }
 
@@ -449,7 +480,7 @@ mod tests {
             let mut want = [RestorationRef::default(); 3];
 
             for x in [0, 64, 128, 192] {
-                read_superblock_restoration(&mut prod, &p, &mut refs, x, 0).unwrap();
+                read_superblock_restoration(&mut prod, &p, &mut refs, x, 0, 64).unwrap();
                 for (plane, slot) in want.iter_mut().enumerate() {
                     // `use_wiener` is symbol 1 of its two-symbol alphabet.
                     if spec.decoder.read_symbol_adaptive(&mut use_wiener).unwrap() == 1 {
@@ -506,7 +537,7 @@ mod tests {
 
             let mut all_units = true;
             for x in [0, 64, 128, 192] {
-                read_superblock_restoration(&mut prod, &p, &mut refs, x, 0).unwrap();
+                read_superblock_restoration(&mut prod, &p, &mut refs, x, 0, 64).unwrap();
                 // 0 = NONE (nothing follows), 1 = WIENER (coefficients follow), 2 = SGRPROJ (its
                 // weights are not compared here, so the walk stops at the first one).
                 match spec.decoder.read_symbol_adaptive(&mut switchable).unwrap() {
@@ -540,36 +571,55 @@ mod tests {
     }
 
     #[test]
-    fn superres_with_a_restored_plane_is_an_error_but_an_unrestored_frame_is_not() {
+    fn a_superblock_can_start_more_than_one_unit_row_or_column_of_a_large_sb() {
+        // 128x128 superblocks over 64-sample luma units: 2x2 units start in each.
+        let p = params([64, 64, 64], 320, 240);
+        let (rows, cols) = unit_span(&p, 0, 128, 0, 128);
+        assert_eq!((rows, cols), (0..2, 2..4));
+    }
+
+    #[test]
+    fn units_are_laid_out_on_the_upscaled_frame() {
+        // 352 upscaled columns, denominator 12 (coded width 235), 64-sample units: six unit
+        // columns. A coded 64-wide superblock covers 96 upscaled columns.
+        let mut p = params([64, 32, 32], 352, 64);
+        p.superres_denom = 12;
+        let cols = |x| unit_span(&p, 0, x, 0, 64).1;
+        assert_eq!(
+            cols(0),
+            0..2,
+            "units at 0 and 64 both start in the first superblock"
+        );
+        assert_eq!(cols(64), 2..3);
+        assert_eq!(cols(128), 3..5);
+        assert_eq!(cols(192), 5..6, "the last unit is clipped to the grid");
+        // Without superres the same positions start one unit each.
+        p.superres_denom = SUPERRES_NUM;
+        assert_eq!(unit_span(&p, 0, 64, 0, 64).1, 1..2);
+        // Chroma: 32-sample units on 176 samples, 48 upscaled columns per coded superblock's 32.
+        p.superres_denom = 12;
+        assert_eq!(unit_span(&p, 1, 64, 0, 64).1, 2..3);
+    }
+
+    #[test]
+    fn a_superres_frame_reads_one_unit_per_start_not_per_superblock() {
         let data = [0x5a_u8; 64];
         let mut refs = [RestorationRef::default(); 3];
-
-        // Every plane None: nothing to read, superres or not.
-        let mut none = RestorationParams::none();
-        none.superres = true;
-        let mut d = SymbolDecoder::new(&data).unwrap();
-        let before = d.decoder.range;
-        read_superblock_restoration(&mut d, &none, &mut refs, 0, 0).unwrap();
-        assert_eq!(d.decoder.range, before, "no symbol was read");
-
-        // One restored plane: refused, whichever plane it is and wherever the unit starts.
-        for plane in 0..3 {
-            let mut p = params([64; 3], 128, 128);
-            p.types = [LoopRestorationType::None; 3];
-            p.types[plane] = LoopRestorationType::Wiener;
-            p.superres = true;
-            for (x, y) in [(0, 0), (64, 64), (7, 3)] {
-                let mut d = SymbolDecoder::new(&data).unwrap();
-                let err = read_superblock_restoration(&mut d, &p, &mut refs, x, y).unwrap_err();
-                assert!(
-                    matches!(&err, bitvue_engine::BitvueError::Decode(m) if m.contains("superres")),
-                    "plane {plane} at ({x},{y}): {err:?}"
-                );
-            }
-            // Without superres the same call is fine.
-            p.superres = false;
+        let mut p = params([64; 3], 352, 64);
+        p.types = [
+            LoopRestorationType::Wiener,
+            LoopRestorationType::None,
+            LoopRestorationType::None,
+        ];
+        let mut ranges = |p: &RestorationParams, x| {
             let mut d = SymbolDecoder::new(&data).unwrap();
-            read_superblock_restoration(&mut d, &p, &mut refs, 0, 0).unwrap();
-        }
+            read_superblock_restoration(&mut d, p, &mut refs, x, 0, 64).unwrap();
+            d.decoder.range
+        };
+        let mut two = p;
+        two.superres_denom = 12;
+        // Two units at x=0 differ from one unit; one unit at x=64 matches the unscaled frame's.
+        assert_ne!(ranges(&two, 0), ranges(&p, 0));
+        assert_eq!(ranges(&two, 64), ranges(&p, 64));
     }
 }

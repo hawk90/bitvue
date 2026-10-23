@@ -77,7 +77,7 @@ use self::segmentation::{parse_segmentation_params, MAX_SEGMENTS, SEG_LVL_MAX};
 pub(crate) use self::segmentation::{SEG_LVL_GLOBALMV, SEG_LVL_REF_FRAME, SEG_LVL_SKIP};
 pub use self::skip_mode::relative_dist;
 use self::{
-    assemble::{assemble_frame_header, refresh_ref_slots, HeaderSections},
+    assemble::{assemble_frame_header, ref_scaled_flags, refresh_ref_slots, HeaderSections},
     coding_tools::{read_coding_tools, CodingToolsInput},
     frame_prelude::read_frame_prelude,
     global_motion::parse_global_motion_params,
@@ -110,6 +110,9 @@ pub struct RefFrameState {
     ref_order_hint: [u32; NUM_REF_FRAMES],
     /// `gm_params` each slot was last refreshed with (spec `SavedGmParams`).
     gm_params: [GmParams; NUM_REF_FRAMES],
+    /// `(RefUpscaledWidth, RefFrameHeight)` each slot was last refreshed with; `(0, 0)` for a
+    /// slot no parsed frame has refreshed yet.
+    size: [(u32, u32); NUM_REF_FRAMES],
     /// Segmentation feature data each slot was last refreshed with (spec
     /// `save_segmentation_params`).
     segmentation: [SegmentationFeatures; NUM_REF_FRAMES],
@@ -120,6 +123,7 @@ impl Default for RefFrameState {
         Self {
             ref_order_hint: [0; NUM_REF_FRAMES],
             gm_params: [[GM_IDENTITY_PARAMS; 8]; NUM_REF_FRAMES],
+            size: [(0, 0); NUM_REF_FRAMES],
             segmentation: Default::default(),
         }
     }
@@ -151,6 +155,7 @@ impl RefFrameState {
         let from = from % NUM_REF_FRAMES;
         let (hint, segmentation) = (self.ref_order_hint[from], self.segmentation[from]);
         self.gm_params = [self.gm_params[from]; NUM_REF_FRAMES];
+        self.size = [self.size[from]; NUM_REF_FRAMES];
         self.ref_order_hint = [hint; NUM_REF_FRAMES];
         self.segmentation = [segmentation; NUM_REF_FRAMES];
     }
@@ -374,12 +379,15 @@ pub fn parse_frame_header_full(
         },
     )?;
 
+    let ref_scaled = ref_scaled_flags(ref_state, &refs);
+
     refresh_ref_slots(
         ref_state,
         prelude.refresh_frame_flags,
         prelude.order_hint,
         &quantizer.segmentation,
         &tools.gm_params,
+        (refs.size.upscaled_width, refs.size.height),
     );
 
     Ok(assemble_frame_header(HeaderSections {
@@ -389,6 +397,7 @@ pub fn parse_frame_header_full(
         tiles,
         quantizer,
         tools,
+        ref_scaled,
         header_size_bits: reader.position(),
         header_size_bytes: reader
             .byte_position()

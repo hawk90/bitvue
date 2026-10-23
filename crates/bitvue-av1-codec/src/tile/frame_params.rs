@@ -98,6 +98,7 @@ impl FrameCodingParams {
                 allow_high_precision_mv: false,
                 gm_type: [0; 8],
                 gm_params: [crate::frame_header_full::GM_IDENTITY_PARAMS; 8],
+                ref_scaled: [false; 8],
             },
             mi_rows: 16,
             mi_cols: 16,
