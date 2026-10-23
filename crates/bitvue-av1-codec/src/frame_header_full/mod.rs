@@ -24,12 +24,10 @@
 //! frame's reference frames' order hints against each other -- which requires knowing each
 //! reference slot's order hint, which is only knowable by having processed every earlier frame in
 //! decode order and tracked `RefOrderHint[8]` (updated via each frame's `refresh_frame_flags`).
-//! `RefFrameState` is exactly that -- an 8-slot `u32` array, nothing more. This is NOT a general
-//! decoder simulation: it does not need probability/CDF state, tile/pixel data, or
-//! `PrevGmParams` (global motion's subexponential-Golomb code length is self-terminating and
-//! independent of the reference value being decoded relative to -- verified against the spec's
-//! `decode_subexp`, which never reads `r`; only the final `inverse_recenter` remap uses it, and
-//! this module never needs the recentered *value*, only correct bit consumption past it).
+//! The global-motion parameters are coded relative to `PrevGmParams` (the primary reference
+//! frame's saved `gm_params`), so `RefFrameState` keeps those per slot as well, next to the
+//! segmentation features. This is NOT a general decoder simulation: it does not need
+//! probability/CDF state or tile/pixel data.
 //!
 //! Callers must parse every frame from index 0 up to and including the target frame, in decode
 //! order, threading the same `RefFrameState` through each call -- the same "start from the
@@ -68,10 +66,9 @@ mod tests;
 mod tile_info;
 
 #[cfg(test)]
-pub(crate) use self::global_motion::GM_TYPE_ROTZOOM;
-#[cfg(test)]
 use self::global_motion::{classify_gm_type, GM_TYPE_AFFINE};
-pub(crate) use self::global_motion::{GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION};
+pub use self::global_motion::{GmParams, GM_IDENTITY_PARAMS};
+pub(crate) use self::global_motion::{GM_TYPE_IDENTITY, GM_TYPE_ROTZOOM, GM_TYPE_TRANSLATION};
 #[cfg(test)]
 use self::loop_filters::parse_lr_params;
 pub use self::segmentation::SegmentationInfo;
@@ -108,12 +105,24 @@ const SELECT_INTEGER_MV: u32 = 2;
 /// Per-reference-slot order-hint state, threaded through sequential
 /// [`parse_frame_header_full`] calls (frame 0 first) -- see module doc for why this (and only
 /// this) piece of cross-frame state is needed.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RefFrameState {
     ref_order_hint: [u32; NUM_REF_FRAMES],
+    /// `gm_params` each slot was last refreshed with (spec `SavedGmParams`).
+    gm_params: [GmParams; NUM_REF_FRAMES],
     /// Segmentation feature data each slot was last refreshed with (spec
     /// `save_segmentation_params`).
     segmentation: [SegmentationFeatures; NUM_REF_FRAMES],
+}
+
+impl Default for RefFrameState {
+    fn default() -> Self {
+        Self {
+            ref_order_hint: [0; NUM_REF_FRAMES],
+            gm_params: [[GM_IDENTITY_PARAMS; 8]; NUM_REF_FRAMES],
+            segmentation: Default::default(),
+        }
+    }
 }
 
 impl RefFrameState {
@@ -141,6 +150,7 @@ impl RefFrameState {
     pub fn copy_slot_to_all(&mut self, from: usize) {
         let from = from % NUM_REF_FRAMES;
         let (hint, segmentation) = (self.ref_order_hint[from], self.segmentation[from]);
+        self.gm_params = [self.gm_params[from]; NUM_REF_FRAMES];
         self.ref_order_hint = [hint; NUM_REF_FRAMES];
         self.segmentation = [segmentation; NUM_REF_FRAMES];
     }
@@ -360,6 +370,7 @@ pub fn parse_frame_header_full(
             ref_frame_idx: &refs.ref_frame_idx,
             coded_lossless: quantizer.coded_lossless,
             all_lossless,
+            primary_ref_frame: prelude.primary_ref_frame,
         },
     )?;
 
@@ -368,6 +379,7 @@ pub fn parse_frame_header_full(
         prelude.refresh_frame_flags,
         prelude.order_hint,
         &quantizer.segmentation,
+        &tools.gm_params,
     );
 
     Ok(assemble_frame_header(HeaderSections {

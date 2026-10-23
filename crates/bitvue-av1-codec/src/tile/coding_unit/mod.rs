@@ -157,7 +157,7 @@ pub fn parse_coding_unit(
     // Raw intra mode symbol (0..=12), captured for `is_intra` CUs -- only meaningful for
     // `SymbolDecoder::read_transform_type_is_1d`'s `y_mode_raw` param.
     let y_mode_raw = if is_inter {
-        block_modes::read_inter_block_info(decoder, tile_ctx, mv_ctx, rect, mi, frame, &mut cu)?;
+        block_modes::read_inter_block_info(decoder, tile_ctx, rect, mi, frame, &mut cu)?;
         0
     } else {
         block_modes::read_intra_block_info(decoder, tile_ctx, sb, rect, mi, frame, &mut cu)?

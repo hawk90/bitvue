@@ -4,13 +4,14 @@
 //! reference MV stack (`read_near_mv` / `read_new_mv` for one reference, `stack[drl_idx]` for
 //! compound, in `tile/coding_unit/`), which the oracle tests check against dav1d.
 //!
-//! What production still calls is `MvPredictorContext::get_mv_predictor` / `get_mv_predictor_l1`
-//! for `GlobalMv` blocks. That resolves to [`MvPredictorContext::predict_global_mv`], which
-//! returns a zero vector (it does not apply the frame's global motion parameters).
+//! Nothing in production reads a vector from here any more: `GlobalMv` blocks take the frame's
+//! global motion vector from `SpatialRefContext::global_mv`, like the stack's padding and its
+//! `GLOBALMV` neighbours. [`MvPredictorContext::predict_global_mv`] still returns zero and is not
+//! the global motion vector.
 //!
-//! The neighbour tracking (`add_cu`, `find_nearest_neighbor`, `get_mv_candidates`) and the
-//! nearest / near / new arms of `predict_by_kind` are reached only by this file's own tests.
-//! `predict_near_mv` cannot return anything but zero. Do not extend them; extend the MV stack.
+//! The neighbour tracking (`add_cu`, `find_nearest_neighbor`, `get_mv_candidates`) and every arm of
+//! `predict_by_kind` are reached only by this file's own tests. `predict_near_mv` cannot return
+//! anything but zero. Do not extend them; extend the MV stack.
 
 use crate::tile::coding_unit::{CodingUnit, MotionVector, MvKind, PredictionMode, RefFrame};
 

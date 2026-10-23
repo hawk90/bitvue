@@ -40,7 +40,7 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 |---|---|---|
 | `av1_aomenc_testsrc2.ivf`, `av1_rav1e_testsrc2.ivf`, `av1_svtav1_testsrc2.ivf` | same `testsrc2` pattern, 320x240, 12 frames, one per encoder (cross-encoder oracle tests vs dav1d) | `testsrc2` per the file names (command not recorded) |
 | `av1_aomenc_tilegroups.ivf`, `av1_aomenc_tiles5.ivf` | aomenc, 320x240, 12 frames, several tiles / tile groups (#129) | presumably synthetic, command not recorded |
-| `av1_aomenc_globalmotion.ivf` | aomenc 3.15.2, 352x288, 30 frames, synthetic zoom: `gm_type = ROTZOOM` on frames 4, 8, ... (the only clip with global motion; `oracle_test.rs`, #324) | commands below |
+| `av1_aomenc_globalmotion.ivf` | aomenc 3.15.2, 352x288, 30 frames, synthetic zoom: `gm_type = ROTZOOM` on frames 4, 8, ... (the only clip with global motion; `oracle_test.rs`) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |
 | `avc_test.h264`, `hevc_test.hevc`, `vp9_test.ivf` | 320x240 | x264 / x265 / libvpx; content and command not recorded |
 

@@ -7,7 +7,7 @@ use super::read_explicit_mv;
 use super::types::{CodingUnit, MotionVector, MvKind, PredictionMode};
 use crate::symbol::SymbolDecoder;
 use crate::tile::context::CompoundMvStackEntry;
-use crate::tile::{BlockRect, FrameCodingParams, MiRect, MvPredictorContext, TileContext};
+use crate::tile::{BlockRect, FrameCodingParams, MiRect, TileContext};
 use bitvue_engine::{BitvueError, Result};
 
 /// Fills `cu.mode` and `cu.mv[0..2]`, reads the compound-type symbols, and records the block in
@@ -15,7 +15,6 @@ use bitvue_engine::{BitvueError, Result};
 pub(super) fn read_compound_mode_info(
     decoder: &mut SymbolDecoder,
     tile_ctx: &mut TileContext,
-    mv_ctx: &mut MvPredictorContext,
     rect: BlockRect,
     mi: MiRect,
     frame: &FrameCodingParams,
@@ -78,16 +77,14 @@ pub(super) fn read_compound_mode_info(
         // Per-direction value: `Nearest`/`Near` read straight from the real stack;
         // `New` uses `stack[drl_idx]` as predictor with the explicit residual added on
         // top (unchanged shape from the single-direction version this replaces);
-        // `Global` keeps today's `mv_ctx`-sourced zero approximation unchanged (real
-        // `gm_params` values still aren't stored, same already-documented gap as
-        // single-ref `GlobalMv` below).
+        // `Global` is the block's global motion vector for that reference.
         cu.mv[0] = match l0_kind {
             Some(MvKind::New) => {
                 let explicit_mv = read_explicit_mv(decoder, frame.inter_mode_flags.mv_precision())?;
                 explicit_mv.add(stack[drl_idx].mv[0])
             }
             Some(MvKind::Nearest) | Some(MvKind::Near) => stack[drl_idx].mv[0],
-            Some(MvKind::Global) => mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]),
+            Some(MvKind::Global) => tile_ctx.global_mv(rav1d_ref0, x4, y4, width_4x4, height_4x4),
             None => MotionVector::zero(),
         };
         cu.mv[1] = match l1_kind {
@@ -96,7 +93,7 @@ pub(super) fn read_compound_mode_info(
                 explicit_mv.add(stack[drl_idx].mv[1])
             }
             Some(MvKind::Nearest) | Some(MvKind::Near) => stack[drl_idx].mv[1],
-            Some(MvKind::Global) => mv_ctx.get_mv_predictor_l1(cu.mode, x, y, cu.ref_frames[1]),
+            Some(MvKind::Global) => tile_ctx.global_mv(rav1d_ref1, x4, y4, width_4x4, height_4x4),
             None => MotionVector::zero(),
         };
         read_compound_type(decoder, tile_ctx, mi, frame, rav1d_ref0, rav1d_ref1)?
@@ -113,6 +110,9 @@ pub(super) fn read_compound_mode_info(
         cu.mv[0],
         cu.mv[1],
     );
+    if cu.mode == PredictionMode::GlobalGlobalMv {
+        tile_ctx.mark_spatial_ref_global_mode(x4, y4, width_4x4, height_4x4);
+    }
     tile_ctx.set_comp_type(x4, y4, width_4x4, height_4x4, comp_type);
 
     tracing::debug!(
@@ -483,12 +483,10 @@ mod tests {
         let capture = Capture::default();
         let mut d = SymbolDecoder::new(data).unwrap();
         let mut ctx = TileContext::new(32, 32);
-        let mut mv_ctx = MvPredictorContext::new(8, 8);
         let mut cu = compound_cu(skip_mode);
         let frame = FrameCodingParams::for_tests();
         tracing::subscriber::with_default(capture.clone(), || {
-            read_compound_mode_info(&mut d, &mut ctx, &mut mv_ctx, RECT, MI, &frame, &mut cu)
-                .unwrap();
+            read_compound_mode_info(&mut d, &mut ctx, RECT, MI, &frame, &mut cu).unwrap();
         });
         let logs = capture.0.lock().unwrap().clone();
         (cu, logs, d.read_bools_n(24).unwrap())

@@ -46,6 +46,8 @@ pub struct InterModeFlags {
     /// fractional MV bits are coded -- see [`InterModeFlags::mv_precision`].
     pub allow_high_precision_mv: bool,
     pub gm_type: [u8; 8],
+    /// `gm_params` (spec 5.9.25), indexed like `gm_type`.
+    pub gm_params: crate::frame_header_full::GmParams,
 }
 
 impl InterModeFlags {

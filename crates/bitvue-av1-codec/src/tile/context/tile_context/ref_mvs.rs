@@ -25,6 +25,47 @@ impl TileContext {
         );
     }
 
+    /// Marks the block just recorded as a `GLOBALMV` / `GLOBAL_GLOBALMV` one -- see
+    /// `SpatialRefContext::mark_global_mode`.
+    pub fn mark_spatial_ref_global_mode(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+    ) {
+        self.spatial_ref
+            .mark_global_mode(x4, y4, width_4x4, height_4x4);
+    }
+
+    /// The frame's global motion -- see `SpatialRefContext::set_global_motion`.
+    pub fn set_global_motion(
+        &mut self,
+        gm_type: [u8; 8],
+        params: crate::frame_header_full::GmParams,
+        allow_high_precision_mv: bool,
+        force_integer_mv: bool,
+    ) {
+        self.spatial_ref.set_global_motion(
+            gm_type,
+            params,
+            allow_high_precision_mv,
+            force_integer_mv,
+        );
+    }
+
+    /// The block's global motion vector for `ref0` -- see `SpatialRefContext::global_mv`.
+    pub fn global_mv(
+        &self,
+        ref0: i8,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+    ) -> crate::tile::coding_unit::MotionVector {
+        self.spatial_ref.global_mv(ref0, x4, y4, bw4, bh4)
+    }
+
     /// Records an intra block -- see `SpatialRefContext::set_intra_block`.
     pub fn set_spatial_ref_intra_block(
         &mut self,

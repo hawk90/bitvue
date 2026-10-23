@@ -6,7 +6,7 @@ use super::motion_mode::read_motion_mode_info;
 use super::read_explicit_mv;
 use super::types::{CodingUnit, MotionVector, PredictionMode};
 use crate::symbol::SymbolDecoder;
-use crate::tile::{BlockRect, FrameCodingParams, MiRect, MvPredictorContext, TileContext};
+use crate::tile::{BlockRect, FrameCodingParams, MiRect, TileContext};
 use bitvue_engine::{BitvueError, Result};
 
 /// Fills `cu.mode` and `cu.mv`, reads the interintra/motion-mode symbols, and records the block
@@ -15,7 +15,6 @@ use bitvue_engine::{BitvueError, Result};
 pub(super) fn read_single_ref_mode_info(
     decoder: &mut SymbolDecoder,
     tile_ctx: &mut TileContext,
-    mv_ctx: &mut MvPredictorContext,
     rect: BlockRect,
     mi: MiRect,
     frame: &FrameCodingParams,
@@ -44,8 +43,10 @@ pub(super) fn read_single_ref_mode_info(
     if cu.mode == PredictionMode::NewMv {
         read_new_mv(decoder, tile_ctx, rect, mi, frame, rav1d_ref0, cu)?;
     } else if cu.mode == PredictionMode::GlobalMv {
-        let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
-        cu.mv = [predictor, MotionVector::zero()];
+        cu.mv = [
+            tile_ctx.global_mv(rav1d_ref0, x4, y4, width_4x4, height_4x4),
+            MotionVector::zero(),
+        ];
 
         tracing::debug!(
             "Mode {:?} at ({}, {}): using predictor {:?}",
@@ -80,6 +81,9 @@ pub(super) fn read_single_ref_mode_info(
         cu.mv[0],
         cu.mv[1],
     );
+    if cu.mode == PredictionMode::GlobalMv {
+        tile_ctx.mark_spatial_ref_global_mode(x4, y4, width_4x4, height_4x4);
+    }
     if is_interintra {
         decoder.read_interintra_mode(ii_sz_grp)?;
         // `interintra_wedge_ctx` is real here (`is_interintra` only true when `Some`).

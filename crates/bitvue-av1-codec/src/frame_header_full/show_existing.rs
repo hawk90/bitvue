@@ -49,6 +49,7 @@ pub(super) fn parse_show_existing_frame(
         force_integer_mv: false,
         allow_high_precision_mv: false,
         gm_type: [0u8; 8],
+        gm_params: [GM_IDENTITY_PARAMS; 8],
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
         use_ref_frame_mvs: false,

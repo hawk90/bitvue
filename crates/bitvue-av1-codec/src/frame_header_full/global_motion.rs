@@ -2,12 +2,28 @@
 
 use super::*;
 
-// GM_*_PREC_BITS (spec's precBits per param) aren't needed: they only affect the recentred
-// *value* (`precDiff = WARPEDMODEL_PREC_BITS - precBits`), not how many bits decode_subexp
-// consumes, which is what this parser needs (see skip_global_param's doc).
 const GM_ABS_ALPHA_BITS: u32 = 12;
+const GM_ALPHA_PREC_BITS: u32 = 15;
 const GM_ABS_TRANS_ONLY_BITS: u32 = 9;
+const GM_TRANS_ONLY_PREC_BITS: u32 = 3;
 const GM_ABS_TRANS_BITS: u32 = 12;
+const GM_TRANS_PREC_BITS: u32 = 6;
+const WARPEDMODEL_PREC_BITS: u32 = 16;
+
+/// One reference's six warp parameters (spec `gm_params[ref]`).
+pub type GmRefParams = [i32; 6];
+/// `gm_params[ref]` for the 8 `RefFrame` values (index 0/`Intra` unused, stays the identity).
+pub type GmParams = [GmRefParams; 8];
+
+/// The identity warp (spec `set_default_gm`): `1 << WARPEDMODEL_PREC_BITS` on the diagonal.
+pub const GM_IDENTITY_PARAMS: GmRefParams = [
+    0,
+    0,
+    1 << WARPEDMODEL_PREC_BITS,
+    0,
+    0,
+    1 << WARPEDMODEL_PREC_BITS,
+];
 
 /// `decode_subexp(numSyms)` (AV1 spec 5.9.27) -- consumes exactly the bits a real decoder would,
 /// self-terminating and independent of any reference value (see module doc). Returns the decoded
@@ -36,27 +52,70 @@ fn decode_subexp(reader: &mut BitReader, num_syms: u32) -> Result<u32> {
     }
 }
 
-/// `read_global_param`'s bit consumption (AV1 spec 5.9.26 `decode_signed_subexp_with_ref`) --
-/// value is discarded (see module doc: not needed here, and computing the real recentred value
-/// would need `PrevGmParams`, which correct bit consumption does not).
-fn skip_global_param(
+/// `inverse_recenter(r, v)` (AV1 spec 5.9.28).
+fn inverse_recenter(r: i64, v: i64) -> i64 {
+    if v > 2 * r {
+        v
+    } else if v & 1 == 1 {
+        r - ((v + 1) >> 1)
+    } else {
+        r + (v >> 1)
+    }
+}
+
+/// `decode_signed_subexp_with_ref(low, high, r)` (spec 5.9.26) via `decode_unsigned_subexp_with_ref`
+/// (5.9.27).
+fn decode_signed_subexp_with_ref(
     reader: &mut BitReader,
-    is_translation_only: bool,
-    is_first_two: bool,
+    low: i64,
+    high: i64,
+    r: i64,
+) -> Result<i64> {
+    let mx = high - low;
+    let r = r - low;
+    let v = i64::from(decode_subexp(reader, mx as u32)?);
+    let x = if (r << 1) <= mx {
+        inverse_recenter(r, v)
+    } else {
+        mx - 1 - inverse_recenter(mx - 1 - r, v)
+    };
+    Ok(x + low)
+}
+
+/// `read_global_param(type, ref, idx)` (spec 5.9.25): one warp parameter, recentred on the value
+/// the previous frame left in `prev` (`PrevGmParams[ref][idx]`).
+fn read_global_param(
+    reader: &mut BitReader,
+    gm_type: u8,
+    idx: usize,
+    prev: i32,
     allow_high_precision_mv: bool,
-) -> Result<()> {
-    let abs_bits: u32 = if is_first_two {
-        if is_translation_only {
-            GM_ABS_TRANS_ONLY_BITS - u32::from(!allow_high_precision_mv)
+) -> Result<i32> {
+    let (abs_bits, prec_bits) = if idx < 2 {
+        if gm_type == GM_TYPE_TRANSLATION {
+            let lost = u32::from(!allow_high_precision_mv);
+            (
+                GM_ABS_TRANS_ONLY_BITS - lost,
+                GM_TRANS_ONLY_PREC_BITS - lost,
+            )
         } else {
-            GM_ABS_TRANS_BITS
+            (GM_ABS_TRANS_BITS, GM_TRANS_PREC_BITS)
         }
     } else {
-        GM_ABS_ALPHA_BITS
+        (GM_ABS_ALPHA_BITS, GM_ALPHA_PREC_BITS)
     };
-    let mx = 1u32 << abs_bits;
-    decode_subexp(reader, 2 * mx + 1)?;
-    Ok(())
+    let prec_diff = WARPEDMODEL_PREC_BITS - prec_bits;
+    let diagonal = idx % 3 == 2;
+    let round: i64 = if diagonal {
+        1 << WARPEDMODEL_PREC_BITS
+    } else {
+        0
+    };
+    let sub: i64 = if diagonal { 1 << prec_bits } else { 0 };
+    let mx = 1i64 << abs_bits;
+    let r = (i64::from(prev) >> prec_diff) - sub;
+    let v = decode_signed_subexp_with_ref(reader, -mx, mx + 1, r)?;
+    Ok(((v << prec_diff) + round) as i32)
 }
 
 /// `GmType` values (spec 5.9.24), in the real spec's numeric order (`GmType[ref] > TRANSLATION`
@@ -86,17 +145,18 @@ pub(super) fn classify_gm_type(
     }
 }
 
-/// `global_motion_params()` (spec 5.9.24) -- returns the real `GmType[ref]` classification for
-/// each of the 8 `RefFrame` values (index 0/`RefFrame::Intra` unused, stays `GM_TYPE_IDENTITY`;
-/// indices 1..=7 filled by this loop, spec's `LAST_FRAME..=ALTREF_FRAME` matching this crate's own
-/// `RefFrame` enum numbering). `gm_params[]` values themselves are still only consumed for bit
-/// position (see `skip_global_param`'s doc) -- only the classification is needed by
-/// `read_motion_mode`'s real `GmType[RefFrame[0]] > TRANSLATION` exclusion.
+/// `global_motion_params()` (spec 5.9.24/5.9.25) -- returns `GmType[ref]` and `gm_params[ref]` for
+/// each of the 8 `RefFrame` values (index 0/`RefFrame::Intra` unused, stays identity; indices
+/// 1..=7 filled by this loop, spec's `LAST_FRAME..=ALTREF_FRAME` matching this crate's own
+/// `RefFrame` enum numbering). `prev` is `PrevGmParams`: the identity when the frame has no
+/// primary reference frame, otherwise what that reference's slot saved.
 pub(super) fn parse_global_motion_params(
     reader: &mut BitReader,
     allow_high_precision_mv: bool,
-) -> Result<[u8; 8]> {
+    prev: &GmParams,
+) -> Result<([u8; 8], GmParams)> {
     let mut gm_type = [GM_TYPE_IDENTITY; 8];
+    let mut params: GmParams = [GM_IDENTITY_PARAMS; 8];
     for ref_frame in 0..REFS_PER_FRAME {
         let is_global = reader.read_bit()?;
         let (gm_type_is_translation, gm_type_at_least_rotzoom) = if is_global {
@@ -112,38 +172,27 @@ pub(super) fn parse_global_motion_params(
         };
         // Loop index 0 is `LAST_FRAME` (`RefFrame::Last as usize == 1`), so `ref_frame + 1` is the
         // real `RefFrame` index this classification belongs to.
-        gm_type[ref_frame + 1] =
-            classify_gm_type(is_global, gm_type_at_least_rotzoom, gm_type_is_translation);
+        let ty = classify_gm_type(is_global, gm_type_at_least_rotzoom, gm_type_is_translation);
+        let slot = ref_frame + 1;
+        gm_type[slot] = ty;
 
-        if gm_type_at_least_rotzoom {
-            // ROTZOOM or AFFINE: idx 2,3 always; idx 4,5 only for AFFINE (is_rot_zoom path above
-            // only sets gm_type_at_least_rotzoom for ROTZOOM -- AFFINE is reached via the
-            // is_translation==false branch below with gm_type_at_least_rotzoom left false, so
-            // handle AFFINE's extra params there instead).
-            skip_global_param(reader, false, false, allow_high_precision_mv)?;
-            skip_global_param(reader, false, false, allow_high_precision_mv)?;
-        } else if is_global && !gm_type_is_translation {
-            // AFFINE (is_global, not rot_zoom, not translation).
-            skip_global_param(reader, false, false, allow_high_precision_mv)?;
-            skip_global_param(reader, false, false, allow_high_precision_mv)?;
-            skip_global_param(reader, false, false, allow_high_precision_mv)?;
-            skip_global_param(reader, false, false, allow_high_precision_mv)?;
+        let p = &mut params[slot];
+        let before = &prev[slot];
+        if ty >= GM_TYPE_ROTZOOM {
+            p[2] = read_global_param(reader, ty, 2, before[2], allow_high_precision_mv)?;
+            p[3] = read_global_param(reader, ty, 3, before[3], allow_high_precision_mv)?;
+            if ty == GM_TYPE_AFFINE {
+                p[4] = read_global_param(reader, ty, 4, before[4], allow_high_precision_mv)?;
+                p[5] = read_global_param(reader, ty, 5, before[5], allow_high_precision_mv)?;
+            } else {
+                p[4] = -p[3];
+                p[5] = p[2];
+            }
         }
-        if is_global {
-            // TRANSLATION, ROTZOOM, and AFFINE all read params[0] and params[1].
-            skip_global_param(
-                reader,
-                gm_type_is_translation,
-                true,
-                allow_high_precision_mv,
-            )?;
-            skip_global_param(
-                reader,
-                gm_type_is_translation,
-                true,
-                allow_high_precision_mv,
-            )?;
+        if ty >= GM_TYPE_TRANSLATION {
+            p[0] = read_global_param(reader, ty, 0, before[0], allow_high_precision_mv)?;
+            p[1] = read_global_param(reader, ty, 1, before[1], allow_high_precision_mv)?;
         }
     }
-    Ok(gm_type)
+    Ok((gm_type, params))
 }

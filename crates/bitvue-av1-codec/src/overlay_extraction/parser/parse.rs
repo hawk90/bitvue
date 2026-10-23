@@ -92,6 +92,7 @@ impl ParsedFrame {
             force_integer_mv: false,
             allow_high_precision_mv: false,
             gm_type: [0u8; 8],
+            gm_params: [crate::frame_header_full::GM_IDENTITY_PARAMS; 8],
             enable_interintra_compound: false,
             enable_dual_filter: false,
             enable_masked_compound: false,
@@ -203,6 +204,7 @@ impl ParsedFrame {
         self.force_integer_mv = full_hdr.force_integer_mv;
         self.allow_high_precision_mv = full_hdr.allow_high_precision_mv;
         self.gm_type = full_hdr.gm_type;
+        self.gm_params = full_hdr.gm_params;
     }
 
     /// Same as [`ParsedFrame::parse`], but threads a caller-supplied `RefFrameState` into the
