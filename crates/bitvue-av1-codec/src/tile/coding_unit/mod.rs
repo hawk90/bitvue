@@ -46,6 +46,7 @@ mod interp_filter;
 mod intra;
 mod intrabc;
 mod is_inter;
+mod motion_mode;
 mod palette;
 mod ref_frames;
 mod residual;
