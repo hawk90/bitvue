@@ -148,5 +148,5 @@ fn read_ref_frame_idx(
 }
 
 #[cfg(test)]
-#[path = "size_and_refs_tests.rs"]
-mod size_and_refs_tests;
+#[path = "size_and_refs_test.rs"]
+mod size_and_refs_test;

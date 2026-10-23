@@ -381,10 +381,10 @@ fn tile_slices(parsed: &ParsedFrame) -> Result<Vec<(u32, &[u8])>, BitvueError> {
 }
 
 #[cfg(test)]
-mod fixture_tests;
+mod fixture_test;
 #[cfg(test)]
-mod oracle_tests;
+mod oracle_test;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
-mod tile_range_tests;
+mod tile_range_test;

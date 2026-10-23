@@ -13,7 +13,7 @@ pub use types::{FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame};
 use parse::collect_obus_resilient;
 
 #[cfg(test)]
-mod parse_tests;
+mod parse_test;
 
 #[cfg(test)]
 mod tests {

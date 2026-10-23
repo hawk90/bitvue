@@ -700,7 +700,7 @@ fn frame_unit(
 }
 
 #[cfg(test)]
-mod ivf_av1_tests;
+mod ivf_av1_test;
 #[cfg(test)]
 mod tests;
 

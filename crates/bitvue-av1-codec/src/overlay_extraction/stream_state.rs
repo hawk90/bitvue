@@ -473,5 +473,5 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "stream_state_tests.rs"]
-mod stream_state_tests;
+#[path = "stream_state_test.rs"]
+mod stream_state_test;

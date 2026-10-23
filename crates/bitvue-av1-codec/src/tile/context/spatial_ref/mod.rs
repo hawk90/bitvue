@@ -10,14 +10,14 @@
 mod candidates;
 mod compound_stack;
 #[cfg(test)]
-mod compound_stack_tests;
+mod compound_stack_test;
 mod match_ref;
 mod mode_context;
 #[cfg(test)]
-mod scan_tests;
+mod scan_test;
 mod single_stack;
 #[cfg(test)]
-mod single_stack_tests;
+mod single_stack_test;
 #[cfg(test)]
 mod tests;
 

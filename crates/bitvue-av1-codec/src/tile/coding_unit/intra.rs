@@ -268,5 +268,5 @@ fn block_size_for_dimensions(width: u32, height: u32) -> crate::tile::BlockSize 
 }
 
 #[cfg(test)]
-#[path = "intra_tests.rs"]
-mod intra_tests;
+#[path = "intra_test.rs"]
+mod intra_test;
