@@ -25,7 +25,7 @@ export async function pathExists(path: string): Promise<boolean> {
   return requireBridge().pathExists(path);
 }
 
-/** Resolves a bundled sample's filename (e.g. "foreman_av1.ivf") to its real absolute path.
+/** Resolves a bundled sample's filename (e.g. "sample_av1.ivf") to its real absolute path.
  *  Used by the welcome screen's "Samples" quick-open list. */
 export async function getSamplePath(filename: string): Promise<string> {
   return requireBridge().getSamplePath(filename);

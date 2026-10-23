@@ -194,7 +194,7 @@ bitvue/
 │   └── package_electron.sh   # Builds + packages the Electron app
 ├── docs/                     # Specs (features.yaml), parity docs, history, anti-pattern catalog
 ├── fuzz/                     # cargo-fuzz targets (own Cargo.toml, outside the workspace)
-├── test_data/, samples/      # Fixture clips; samples/ is bundled into the app
+├── test_data/                # Fixture clips + provenance README; sample_* is bundled into the app
 ├── resources/                # App icons and Linux desktop metadata
 ├── deny.toml, codecov.yml, rust-toolchain.toml, lefthook.toml   # Tool configuration (repo root)
 ```

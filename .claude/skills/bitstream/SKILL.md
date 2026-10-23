@@ -123,7 +123,7 @@ so avoid `--all-features`.
 - Grid types: `crates/bitvue-engine/src/{qp_heatmap.rs (QPGrid), mv_overlay.rs (MVGrid), partition_grid.rs (PartitionGrid)}`. Errors: `error.rs` (`BitvueError`). Diagnostics: `event.rs`.
 - Desktop data path: `crates/bitvue-indexer/src/lib.rs` (IVF+AV1 indexing) and `crates/bitvue-sidecar/src/request_dispatch.rs` (command table), `frame_analysis.rs`, `decode_bridge.rs`, `commands/data_plane.rs` (`get_hex_range`).
 - Pixel decode: `crates/bitvue-decode/src/{decoder.rs (Av1Decoder), ffmpeg.rs, vvdec.rs, yuv.rs, yuv_loader.rs, strategy/}`
-- Fixtures: `test_data/{av1_test.ivf, avc_test.h264, hevc_test.hevc, vp9_test.ivf}`. App samples: `samples/foreman_*` (also `.mp4`, `.mkv`, `.webm`).
+- Fixtures: `test_data/{av1_test.ivf, avc_test.h264, hevc_test.hevc, vp9_test.ivf}`. App samples (bundled into the app): `test_data/sample_*` (`.ivf`/`.mp4`/`.mkv`/`.webm`/`.264`/`.265`). Provenance of every file: `test_data/README.md`.
 
 ## References
 

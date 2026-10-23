@@ -1,5 +1,5 @@
 /**
- * Resolves bundled sample filenames (e.g. "foreman_av1.ivf") to their real absolute paths, for
+ * Resolves bundled sample filenames (e.g. "sample_av1.ivf") to their real absolute paths, for
  * the welcome screen's "Samples" quick-open list. Only ever called with the *available* subset
  * of the catalog (see sampleCatalog.ts) -- there's nothing to resolve for a row that isn't
  * clickable yet.

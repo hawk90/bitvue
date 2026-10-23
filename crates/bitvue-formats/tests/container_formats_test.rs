@@ -450,12 +450,9 @@ fn test_real_mp4_sample_extraction() {
         .unwrap()
         .parent()
         .unwrap()
-        .join("samples/foreman_h264.mp4");
+        .join("test_data/sample_h264.mp4");
 
-    if !sample_path.exists() {
-        eprintln!("Skipping test: sample file not found at {:?}", sample_path);
-        return;
-    }
+    assert!(sample_path.exists(), "fixture missing: {:?}", sample_path);
 
     let file_data = std::fs::read(&sample_path).expect("Failed to read sample file");
 
@@ -470,8 +467,8 @@ fn test_real_mp4_sample_extraction() {
             );
             eprintln!("Extracted {} samples from MP4", samples.len());
 
-            // Verify sample positions are correct by checking sample sizes
-            let expected_sizes = [10850, 4069, 1312, 643, 694, 3539, 1295, 657, 587, 3975];
+            // Verify sample positions are correct by checking sample sizes (ffprobe packet sizes of sample_h264.mp4)
+            let expected_sizes = [5759, 2776, 1565, 1124, 1136, 2359, 1363, 1046, 1061, 2224];
             for (i, (sample, expected_size)) in samples
                 .iter()
                 .take(10)
@@ -518,9 +515,10 @@ fn test_real_mp4_sample_extraction() {
         .unwrap()
         .parent()
         .unwrap()
-        .join("samples/foreman_hevc.mp4");
+        .join("test_data/sample_hevc.mp4");
 
-    if hevc_path.exists() {
+    assert!(hevc_path.exists(), "fixture missing: {:?}", hevc_path);
+    {
         let hevc_data = std::fs::read(&hevc_path).expect("Failed to read HEVC sample file");
         match bitvue_formats::mp4::extract_hevc_samples(&hevc_data) {
             Ok(samples) => {
@@ -546,12 +544,9 @@ fn test_hevc_annex_b_frames() {
         .unwrap()
         .parent()
         .unwrap()
-        .join("samples/foreman_hevc.265");
+        .join("test_data/sample_hevc.265");
 
-    if !sample_path.exists() {
-        eprintln!("Skipping test: sample file not found at {:?}", sample_path);
-        return;
-    }
+    assert!(sample_path.exists(), "fixture missing: {:?}", sample_path);
 
     let file_data = std::fs::read(&sample_path).expect("Failed to read sample file");
     eprintln!("HEVC AnnexB file size: {} bytes", file_data.len());
@@ -612,12 +607,9 @@ fn test_hevc_mp4_tauri_flow() {
         .unwrap()
         .parent()
         .unwrap()
-        .join("samples/foreman_hevc.mp4");
+        .join("test_data/sample_hevc.mp4");
 
-    if !sample_path.exists() {
-        eprintln!("Skipping test: sample file not found at {:?}", sample_path);
-        return;
-    }
+    assert!(sample_path.exists(), "fixture missing: {:?}", sample_path);
 
     let file_data = std::fs::read(&sample_path).expect("Failed to read sample file");
     eprintln!("HEVC MP4 file size: {} bytes", file_data.len());
@@ -687,12 +679,9 @@ fn test_avc_mp4_tauri_flow() {
         .unwrap()
         .parent()
         .unwrap()
-        .join("samples/foreman_h264.mp4");
+        .join("test_data/sample_h264.mp4");
 
-    if !sample_path.exists() {
-        eprintln!("Skipping test: sample file not found at {:?}", sample_path);
-        return;
-    }
+    assert!(sample_path.exists(), "fixture missing: {:?}", sample_path);
 
     let file_data = std::fs::read(&sample_path).expect("Failed to read sample file");
     eprintln!("AVC MP4 file size: {} bytes", file_data.len());

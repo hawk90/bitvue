@@ -13,7 +13,7 @@ import { pathExists, getSamplePath } from "@/services/electronBridgeService";
 
 vi.mock("@/services/electronBridgeService", () => ({
   pathExists: vi.fn().mockResolvedValue(true),
-  getSamplePath: vi.fn().mockResolvedValue("/samples/foreman_av1.ivf"),
+  getSamplePath: vi.fn().mockResolvedValue("/samples/sample_av1.ivf"),
 }));
 
 describe("WelcomeContainer", () => {
@@ -21,7 +21,7 @@ describe("WelcomeContainer", () => {
     vi.mocked(pathExists).mockReset().mockResolvedValue(true);
     vi.mocked(getSamplePath)
       .mockReset()
-      .mockResolvedValue("/samples/foreman_av1.ivf");
+      .mockResolvedValue("/samples/sample_av1.ivf");
   });
 
   it("passes error and recent files through to WelcomeScreen", async () => {

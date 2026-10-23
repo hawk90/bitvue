@@ -10,15 +10,15 @@
  * AV1/IVF is the ONLY combination with a real end-to-end path (bitvue-indexer only indexes
  * IVF/AV1 streams -- MP4/MKV/WebM/TS demuxing exists in bitvue-formats but isn't wired into the
  * live bitvue-sidecar, and VP9/VVC have no container-extraction code there at all). Several of
- * the "unavailable" rows below DO have real sample files already sitting in `samples/`
- * (foreman_hevc.mp4, foreman_h264.mp4, foreman_vp9.webm, foreman_vp9.mkv) -- they're still marked
+ * the "unavailable" rows below DO have real sample files already sitting in `test_data/`
+ * (sample_hevc.mp4, sample_h264.mp4, sample_vp9.webm, sample_vp9.mkv) -- they're still marked
  * unavailable because opening them today only produces the sidecar's honest "Indexing is only
  * implemented for IVF/AV1 streams so far" diagnostic, not real frame analysis. Flip `available`
  * to `true` here once a combination's backend actually lands, no other wiring needed --
  * WelcomeContainer resolves real paths for whatever's marked available.
  *
  * Filenames for combinations that don't have a sample file yet are the planned names (matching
- * this repo's `foreman_<codec>.<ext>` convention) -- the actual video bytes are expected to be
+ * this repo's `sample_<codec>.<ext>` convention) -- the actual video bytes are expected to be
  * added separately, not part of this catalog.
  */
 
@@ -42,11 +42,11 @@ export const WELCOME_SAMPLE_GROUPS: WelcomeSampleGroup[] = [
     codec: "AV1",
     defaultExpanded: false,
     entries: [
-      { container: "IVF", filename: "foreman_av1.ivf", available: true },
-      { container: "MP4", filename: "foreman_av1.mp4", available: false },
-      { container: "MKV", filename: "foreman_av1.mkv", available: false },
-      { container: "WebM", filename: "foreman_av1.webm", available: false },
-      { container: "TS", filename: "foreman_av1.ts", available: false },
+      { container: "IVF", filename: "sample_av1.ivf", available: true },
+      { container: "MP4", filename: "sample_av1.mp4", available: false },
+      { container: "MKV", filename: "sample_av1.mkv", available: false },
+      { container: "WebM", filename: "sample_av1.webm", available: false },
+      { container: "TS", filename: "sample_av1.ts", available: false },
     ],
   },
   {
@@ -55,12 +55,12 @@ export const WELCOME_SAMPLE_GROUPS: WelcomeSampleGroup[] = [
     entries: [
       {
         container: "Raw (.265)",
-        filename: "foreman_hevc.265",
+        filename: "sample_hevc.265",
         available: false,
       },
-      { container: "MP4", filename: "foreman_hevc.mp4", available: false },
-      { container: "MKV", filename: "foreman_hevc.mkv", available: false },
-      { container: "TS", filename: "foreman_hevc.ts", available: false },
+      { container: "MP4", filename: "sample_hevc.mp4", available: false },
+      { container: "MKV", filename: "sample_hevc.mkv", available: false },
+      { container: "TS", filename: "sample_hevc.ts", available: false },
     ],
   },
   {
@@ -69,21 +69,21 @@ export const WELCOME_SAMPLE_GROUPS: WelcomeSampleGroup[] = [
     entries: [
       {
         container: "Raw (.264)",
-        filename: "foreman_h264.264",
+        filename: "sample_h264.264",
         available: false,
       },
-      { container: "MP4", filename: "foreman_h264.mp4", available: false },
-      { container: "MKV", filename: "foreman_h264.mkv", available: false },
-      { container: "TS", filename: "foreman_h264.ts", available: false },
+      { container: "MP4", filename: "sample_h264.mp4", available: false },
+      { container: "MKV", filename: "sample_h264.mkv", available: false },
+      { container: "TS", filename: "sample_h264.ts", available: false },
     ],
   },
   {
     codec: "VP9",
     defaultExpanded: false,
     entries: [
-      { container: "IVF", filename: "foreman_vp9.ivf", available: false },
-      { container: "WebM", filename: "foreman_vp9.webm", available: false },
-      { container: "MKV", filename: "foreman_vp9.mkv", available: false },
+      { container: "IVF", filename: "sample_vp9.ivf", available: false },
+      { container: "WebM", filename: "sample_vp9.webm", available: false },
+      { container: "MKV", filename: "sample_vp9.mkv", available: false },
     ],
   },
   {
@@ -92,10 +92,10 @@ export const WELCOME_SAMPLE_GROUPS: WelcomeSampleGroup[] = [
     entries: [
       {
         container: "Raw (.vvc)",
-        filename: "foreman_vvc.vvc",
+        filename: "sample_vvc.vvc",
         available: false,
       },
-      { container: "MP4", filename: "foreman_vvc.mp4", available: false },
+      { container: "MP4", filename: "sample_vvc.mp4", available: false },
     ],
   },
 ];
@@ -109,4 +109,4 @@ export const AVAILABLE_SAMPLE_FILENAMES = WELCOME_SAMPLE_GROUPS.flatMap((g) =>
 /** The sample WelcomePracticeList's rows open -- AV1/IVF is the only combination with a real
  *  end-to-end analysis path today (see file doc above), so it's the only honest target for a
  *  "try this workflow" entry point. */
-export const PRACTICE_SAMPLE_FILENAME = "foreman_av1.ivf";
+export const PRACTICE_SAMPLE_FILENAME = "sample_av1.ivf";

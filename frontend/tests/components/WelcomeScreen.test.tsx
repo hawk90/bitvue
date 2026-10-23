@@ -86,7 +86,7 @@ describe("WelcomeScreen", () => {
   });
 
   it("renders recent files with name and directory split out", () => {
-    // Deliberately not foreman_av1.ivf -- that name also appears in the Samples section (see
+    // Deliberately not sample_av1.ivf -- that name also appears in the Samples section (see
     // sampleCatalog.ts), which would make the getByText queries below ambiguous.
     renderWelcome({
       recentFiles: ["/Users/hawk/Workspaces/projects/my_capture.ivf"],
@@ -151,47 +151,47 @@ describe("WelcomeScreen", () => {
     it("renders all codec groups collapsed by default, expanding AV1 on click", () => {
       const onOpenSample = vi.fn();
       renderWelcome({
-        sampleResolvedPaths: { "foreman_av1.ivf": "/samples/foreman_av1.ivf" },
+        sampleResolvedPaths: { "sample_av1.ivf": "/samples/sample_av1.ivf" },
         onOpenSample,
       });
 
       expect(screen.getByText("Samples")).toBeInTheDocument();
       expect(
-        screen.queryByRole("button", { name: /ivf.*foreman_av1\.ivf/i }),
+        screen.queryByRole("button", { name: /ivf.*sample_av1\.ivf/i }),
       ).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: /^av1/i }));
       const av1Row = screen.getByRole("button", {
-        name: /ivf.*foreman_av1\.ivf/i,
+        name: /ivf.*sample_av1\.ivf/i,
       });
       expect(av1Row).not.toBeDisabled();
 
       fireEvent.click(av1Row);
-      expect(onOpenSample).toHaveBeenCalledWith("/samples/foreman_av1.ivf");
+      expect(onOpenSample).toHaveBeenCalledWith("/samples/sample_av1.ivf");
     });
 
     it("disables the AV1/IVF row until its path has resolved", () => {
       renderWelcome({ sampleResolvedPaths: {} });
       fireEvent.click(screen.getByRole("button", { name: /^av1/i }));
       const av1Row = screen.getByRole("button", {
-        name: /ivf.*foreman_av1\.ivf/i,
+        name: /ivf.*sample_av1\.ivf/i,
       });
       expect(av1Row).toBeDisabled();
     });
 
     it("collapses other codec groups by default, expanding on click", () => {
       renderWelcome({
-        sampleResolvedPaths: { "foreman_av1.ivf": "/samples/foreman_av1.ivf" },
+        sampleResolvedPaths: { "sample_av1.ivf": "/samples/sample_av1.ivf" },
       });
 
       expect(
-        screen.queryByRole("button", { name: /foreman_hevc\.mp4/i }),
+        screen.queryByRole("button", { name: /sample_hevc\.mp4/i }),
       ).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: /^hevc/i }));
 
       const hevcMp4Row = screen.getByRole("button", {
-        name: /mp4.*foreman_hevc\.mp4.*coming soon/i,
+        name: /mp4.*sample_hevc\.mp4.*coming soon/i,
       });
       expect(hevcMp4Row).toBeInTheDocument();
       expect(hevcMp4Row).toBeDisabled();

@@ -45,8 +45,11 @@
     ],
     "extraResources": [
       {
-        "from": "../samples",
-        "to": "samples"
+        "from": "../test_data",
+        "to": "samples",
+        "filter": [
+          "sample_*"
+        ]
       },
       {
         "from": "../frontend/dist",

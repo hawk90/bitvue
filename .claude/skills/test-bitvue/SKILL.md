@@ -33,7 +33,7 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 - Property tests (proptest, dev-dep of `bitvue-av1-codec` only): `crates/bitvue-av1-codec/tests/{bitreader,ivf,leb128}_prop_tests.rs`; regressions persist in `*.proptest-regressions` (commit them).
 - Fuzz: `fuzz/fuzz_targets/{av1_decode,ivf_parser,leb128,obu_parser,fuzz_target_1}.rs`. Currently broken: `fuzz/Cargo.toml` depends on nonexistent `../crates/bitvue-av1` (should be `bitvue-av1-codec`).
 
-**Fixtures** — `test_data/{av1_test.ivf, avc_test.h264, hevc_test.hevc, vp9_test.ivf}` (flat). `samples/foreman_*` are app demo samples, not test fixtures.
+**Fixtures** — `test_data/{av1_test.ivf, avc_test.h264, hevc_test.hevc, vp9_test.ivf}` (flat). `test_data/sample_*` are the app's bundled demo clips (also used by a few container/VMAF/VVC tests). Provenance of every file: `test_data/README.md`.
 
 **Frontend** (`frontend/`, vitest 1.6 + jsdom)
 - Tests only under `frontend/tests/{components,hooks,utils,contexts,services,types,constants}/` and `tests/App.test.tsx` — `vitest.config.ts` includes `tests/**` only; a test placed next to a component will not run.

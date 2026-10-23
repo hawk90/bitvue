@@ -24,7 +24,7 @@ on:
       - 'frontend/**'
       - 'bitvue-desktop/**'
       - 'resources/**'
-      - 'samples/**'
+      - 'test_data/**'
       - '.github/workflows/build-electron-app.yml'
       - '.github/actions/**'
   workflow_dispatch:

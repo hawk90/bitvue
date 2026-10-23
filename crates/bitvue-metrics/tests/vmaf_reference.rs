@@ -19,8 +19,8 @@ const TOLERANCE: f64 = 0.05;
 
 /// libvmaf 3.2.0 via FFmpeg, per frame. The last frame's value depends on it being last (the
 /// motion feature looks one frame ahead), so it is only comparable for exactly this input.
-const EXPECTED_PER_FRAME: [f64; FRAMES] = [50.728519, 54.357944, 53.641153, 53.486662, 53.609525];
-const EXPECTED_POOLED: f64 = 53.164760;
+const EXPECTED_PER_FRAME: [f64; FRAMES] = [53.666666, 55.266798, 54.879282, 56.42608, 57.796813];
+const EXPECTED_POOLED: f64 = 55.607128;
 
 fn load(name: &str) -> Vec<VmafFrame> {
     let path = format!("{}/tests/fixtures/vmaf/{name}", env!("CARGO_MANIFEST_DIR"));
