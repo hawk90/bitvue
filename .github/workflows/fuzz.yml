@@ -63,8 +63,13 @@ jobs:
           workspaces: fuzz
           shared-key: fuzz-nightly
       - uses: ./.github/actions/install-dav1d
+      # Built with stable: --locked pins rustix 0.36, which does not compile on a current nightly
+      # (it sets a `rustc_*` attribute that nightly now rejects). The fuzz targets still use nightly.
       - name: Install cargo-fuzz
-        run: command -v cargo-fuzz || cargo install cargo-fuzz --locked --version 0.13.1
+        run: |
+          command -v cargo-fuzz && exit 0
+          rustup toolchain install stable --profile minimal --no-self-update
+          cargo +stable install cargo-fuzz --locked --version 0.13.1
 
       - name: Restore the corpus of the last run
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
