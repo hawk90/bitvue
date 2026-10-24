@@ -63,8 +63,10 @@ pub fn store_motion_field(
     // than one CU (real for any block smaller than 8x8, e.g. 4x4/4x8/8x4) -- an 8x8-granularity
     // index's "first CU wins" tiebreak (`CuSpatialIndex::new`'s doc) wouldn't reliably pick that
     // exact sub-position.
-    let cols_4x4 = frame_width.div_ceil(4).max(1);
-    let rows_4x4 = frame_height.div_ceil(4).max(1);
+    // `MiCols`/`MiRows` (spec 5.9.2), not `ceil(size / 4)`: a frame whose size is not a multiple of
+    // 8 still has the 4x4 column/row that completes its last 8x8 cell, and a block covers it.
+    let cols_4x4 = 2 * cols_8x8;
+    let rows_4x4 = 2 * rows_8x8;
     let index = CuSpatialIndex::new(coding_units, cols_4x4, rows_4x4, 4, 4);
 
     let mut grid = MotionFieldGrid::empty(cols_8x8, rows_8x8);
@@ -263,13 +265,13 @@ mod tests {
             }
         }
 
-        // A 12x12 frame: the second cell column/row has only one 4x4 column/row, so the sample
-        // position is clamped to it.
+        // A 12x12 frame is 4 4x4 columns/rows wide (`MiCols` rounds up to a multiple of 8
+        // pixels); blocks cover that padding, and each cell is sampled at its bottom-right 4x4.
         let units = [
             inter(0, 0, 8, 8, RefFrame::Last, mv(1, 0)),
-            inter(8, 0, 4, 8, RefFrame::Last2, mv(2, 0)),
-            inter(0, 8, 8, 4, RefFrame::Last3, mv(3, 0)),
-            inter(8, 8, 4, 4, RefFrame::Golden, mv(4, 0)),
+            inter(8, 0, 8, 8, RefFrame::Last2, mv(2, 0)),
+            inter(0, 8, 8, 8, RefFrame::Last3, mv(3, 0)),
+            inter(8, 8, 8, 8, RefFrame::Golden, mv(4, 0)),
         ];
         let grid = store_motion_field(&units, 12, 12, &ALL_SIGNS);
         assert_eq!((grid.cols_8x8, grid.rows_8x8), (2, 2));
@@ -278,9 +280,9 @@ mod tests {
         assert_eq!(cell(&grid, 0, 1), Some((3, 0, RefFrame::Last3)));
         assert_eq!(cell(&grid, 1, 1), Some((4, 0, RefFrame::Golden)));
 
-        // A 4x4 frame is one cell sampled at its only 4x4.
+        // A 4x4 frame is one cell, sampled at the bottom-right 4x4 of the 8x8 its block covers.
         let grid = store_motion_field(
-            &[inter(0, 0, 4, 4, RefFrame::AltRef, mv(5, 5))],
+            &[inter(0, 0, 8, 8, RefFrame::AltRef, mv(5, 5))],
             4,
             4,
             &ALL_SIGNS,
@@ -519,5 +521,20 @@ mod tests {
         assert_eq!(cell(&grid, 0, 0).map(|c| c.1), Some(10));
         assert_eq!(cell(&grid, 0, 1).map(|c| c.1), Some(20));
         assert_eq!(cell(&grid, 0, 2).map(|c| c.1), Some(30));
+    }
+
+    #[test]
+    fn a_width_that_is_not_a_multiple_of_8_still_samples_the_padding_column() {
+        // A 10 pixel wide frame has `MiCols` = 4, not `ceil(10 / 4)` = 3: the second cell's
+        // bottom-right 4x4 is column 3, which lies past the picture and belongs to its own block.
+        let units = [
+            inter(0, 0, 8, 8, RefFrame::Last, mv(1, 0)),
+            inter(8, 0, 4, 8, RefFrame::Last2, mv(2, 0)),
+            inter(12, 0, 4, 8, RefFrame::Golden, mv(3, 0)),
+        ];
+        let grid = store_motion_field(&units, 10, 8, &ALL_SIGNS);
+        assert_eq!((grid.cols_8x8, grid.rows_8x8), (2, 1));
+        assert_eq!(cell(&grid, 0, 0), Some((1, 0, RefFrame::Last)));
+        assert_eq!(cell(&grid, 1, 0), Some((3, 0, RefFrame::Golden)));
     }
 }

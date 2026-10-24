@@ -4,6 +4,17 @@ use super::TileContext;
 use crate::tile::context::tables::DAV1D_SKIP_CTX;
 
 impl TileContext {
+    /// `MiCols` in chroma 4x4 units (spec 8.3.2: `(MiCols + subX) >> subX`; 4:2:0 is the only
+    /// subsampling this tile decode handles).
+    fn chroma_cols(&self) -> u32 {
+        self.mi_cols.saturating_add(1) >> 1
+    }
+
+    /// `MiRows` in chroma 4x4 units.
+    fn chroma_rows(&self) -> u32 {
+        self.mi_rows.saturating_add(1) >> 1
+    }
+
     /// `txb_skip` (all_zero) context index for one transform block at absolute 4x4 position
     /// `(x4, y4)`, `tx_w4`/`tx_h4` 4x4 units wide/tall -- per spec/rav1d `get_skip_ctx`'s luma
     /// branch. `is_single_tx_block`: true when this transform block is the coding block's only
@@ -25,6 +36,7 @@ impl TileContext {
             return 0;
         }
         let la = (0..tx_w4)
+            .filter(|i| x4 + i < self.mi_cols)
             .map(|i| {
                 self.above_cul_level
                     .get((x4 + i) as usize)
@@ -33,6 +45,7 @@ impl TileContext {
             })
             .fold(0u32, |acc, v| acc | v as u32);
         let ll = (0..tx_h4)
+            .filter(|i| y4 + i < self.mi_rows)
             .map(|i| {
                 self.left_cul_level
                     .get((y4 + i) as usize)
@@ -50,6 +63,7 @@ impl TileContext {
     /// `0`, negative `-1`, positive `+1`), then classify the sign of that sum into `{0,1,2}`.
     pub fn dc_sign_context(&self, x4: u32, y4: u32, tx_w4: u32, tx_h4: u32) -> u8 {
         let above_sum: i32 = (0..tx_w4)
+            .filter(|i| x4 + i < self.mi_cols)
             .map(|i| {
                 self.above_dc_sign_category
                     .get((x4 + i) as usize)
@@ -59,6 +73,7 @@ impl TileContext {
             })
             .sum();
         let left_sum: i32 = (0..tx_h4)
+            .filter(|i| y4 + i < self.mi_rows)
             .map(|i| {
                 self.left_dc_sign_category
                     .get((y4 + i) as usize)
@@ -92,12 +107,16 @@ impl TileContext {
             Some(1) => 0,
             Some(_) => 2,
         };
-        let x_end = (x4 + tx_w4).min(self.above_cul_level.len() as u32);
+        let x_end = (x4 + tx_w4)
+            .min(self.above_cul_level.len() as u32)
+            .min(self.mi_cols);
         for x in x4..x_end {
             self.above_cul_level[x as usize] = cul_level;
             self.above_dc_sign_category[x as usize] = category;
         }
-        let y_end = (y4 + tx_h4).min(self.left_cul_level.len() as u32);
+        let y_end = (y4 + tx_h4)
+            .min(self.left_cul_level.len() as u32)
+            .min(self.mi_rows);
         for y in y4..y_end {
             self.left_cul_level[y as usize] = cul_level;
             self.left_dc_sign_category[y as usize] = category;
@@ -125,8 +144,13 @@ impl TileContext {
     ) -> u8 {
         let above = &self.above_cul_level_chroma[plane.min(1)];
         let left = &self.left_cul_level_chroma[plane.min(1)];
-        let ca = (0..tx_w4).any(|i| above.get((cx4 + i) as usize).copied().unwrap_or(0) != 0);
-        let cl = (0..tx_h4).any(|i| left.get((cy4 + i) as usize).copied().unwrap_or(0) != 0);
+        let (max_x4, max_y4) = (self.chroma_cols(), self.chroma_rows());
+        let ca = (0..tx_w4)
+            .filter(|i| cx4 + i < max_x4)
+            .any(|i| above.get((cx4 + i) as usize).copied().unwrap_or(0) != 0);
+        let cl = (0..tx_h4)
+            .filter(|i| cy4 + i < max_y4)
+            .any(|i| left.get((cy4 + i) as usize).copied().unwrap_or(0) != 0);
         u8::from(not_one_blk) * 3 + u8::from(ca) + u8::from(cl)
     }
 
@@ -143,10 +167,13 @@ impl TileContext {
     ) -> u8 {
         let above = &self.above_dc_sign_category_chroma[plane.min(1)];
         let left = &self.left_dc_sign_category_chroma[plane.min(1)];
+        let (max_x4, max_y4) = (self.chroma_cols(), self.chroma_rows());
         let above_sum: i32 = (0..tx_w4)
+            .filter(|i| cx4 + i < max_x4)
             .map(|i| above.get((cx4 + i) as usize).copied().unwrap_or(1) as i32 - 1)
             .sum();
         let left_sum: i32 = (0..tx_h4)
+            .filter(|i| cy4 + i < max_y4)
             .map(|i| left.get((cy4 + i) as usize).copied().unwrap_or(1) as i32 - 1)
             .sum();
         dc_sign_ctx_from_sum(above_sum + left_sum)
@@ -170,16 +197,17 @@ impl TileContext {
             Some(_) => 2,
         };
         let plane = plane.min(1);
+        let (max_x4, max_y4) = (self.chroma_cols(), self.chroma_rows());
         let above = &mut self.above_cul_level_chroma[plane];
         let above_cat = &mut self.above_dc_sign_category_chroma[plane];
-        let x_end = (cx4 + tx_w4).min(above.len() as u32);
+        let x_end = (cx4 + tx_w4).min(above.len() as u32).min(max_x4);
         for x in cx4..x_end {
             above[x as usize] = cul_level;
             above_cat[x as usize] = category;
         }
         let left = &mut self.left_cul_level_chroma[plane];
         let left_cat = &mut self.left_dc_sign_category_chroma[plane];
-        let y_end = (cy4 + tx_h4).min(left.len() as u32);
+        let y_end = (cy4 + tx_h4).min(left.len() as u32).min(max_y4);
         for y in cy4..y_end {
             left[y as usize] = cul_level;
             left_cat[y as usize] = category;
@@ -298,5 +326,74 @@ mod tests {
             ctx.txb_skip_context(0, 0, 2, 2, false),
             DAV1D_SKIP_CTX[4][0]
         );
+    }
+
+    // The arrays are sized to whole superblocks, but the spec stores and reads the `all_zero` and
+    // `dc_sign` contexts of the columns/rows inside the frame only (5.11.39, 8.3.2). To tell what
+    // was stored from what is read, each test sets the frame extent to one size for the writes and
+    // to another for the reads.
+
+    #[test]
+    fn luma_contexts_past_the_frame_edge_are_not_stored() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_frame_extent(10, 10); // MiCols = MiRows = 4
+        ctx.set_residual_ctx(2, 2, 4, 4, 9, Some(0));
+        ctx.set_frame_extent(24, 24); // read it back as if the frame were wider
+                                      // Columns 4..6 / rows 4..6 were outside when written: still neutral.
+        assert_eq!(
+            ctx.txb_skip_context(4, 8, 2, 1, false),
+            DAV1D_SKIP_CTX[0][0]
+        );
+        assert_eq!(
+            ctx.txb_skip_context(8, 4, 1, 2, false),
+            DAV1D_SKIP_CTX[0][0]
+        );
+        assert_eq!(ctx.dc_sign_context(4, 8, 2, 1), 0);
+        assert_eq!(ctx.dc_sign_context(8, 4, 1, 2), 0);
+        // Inside it was stored.
+        assert_eq!(
+            ctx.txb_skip_context(2, 8, 2, 1, false),
+            DAV1D_SKIP_CTX[4][0]
+        );
+        assert_eq!(ctx.dc_sign_context(2, 8, 2, 1), 2);
+    }
+
+    #[test]
+    fn luma_contexts_past_the_frame_edge_are_not_read() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_frame_extent(24, 24); // MiCols = MiRows = 6
+        ctx.set_residual_ctx(4, 8, 2, 1, 9, Some(0)); // above: columns 4, 5
+        ctx.set_residual_ctx(8, 4, 1, 2, 9, Some(0)); // left: rows 4, 5
+        ctx.set_frame_extent(10, 10); // MiCols = MiRows = 4
+                                      // A 4-wide transform at column 2 spans columns 2..6; 4 and 5 are past the edge.
+        assert_eq!(
+            ctx.txb_skip_context(2, 8, 4, 1, false),
+            DAV1D_SKIP_CTX[0][0]
+        );
+        assert_eq!(
+            ctx.txb_skip_context(8, 2, 1, 4, false),
+            DAV1D_SKIP_CTX[0][0]
+        );
+        assert_eq!(ctx.dc_sign_context(2, 8, 4, 1), 0);
+        assert_eq!(ctx.dc_sign_context(8, 2, 1, 4), 0);
+    }
+
+    #[test]
+    fn chroma_contexts_past_the_frame_edge_are_neither_stored_nor_read() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_frame_extent(10, 10); // MiCols = 4 -> chroma columns 0..2
+                                      // A 4-wide, 4-tall chroma transform: only chroma columns/rows 0 and 1 are inside.
+        ctx.set_residual_ctx_chroma(0, 0, 0, 4, 4, 9, Some(0));
+        ctx.set_frame_extent(24, 24); // chroma columns 0..3
+        assert_eq!(ctx.txb_skip_context_chroma(0, 2, 4, 2, 1, false), 0);
+        assert_eq!(ctx.txb_skip_context_chroma(0, 4, 2, 1, 2, false), 0);
+        assert_eq!(ctx.dc_sign_context_chroma(0, 2, 4, 2, 1), 0);
+        assert_eq!(ctx.txb_skip_context_chroma(0, 0, 4, 2, 1, false), 1);
+
+        // Read side: written under the wide frame, read under the narrow one.
+        ctx.set_residual_ctx_chroma(1, 2, 4, 1, 1, 9, Some(0));
+        ctx.set_frame_extent(10, 10);
+        assert_eq!(ctx.txb_skip_context_chroma(1, 0, 4, 4, 1, false), 0);
+        assert_eq!(ctx.dc_sign_context_chroma(1, 0, 4, 4, 1), 0);
     }
 }

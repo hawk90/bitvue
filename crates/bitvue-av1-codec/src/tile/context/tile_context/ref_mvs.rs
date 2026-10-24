@@ -100,6 +100,8 @@ impl TileContext {
     /// Real frame size -- see `SpatialRefContext::set_frame_extent`.
     pub fn set_frame_extent(&mut self, width: u32, height: u32) {
         self.spatial_ref.set_frame_extent(width, height);
+        self.mi_cols = 2 * width.div_ceil(8);
+        self.mi_rows = 2 * height.div_ceil(8);
     }
 
     /// Packed single-ref `inter_mode` context -- see `SpatialRefContext::inter_mode_context`.
