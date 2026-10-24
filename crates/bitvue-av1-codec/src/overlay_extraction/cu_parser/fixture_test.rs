@@ -147,6 +147,10 @@ fn real_fixture_temporal_mv_candidates_are_wired_and_non_degenerate() {
                 parsed.order_hint,
                 enable_order_hint,
                 order_hint_bits,
+                (
+                    parsed.dimensions.width.div_ceil(8).max(1),
+                    parsed.dimensions.height.div_ceil(8).max(1),
+                ),
             );
             if !sources.is_empty() {
                 frames_with_temporal_sources += 1;

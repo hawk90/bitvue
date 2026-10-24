@@ -116,6 +116,7 @@ impl MotionFieldState {
 /// each gated by a forward-in-time check; then `last2` as a final fallback), and computes each
 /// selected source's `ref2cur`/`ref2ref`. `ref_frame_idx`: this frame's own slot mapping (`0..=6`
 /// logical ref -> `0..=7` physical slot, real spec `ref_frame_idx[REFS_PER_FRAME]`).
+/// `frame_8x8`: the current frame's coded size in 8x8 cells (columns, rows).
 /// `ref_order_hint`: a snapshot taken *before* this frame's own `parse_frame_header_full` call --
 /// see [`MotionFieldState::update`]'s doc for why `state.ref_state` itself can't be used here.
 pub fn select_motion_field_sources(
@@ -125,6 +126,7 @@ pub fn select_motion_field_sources(
     cur_order_hint: u32,
     enable_order_hint: bool,
     order_hint_bits: u32,
+    frame_8x8: (u32, u32),
 ) -> Vec<MfmvSource> {
     use crate::frame_header_full::relative_dist;
     let dist = |a: u32, b: u32| relative_dist(a, b, enable_order_hint, order_hint_bits);
@@ -132,7 +134,13 @@ pub fn select_motion_field_sources(
     // Logical ref index -> physical slot, dav1d's `rp_ref[n]` naming: 0=LAST, 1=LAST2, 4=BWDREF,
     // 5=ALTREF2, 6=ALTREF (refmvs.c:859-880 references these fixed logical positions directly).
     let slot_of = |logical: usize| ref_frame_idx[logical] as usize;
-    let has_grid = |slot: usize| state.grids[slot].is_some();
+    // A reference of another MiCols/MiRows offers nothing (spec 7.9.2; dav1d `decode.c` only keeps
+    // `ref_mvs[i]` when `ref_w == f->bw && ref_h == f->bh`): possible with per-frame superres.
+    let has_grid = |slot: usize| {
+        state.grids[slot]
+            .as_ref()
+            .is_some_and(|g| (g.cols_8x8, g.rows_8x8) == frame_8x8)
+    };
 
     let ref_poc = |logical: usize| ref_order_hint[slot_of(logical)];
 

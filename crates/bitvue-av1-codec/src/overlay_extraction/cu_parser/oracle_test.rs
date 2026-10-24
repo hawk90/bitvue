@@ -1101,3 +1101,49 @@ fn the_114x136_palette_clip_decodes_symbol_for_symbol_like_dav1d() {
         &ORACLE,
     );
 }
+
+/// `test_data/av1_aomenc_superres_random.ivf`: superres with a denominator chosen per frame
+/// (`--superres-mode=2`), so the coded width runs from 176 to 352 and almost every frame has
+/// references of another size. A reference whose `MiCols`/`MiRows` differ from the current
+/// frame's offers no temporal motion vectors (spec 7.9.2); projecting from it anyway filled the
+/// candidate list with another frame's geometry and desynced the first such frame (#328).
+#[test]
+fn the_per_frame_superres_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 31] = [
+        (47_118, 0x0f9c_7327_e4d0_6ba5),
+        (25_958, 0xe9e9_3391_3f88_7151),
+        (16_124, 0x237b_68fd_c8fd_6c14),
+        (22_002, 0x50ce_30c6_69e6_e9f3),
+        (18_016, 0x4e28_9a26_f5db_c0ce),
+        (10_422, 0xf0b8_925a_673a_3118),
+        (18_287, 0x54cc_d552_79ad_8f5e),
+        (10_723, 0x3b72_2af0_3b55_7329),
+        (14_183, 0x2f48_a4b5_da6b_c84b),
+        (6_882, 0xbb39_0964_385e_1ded),
+        (19_553, 0xee69_7940_c4ff_62e7),
+        (6_616, 0x2076_821f_bfe1_6b77),
+        (10_212, 0xab4a_f199_2c35_710d),
+        (19_396, 0x88b6_2059_c962_4cc3),
+        (14_010, 0x146f_0aa7_2bc2_aed5),
+        (9_832, 0x8e41_6b47_acda_7f87),
+        (18_564, 0xedab_2a64_592c_7356),
+        (14_096, 0x8aab_9340_df30_7acf),
+        (13_018, 0xae14_97d8_ea3c_3911),
+        (7_176, 0xbe49_d7e4_ddf7_a63a),
+        (12_917, 0x3921_286d_8cb5_935f),
+        (12_621, 0x1f4a_516a_cd66_9190),
+        (9_040, 0x489e_dd60_91c1_e6f0),
+        (8_759, 0x2720_cf6b_ae92_da64),
+        (16_771, 0x7074_7a45_18e0_600e),
+        (9_759, 0x3a6a_ab8d_cc87_8d90),
+        (12_956, 0xdc2a_6733_481f_2292),
+        (14_012, 0x390a_1d1b_79fd_13e4),
+        (21_151, 0x81a1_288b_6fc0_5833),
+        (8_213, 0x57a4_cba6_4f8b_bd1b),
+        (11_258, 0x0679_3775_2010_3e50),
+    ];
+    assert_clip_decodes_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_superres_random.ivf"),
+        &ORACLE,
+    );
+}

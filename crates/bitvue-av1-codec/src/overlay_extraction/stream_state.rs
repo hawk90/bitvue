@@ -157,6 +157,10 @@ impl StreamDecodeState {
             parsed.order_hint,
             order_hints.enabled,
             order_hints.bits,
+            (
+                dims.width.div_ceil(8).max(1),
+                dims.height.div_ceil(8).max(1),
+            ),
         );
         let projected = crate::tile::project_motion_field(
             &sources,
