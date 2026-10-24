@@ -47,6 +47,21 @@ if [[ $status -ne 0 ]]; then
   exit "$status"
 fi
 
+# The scheduled fuzz workflow lists its targets by hand; a target that is registered but missing from
+# the matrix would never run. av1_decode is left out on purpose (see the workflow's header).
+workflow="../.github/workflows/fuzz.yml"
+for file in "${files[@]}"; do
+  name="$(basename "$file" .rs)"
+  [[ "$name" == "av1_decode" ]] && continue
+  if ! grep -Fxq "          - $name" "$workflow"; then
+    echo "fuzz target $name is not in the target matrix of .github/workflows/fuzz.yml" >&2
+    status=1
+  fi
+done
+if [[ $status -ne 0 ]]; then
+  exit "$status"
+fi
+
 # No --locked: fuzz/Cargo.lock only matters for reproducing a fuzz run, and it goes stale on its own. The
 # workspace crates' version floors (serde_json, ...) are bumped by Renovate, but Renovate refreshes
 # fuzz/Cargo.lock only when fuzz/Cargo.toml's own dependencies change (#156 did, #252 did not), so
