@@ -108,7 +108,14 @@ pub(super) fn read_coding_tools(
         ([GM_TYPE_IDENTITY; 8], [GM_IDENTITY_PARAMS; 8])
     };
 
-    let film_grain = parse_film_grain_params(reader, seq, show_frame, showable_frame, frame_type)?;
+    let film_grain = parse_film_grain_params(
+        reader,
+        seq,
+        ref_state,
+        show_frame,
+        showable_frame,
+        frame_type,
+    )?;
 
     Ok(CodingTools {
         loop_filter,

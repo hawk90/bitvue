@@ -116,6 +116,8 @@ pub struct RefFrameState {
     /// Segmentation feature data each slot was last refreshed with (spec
     /// `save_segmentation_params`).
     segmentation: [SegmentationFeatures; NUM_REF_FRAMES],
+    /// Film grain parameters each slot was last refreshed with (spec `save_grain_params`).
+    film_grain: [FilmGrainInfo; NUM_REF_FRAMES],
 }
 
 impl Default for RefFrameState {
@@ -125,6 +127,7 @@ impl Default for RefFrameState {
             gm_params: [[GM_IDENTITY_PARAMS; 8]; NUM_REF_FRAMES],
             size: [(0, 0); NUM_REF_FRAMES],
             segmentation: Default::default(),
+            film_grain: Default::default(),
         }
     }
 }
@@ -158,6 +161,7 @@ impl RefFrameState {
         self.size = [self.size[from]; NUM_REF_FRAMES];
         self.ref_order_hint = [hint; NUM_REF_FRAMES];
         self.segmentation = [segmentation; NUM_REF_FRAMES];
+        self.film_grain = std::array::from_fn(|_| self.film_grain[from].clone());
     }
 
     pub fn apply_refresh(&mut self, refresh_frame_flags: u8, order_hint: u32) {
@@ -388,6 +392,7 @@ pub fn parse_frame_header_full(
         &quantizer.segmentation,
         &tools.gm_params,
         (refs.size.upscaled_width, refs.size.height),
+        &tools.film_grain,
     );
 
     Ok(assemble_frame_header(HeaderSections {

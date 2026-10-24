@@ -85,7 +85,7 @@ impl Default for LoopRestorationInfo {
 }
 
 /// Film grain synthesis parameters
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FilmGrainInfo {
     pub enabled: bool,
     pub update_offset: u8,
@@ -93,12 +93,26 @@ pub struct FilmGrainInfo {
     pub scaling_shift: u8,
     pub ar_coeff_lag: u8,
     pub ar_coeffs_y: Vec<i8>,
+    /// Cb coefficients (`ar_coeffs_cb`); Cr's are in `ar_coeffs_cr`.
     pub ar_coeffs_uv: Vec<i8>,
     pub ar_coeff_shift: u8,
     pub grain_scale_shift: u8,
     pub chroma_scaling_from_luma: bool,
     pub overlap: bool,
     pub clip_to_restricted_range: bool,
+    /// `(point_y_value, point_y_scaling)` pairs.
+    pub y_points: Vec<(u8, u8)>,
+    /// `(point_cb_value, point_cb_scaling)` pairs.
+    pub cb_points: Vec<(u8, u8)>,
+    /// `(point_cr_value, point_cr_scaling)` pairs.
+    pub cr_points: Vec<(u8, u8)>,
+    pub ar_coeffs_cr: Vec<i8>,
+    /// `[cb, cr]` `cb_mult`/`cr_mult` minus 128.
+    pub uv_mult: [i16; 2],
+    /// `[cb, cr]` `cb_luma_mult`/`cr_luma_mult` minus 128.
+    pub uv_luma_mult: [i16; 2],
+    /// `[cb, cr]` `cb_offset`/`cr_offset` minus 256.
+    pub uv_offset: [i16; 2],
 }
 
 /// Super resolution parameters

@@ -33,6 +33,7 @@ pub(super) fn refresh_ref_slots(
     segmentation: &SegmentationInfo,
     gm_params: &GmParams,
     size: (u32, u32),
+    film_grain: &FilmGrainInfo,
 ) {
     for i in 0..NUM_REF_FRAMES {
         if (refresh_frame_flags >> i) & 1 == 1 {
@@ -40,6 +41,7 @@ pub(super) fn refresh_ref_slots(
             ref_state.segmentation[i] = SegmentationFeatures::from(segmentation);
             ref_state.gm_params[i] = *gm_params;
             ref_state.size[i] = size;
+            ref_state.film_grain[i] = film_grain.clone();
         }
     }
 }
