@@ -28,6 +28,14 @@ build` job (and `scripts/run_regression_suite.sh`) runs `scripts/check_fuzz_targ
 `fuzz_targets/*.rs` must be registered as a `[[bin]]` in `Cargo.toml` and every target must compile. Adding
 a target means adding its `[[bin]]` entry, or that check fails. This does not run the fuzzers.
 
+## Scheduled run
+
+`.github/workflows/fuzz.yml` fuzzes every target except `av1_decode` for 120 s each, Mondays 03:00 UTC
+(or on demand: Actions -> Fuzz -> Run workflow, with a `seconds` input). Each run starts from the corpus
+the previous one cached and from `scripts/fuzz_seed_corpus.py`, minimizes it afterwards (`cmin`) and
+uploads `fuzz/artifacts/<target>` when it fails. It runs with `-s none` for the reasons under "Memory
+limit". A new target must be added to the workflow's matrix; `scripts/check_fuzz_targets.sh` fails if it is not.
+
 ## Corpus
 
 `corpus/` and `artifacts/` are gitignored. `scripts/fuzz_seed_corpus.py` regenerates the seeds described
