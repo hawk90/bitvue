@@ -5,6 +5,7 @@
 //! the frame origin, so the sweep pins only successful walks).
 
 use super::*;
+use crate::symbol::SymbolDecoder;
 use crate::tile::{MvPredictorContext, TileContext};
 
 fn noise(seed: u64, len: usize) -> Vec<u8> {

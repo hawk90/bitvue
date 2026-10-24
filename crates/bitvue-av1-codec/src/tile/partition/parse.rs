@@ -1,8 +1,7 @@
-//! Recursive partition parsing (spec 5.11.4) and the conversion of a parsed tree to a grid.
+//! Recursive partition parsing (spec 5.11.4).
 
 use super::tree::*;
 use super::types::{BlockSize, PartitionType};
-use crate::symbol::SymbolDecoder;
 use crate::tile::TileState;
 use bitvue_engine::{BitvueError, Result};
 
@@ -234,121 +233,6 @@ where
         }
     }
     Ok(())
-}
-
-/// Parse partition tree from tile data
-///
-/// Uses symbol decoder to read partition symbols from the bitstream
-/// and recursively builds the partition tree.
-///
-/// # Arguments
-///
-/// * `x` - Block X position in pixels
-/// * `y` - Block Y position in pixels
-/// * `block_size` - Starting block size (typically superblock size)
-/// * `tile_data` - Tile bitstream data
-///
-/// # Returns
-///
-/// Root partition node with recursively parsed children.
-pub fn parse_partition_tree(
-    x: u32,
-    y: u32,
-    block_size: BlockSize,
-    tile_data: &[u8],
-) -> Result<PartitionNode> {
-    // Create symbol decoder for tile data
-    let decoder = SymbolDecoder::new(tile_data)?;
-
-    // Throwaway context sized to just this one block -- this function has no real caller (see
-    // `parse_partition_recursive`'s doc; production code goes through `parse_superblock`, which
-    // threads a real tile-wide `TileContext` shared across the whole tile).
-    let extent_4x4 = (block_size.width().max(block_size.height()) / 4).max(1);
-    let tile_ctx = crate::tile::TileContext::new(extent_4x4, extent_4x4);
-    let mut state = TileState {
-        decoder,
-        mv_ctx: crate::tile::MvPredictorContext::new(1, 1),
-        tile_ctx,
-    };
-
-    // Recursively parse partition tree starting at depth 0. No real frame extent is known here
-    // (see this fn's doc -- no real caller), so treat `block_size` itself as exactly filling the
-    // frame (mi_rows/mi_cols derived from its own dimensions): every position within it is then
-    // unconditionally in-bounds, matching this fn's pre-existing "assume all blocks are within
-    // frame boundaries" MVP semantics.
-    let mi_rows = mi_units(block_size.height());
-    let mi_cols = mi_units(block_size.width());
-    parse_partition_recursive(
-        &mut state,
-        x,
-        y,
-        block_size,
-        mi_rows,
-        mi_cols,
-        0,
-        &mut |_, _| Ok(()),
-    )
-    .map(|node| node.unwrap_or_else(|| PartitionNode::new(x, y, block_size, PartitionType::None)))
-}
-
-/// Flatten partition tree to list of leaf blocks
-///
-/// Converts hierarchical partition tree to a flat list of blocks
-/// for visualization in PartitionGrid.
-fn flatten_partition_tree(
-    node: &PartitionNode,
-    depth: u8,
-    blocks: &mut Vec<(u32, u32, u32, u32, u8, u8)>,
-) {
-    if node.is_leaf() {
-        // Leaf node: add as block
-        blocks.push((
-            node.x,
-            node.y,
-            node.size.width(),
-            node.size.height(),
-            node.partition as u8,
-            depth,
-        ));
-    } else {
-        // Non-leaf: recursively process children
-        for child in &node.children {
-            flatten_partition_tree(child, depth + 1, blocks);
-        }
-    }
-}
-
-/// Convert partition tree to PartitionGrid
-///
-/// Extracts all leaf blocks from partition tree and creates a PartitionGrid
-/// suitable for visualization.
-pub fn partition_tree_to_grid(
-    root: &PartitionNode,
-    coded_width: u32,
-    coded_height: u32,
-    sb_size: u32,
-) -> bitvue_engine::PartitionGrid {
-    let mut grid = bitvue_engine::PartitionGrid::new(coded_width, coded_height, sb_size);
-
-    // Flatten tree to list of blocks
-    let mut blocks = Vec::new();
-    flatten_partition_tree(root, 0, &mut blocks);
-
-    // Convert to PartitionGrid blocks
-    for (x, y, width, height, partition, depth) in blocks {
-        let partition_type = bitvue_engine::partition_grid::PartitionType::from(partition);
-        let block = bitvue_engine::partition_grid::PartitionBlock::new(
-            x,
-            y,
-            width,
-            height,
-            partition_type,
-            depth,
-        );
-        grid.add_block(block);
-    }
-
-    grid
 }
 
 #[cfg(test)]

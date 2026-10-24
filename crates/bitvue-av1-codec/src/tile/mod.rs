@@ -44,9 +44,7 @@ pub use motion_field::{
     MfmvSource, MotionFieldGrid, MotionFieldState, ProjectedMotionField, ProjectedMv, SavedMv,
 };
 pub use mv_prediction::MvPredictorContext;
-pub use partition::{
-    parse_partition_tree, partition_tree_to_grid, BlockSize, PartitionNode, PartitionType,
-};
+pub use partition::{BlockSize, PartitionNode, PartitionType};
 pub use position::{BlockRect, MiRect, SuperblockCtx};
 pub use restoration::{RestorationParams, RestorationRef};
 pub use superblock::{parse_superblock, Superblock};
