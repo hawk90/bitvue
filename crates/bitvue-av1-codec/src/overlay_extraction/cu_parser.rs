@@ -57,9 +57,16 @@ fn parse_all_coding_units_with_temporal(
 /// 65536, whose context grid alone is over 2 GB (found by the `frame_analysis` fuzz target).
 const MAX_FRAME_LUMA_SAMPLES: u64 = 35_651_584;
 
+/// Whether a frame of `dims` is small enough for anything sized by the frame (the tile context,
+/// the saved motion field, the projected one) to be allocated. A 5 KB file can declare 65536 x
+/// 65536, and the saved motion field alone was 3 GB for it (found by the `stream_analysis` fuzz
+/// target).
+pub(crate) fn frame_within_decode_limit(dims: &FrameDimensions) -> bool {
+    u64::from(dims.width) * u64::from(dims.height) <= MAX_FRAME_LUMA_SAMPLES
+}
+
 fn check_frame_size(dims: &FrameDimensions) -> Result<(), BitvueError> {
-    let samples = u64::from(dims.width) * u64::from(dims.height);
-    if samples > MAX_FRAME_LUMA_SAMPLES {
+    if !frame_within_decode_limit(dims) {
         return Err(BitvueError::InvalidData(format!(
             "frame size {}x{} exceeds the {} luma samples of AV1 level 6.3",
             dims.width, dims.height, MAX_FRAME_LUMA_SAMPLES

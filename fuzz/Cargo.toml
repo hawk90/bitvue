@@ -59,6 +59,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "stream_analysis"
+path = "fuzz_targets/stream_analysis.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "av1_decode"
 path = "fuzz_targets/av1_decode.rs"
 test = false

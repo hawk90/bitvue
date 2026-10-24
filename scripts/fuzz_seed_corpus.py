@@ -2,8 +2,8 @@
 """Seed fuzz/corpus/<target>/ from the AV1 clips in test_data/.
 
 Random bytes rarely get past the sequence header, so frame_analysis, obu_stream, syntax_parser
-and obu_parser start from real IVF frame payloads (no 12-byte frame header); ivf_parser and
-av1_decode start from whole files. The corpus is gitignored: this regenerates it, nothing from
+and obu_parser start from real IVF frame payloads (no 12-byte frame header); ivf_parser,
+av1_decode and stream_analysis start from whole files. The corpus is gitignored: this regenerates it, nothing from
 test_data/ is copied into the repo.
 
 Usage: scripts/fuzz_seed_corpus.py [--max-frames N]    (default 40 frames per clip)
@@ -15,7 +15,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FRAME_TARGETS = ("frame_analysis", "obu_stream", "syntax_parser", "obu_parser")
-FILE_TARGETS = ("ivf_parser", "av1_decode")
+FILE_TARGETS = ("ivf_parser", "av1_decode", "stream_analysis")
 
 
 def ivf_frames(data: bytes):

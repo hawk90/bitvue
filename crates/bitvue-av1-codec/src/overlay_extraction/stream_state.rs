@@ -8,7 +8,7 @@
 //! decode order. Cloning it is cheap (the per-slot data is shared), which is what makes
 //! checkpoints affordable.
 
-use super::cu_parser::{decode_frame, FrameDecodeInputs};
+use super::cu_parser::{decode_frame, frame_within_decode_limit, FrameDecodeInputs};
 use super::parser::ParsedFrame;
 use super::{DecodeOutcome, ParsedCodingUnits};
 use crate::sequence::SequenceHeader;
@@ -150,6 +150,9 @@ impl StreamDecodeState {
             return None;
         };
         let dims = parsed.dimensions;
+        if !frame_within_decode_limit(&dims) {
+            return None; // not decoded, so nothing to project into
+        }
         let sources = crate::tile::select_motion_field_sources(
             &self.motion,
             &order_hints.slots,
@@ -224,7 +227,14 @@ impl StreamDecodeState {
             None => [false; 7],
         };
         let dims = parsed.dimensions;
-        let grid = crate::tile::store_motion_field(units, dims.width, dims.height, &mfmv_sign);
+        // A frame past the decode limit was not decoded (no units): it saves no motion field, and
+        // does not build one the size of its declared extent either.
+        let decoded = frame_within_decode_limit(&dims);
+        let grid = if decoded {
+            crate::tile::store_motion_field(units, dims.width, dims.height, &mfmv_sign)
+        } else {
+            crate::tile::store_motion_field(&[], 1, 1, &mfmv_sign)
+        };
         self.motion
             .store_cdf(parsed.refresh_frame_flags, &saved_cdf);
         self.motion.update(
@@ -232,7 +242,7 @@ impl StreamDecodeState {
             parsed.refresh_frame_flags,
             parsed.ref_frame_idx.as_ref(),
             grid,
-            !parsed.frame_type.is_intra_only || parsed.allow_intrabc,
+            decoded && (!parsed.frame_type.is_intra_only || parsed.allow_intrabc),
         );
     }
 
