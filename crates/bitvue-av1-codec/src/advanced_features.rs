@@ -492,6 +492,7 @@ mod tests {
             chroma_scaling_from_luma: true,
             overlap: true,
             clip_to_restricted_range: true,
+            ..Default::default()
         }
     }
 

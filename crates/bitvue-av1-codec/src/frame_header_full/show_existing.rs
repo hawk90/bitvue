@@ -64,7 +64,8 @@ pub(super) fn parse_show_existing_frame(
         cdef_uv_primary_strength: 0,
         cdef_uv_secondary_strength: 0,
         loop_restoration: LoopRestorationInfo::default(),
-        film_grain: FilmGrainInfo::default(),
+        // `load_grain_params(frame_to_show_map_idx)`.
+        film_grain: ref_state.film_grain[frame_to_show_map_idx as usize].clone(),
         super_resolution: SuperResolutionInfo::default(),
     })
 }

@@ -44,6 +44,9 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 | `av1_aomenc_superres.ivf` | aomenc 3.15.2, 352x288, 31 frames (30 shown + 1 hidden ALTREF) of `testsrc2`, every frame coded 313 wide (`SuperresDenom` 9) and upscaled to 352 (the only clip with superres; `oracle_test.rs`) | commands below |
 | `av1_aomenc_superres12.ivf` | the superres clip with denominator 12 (coded 235 wide; 128x128 inter blocks with a residual, read per 64x64 chunk; `oracle_test.rs`) | commands below |
 | `av1_aomenc_superres_random.ivf` | superres with a denominator chosen per frame (coded 176-352 wide), so most references have another size; no temporal vectors from them (`oracle_test.rs`) | commands below |
+| `av1_aomenc_filmgrain.ivf` | aomenc 3.15.2, 352x288, 11 frames (10 shown + 1 hidden) of `testsrc2` with film grain test vector 5: scaling points for all planes, `update_grain = 0` on 9 frames (`oracle_test.rs`) | commands below |
+| `av1_aomenc_filmgrain_cfl.ivf` | same source, film grain test vector 15: `chroma_scaling_from_luma` (`oracle_test.rs`) | commands below |
+| `av1_aomenc_filmgrain_luma.ivf` | same source, film grain test vector 6: 14 luma points, no chroma points (`oracle_test.rs`) | commands below |
 | `av1_aomenc_194x72.ivf` | aomenc 3.15.2, 194x72, 11 frames (10 shown + 1 hidden) of `testsrc2`: a width that is not a multiple of 8 (`oracle_test.rs`) | commands below |
 | `av1_aomenc_114x136_palette.ivf` | aomenc 3.15.2, 114x136, 2 frames of `testsrc2`, palette on and most other tools off: blocks reaching past the right edge (`oracle_test.rs`) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |
@@ -80,6 +83,14 @@ aomenc src.y4m --ivf -o av1_aomenc_superres12.ivf --limit=30 --cpu-used=6 --end-
 aomenc src.y4m --ivf -o av1_aomenc_superres_random.ivf --limit=30 --cpu-used=6 --end-usage=q --cq-level=30 --superres-mode=2
 ```
 
+`av1_aomenc_filmgrain.ivf`, `av1_aomenc_filmgrain_cfl.ivf`, `av1_aomenc_filmgrain_luma.ivf` (same source as above; the number is aomenc's `--film-grain-test`):
+
+```bash
+aomenc src.y4m --ivf -o av1_aomenc_filmgrain.ivf --limit=10 --cpu-used=6 --end-usage=q --cq-level=30 --film-grain-test=5
+aomenc src.y4m --ivf -o av1_aomenc_filmgrain_cfl.ivf --limit=10 --cpu-used=6 --end-usage=q --cq-level=30 --film-grain-test=15
+aomenc src.y4m --ivf -o av1_aomenc_filmgrain_luma.ivf --limit=10 --cpu-used=6 --end-usage=q --cq-level=30 --film-grain-test=6
+```
+
 `av1_aomenc_194x72.ivf`:
 
 ```bash
@@ -96,7 +107,9 @@ aomenc src.y4m --ivf -o av1_aomenc_114x136_palette.ivf --limit=2 --cpu-used=6 --
 
 The dav1d digests in `oracle_test.rs` come from a dav1d build whose `ctx_norm` in `src/msac.c` prints
 `rng cnt dif` after every symbol (C path, `-Denable_asm=false`), reduced per frame to the symbol count
-and the FNV-1a digest of the `"{rng} {cnt} {dif}\n"` lines.
+and the FNV-1a digest of the `"{rng} {cnt} {dif}\n"` lines. The film grain digests come from the same build
+with a second print at the end of `film_grain_params()` in `src/obu.c`: every field of `hdr->film_grain.data`
+(after `load_grain_params`), one `key=value` line per frame that applies grain.
 
 ## Derived fixtures elsewhere
 

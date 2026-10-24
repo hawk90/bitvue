@@ -1147,3 +1147,250 @@ fn the_per_frame_superres_clip_decodes_symbol_for_symbol_like_dav1d() {
         &ORACLE,
     );
 }
+
+/// One line per frame with film grain, in the form of the instrumented dav1d's output: every
+/// parameter of `film_grain_params()` after `load_grain_params`. Frames that only show an
+/// existing frame are left out, as dav1d reads no grain for them.
+fn film_grain_lines(ivf: &[u8]) -> Vec<String> {
+    let (_hdr, frames) = crate::ivf::parse_ivf_frames(ivf).unwrap();
+    let seq_bytes = find_seq_header_bytes(&frames).expect("stream has a sequence header");
+    let seq = crate::parse_sequence_header(
+        &crate::obu::ObuIterator::new(&seq_bytes)
+            .next_obu_with_offset()
+            .unwrap()
+            .unwrap()
+            .obu
+            .payload,
+    )
+    .unwrap();
+    let points = |p: &[(u8, u8)]| {
+        p.iter()
+            .map(|(value, scaling)| format!("{value}:{scaling}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let coeffs = |c: &[i8]| {
+        c.iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let mut ref_state = crate::frame_header_full::RefFrameState::new();
+    let mut lines = Vec::new();
+    for chunk in &frames {
+        for payload in crate::frame_header_full::find_frame_header_payloads(&chunk.data) {
+            let hdr =
+                crate::frame_header_full::parse_frame_header_full(&payload, &seq, &mut ref_state)
+                    .unwrap();
+            let g = &hdr.film_grain;
+            if hdr.show_existing_frame || !g.enabled {
+                continue;
+            }
+            lines.push(format!(
+                "seed={} ny={} y={} cfl={} nuv={},{} uv0={} uv1={} ss={} lag={} ary={} aruv0={} aruv1={} asft={} gss={} mult={},{} lm={},{} off={},{} ov={} clip={}",
+                g.seed,
+                g.y_points.len(),
+                points(&g.y_points),
+                u8::from(g.chroma_scaling_from_luma),
+                g.cb_points.len(),
+                g.cr_points.len(),
+                points(&g.cb_points),
+                points(&g.cr_points),
+                g.scaling_shift,
+                g.ar_coeff_lag,
+                coeffs(&g.ar_coeffs_y),
+                coeffs(&g.ar_coeffs_uv),
+                coeffs(&g.ar_coeffs_cr),
+                g.ar_coeff_shift,
+                g.grain_scale_shift,
+                g.uv_mult[0],
+                g.uv_mult[1],
+                g.uv_luma_mult[0],
+                g.uv_luma_mult[1],
+                g.uv_offset[0],
+                g.uv_offset[1],
+                u8::from(g.overlap),
+                u8::from(g.clip_to_restricted_range),
+            ));
+        }
+    }
+    lines
+}
+
+/// Every frame's film grain parameters equal dav1d's: `digest` is the FNV-1a of the
+/// [`film_grain_lines`] (each followed by a newline), from the instrumented dav1d's own print of
+/// `hdr->film_grain.data`; `first` is the first frame's line in full.
+fn assert_film_grain_like_dav1d(clip: &[u8], count: usize, digest: u64, first: &str) {
+    let lines = film_grain_lines(clip);
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for line in &lines {
+        for byte in format!(
+            "{line}
+"
+        )
+        .bytes()
+        {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    assert_eq!(lines.len(), count, "frames with film grain");
+    assert_eq!(lines[0], first);
+    assert_eq!(hash, digest, "film grain parameters differ from dav1d's");
+}
+
+/// `test_data/av1_aomenc_filmgrain.ivf`: 10 frames with aomenc's film grain test vector 5 on the `testsrc2` source: 4:2:0 with scaling points for all three planes, 13 of 24+1 coefficients per chroma plane (lag 3), and `update_grain = 0` on 9 of the 10 frames, which load the parameters the key frame saved (spec `load_grain_params`) under their own seed.
+#[test]
+fn the_film_grain_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 11] = [
+        (43_536, 0x3162_a7ca_c57a_3019),
+        (19_378, 0x4d3d_183e_15b9_094d),
+        (13_625, 0xbaf5_fb2f_110d_2544),
+        (12_535, 0x3b8a_e4bd_517c_f800),
+        (10_285, 0x7a4e_f818_b1cb_bf88),
+        (10_261, 0xc6ba_e1fa_e8af_387d),
+        (11_946, 0x40ff_7bbf_3671_c2a7),
+        (11_995, 0x12cb_630b_48bc_348e),
+        (10_965, 0xa7ee_06f1_3b4a_ee57),
+        (299, 0x10b7_0655_1bdf_dcfb),
+        (12_527, 0x49d7_f2f3_a178_9e02),
+    ];
+    assert_clip_decodes_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_filmgrain.ivf"),
+        &ORACLE,
+    );
+}
+
+#[test]
+fn the_film_grain_clip_has_the_film_grain_parameters_dav1d_reads() {
+    assert_film_grain_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_filmgrain.ivf"),
+        10,
+        0xf8e1_af8a_3aaa_ba56,
+        concat!(
+            "seed=1063 ",
+            "ny=2 ",
+            "y=0:64,255:64 ",
+            "cfl=0 ",
+            "nuv=9,9 ",
+            "uv0=0:96,32:90,64:83,96:76,128:68,159:59,191:48,223:34,255:0 ",
+            "uv1=0:0,32:34,64:48,96:59,128:68,159:76,191:83,223:90,255:96 ",
+            "ss=11 ",
+            "lag=3 ",
+            "ary=4,1,3,0,1,-3,8,-3,7,-23,1,-25,0,-10,6,-17,-4,53,36,5,-5,-17,8,66 ",
+            "aruv0=-2,2,-5,7,-6,4,-2,-1,1,-2,0,-2,2,-3,-5,13,-13,6,-14,8,-1,18,-36,58,0 ",
+            "aruv1=-2,-1,-3,14,-4,-1,-3,0,-1,7,-31,7,2,0,1,0,-7,50,-8,-2,2,2,2,-4,0 ",
+            "asft=7 ",
+            "gss=0 ",
+            "mult=0,0 ",
+            "lm=64,64 ",
+            "off=0,0 ",
+            "ov=1 ",
+            "clip=1",
+        ),
+    );
+}
+
+/// `test_data/av1_aomenc_filmgrain_cfl.ivf`: 10 frames with test vector 15: `chroma_scaling_from_luma`, so no chroma points but both chroma coefficient lists (lag 2), and a single luma point.
+#[test]
+fn the_chroma_scaling_from_luma_film_grain_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 11] = [
+        (43_536, 0x3162_a7ca_c57a_3019),
+        (19_378, 0x4d3d_183e_15b9_094d),
+        (13_625, 0xbaf5_fb2f_110d_2544),
+        (12_535, 0x3b8a_e4bd_517c_f800),
+        (10_285, 0x7a4e_f818_b1cb_bf88),
+        (10_261, 0xc6ba_e1fa_e8af_387d),
+        (11_946, 0x40ff_7bbf_3671_c2a7),
+        (11_995, 0x12cb_630b_48bc_348e),
+        (10_965, 0xa7ee_06f1_3b4a_ee57),
+        (299, 0x10b7_0655_1bdf_dcfb),
+        (12_527, 0x49d7_f2f3_a178_9e02),
+    ];
+    assert_clip_decodes_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_filmgrain_cfl.ivf"),
+        &ORACLE,
+    );
+}
+
+#[test]
+fn the_chroma_scaling_from_luma_film_grain_clip_has_the_film_grain_parameters_dav1d_reads() {
+    assert_film_grain_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_filmgrain_cfl.ivf"),
+        10,
+        0xcf63_d9e2_8300_5310,
+        concat!(
+            "seed=45231 ",
+            "ny=1 ",
+            "y=0:96 ",
+            "cfl=1 ",
+            "nuv=0,0 ",
+            "uv0= ",
+            "uv1= ",
+            "ss=11 ",
+            "lag=2 ",
+            "ary=5,-15,-10,-19,0,-12,6,51,30,-5,-12,56 ",
+            "aruv0=2,2,-24,-5,1,1,-18,37,-2,0,-15,39,-70 ",
+            "aruv1=2,3,-24,-5,-1,0,-18,38,-2,0,-15,39,-55 ",
+            "asft=7 ",
+            "gss=0 ",
+            "mult=0,0 ",
+            "lm=0,0 ",
+            "off=0,0 ",
+            "ov=1 ",
+            "clip=0",
+        ),
+    );
+}
+
+/// `test_data/av1_aomenc_filmgrain_luma.ivf`: 10 frames with test vector 6: 14 luma points (the most there can be) and no chroma points, coefficients or offsets.
+#[test]
+fn the_luma_only_film_grain_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 11] = [
+        (43_536, 0x3162_a7ca_c57a_3019),
+        (19_378, 0x4d3d_183e_15b9_094d),
+        (13_625, 0xbaf5_fb2f_110d_2544),
+        (12_535, 0x3b8a_e4bd_517c_f800),
+        (10_285, 0x7a4e_f818_b1cb_bf88),
+        (10_261, 0xc6ba_e1fa_e8af_387d),
+        (11_946, 0x40ff_7bbf_3671_c2a7),
+        (11_995, 0x12cb_630b_48bc_348e),
+        (10_965, 0xa7ee_06f1_3b4a_ee57),
+        (299, 0x10b7_0655_1bdf_dcfb),
+        (12_527, 0x49d7_f2f3_a178_9e02),
+    ];
+    assert_clip_decodes_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_filmgrain_luma.ivf"),
+        &ORACLE,
+    );
+}
+
+#[test]
+fn the_luma_only_film_grain_clip_has_the_film_grain_parameters_dav1d_reads() {
+    assert_film_grain_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_filmgrain_luma.ivf"),
+        10,
+        0xdc57_545f_a4c7_a483,
+        concat!(
+            "seed=2754 ",
+            "ny=14 ",
+            "y=0:96,20:92,39:88,59:84,78:80,98:75,118:70,137:65,157:60,177:53,196:46,216:38,235:27,255:0 ",
+            "cfl=0 ",
+            "nuv=0,0 ",
+            "uv0= ",
+            "uv1= ",
+            "ss=11 ",
+            "lag=3 ",
+            "ary=4,1,3,0,1,-3,8,-3,7,-23,1,-25,0,-10,6,-17,-4,53,36,5,-5,-17,8,66 ",
+            "aruv0= ",
+            "aruv1= ",
+            "asft=7 ",
+            "gss=0 ",
+            "mult=0,0 ",
+            "lm=0,0 ",
+            "off=0,0 ",
+            "ov=1 ",
+            "clip=1",
+        ),
+    );
+}

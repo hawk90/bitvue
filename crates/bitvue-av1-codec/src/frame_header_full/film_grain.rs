@@ -5,6 +5,7 @@ use super::*;
 pub(super) fn parse_film_grain_params(
     reader: &mut BitReader,
     seq: &SequenceHeader,
+    ref_state: &RefFrameState,
     show_frame: bool,
     showable_frame: bool,
     frame_type: FrameType,
@@ -23,46 +24,37 @@ pub(super) fn parse_film_grain_params(
         true
     };
     if !update_grain {
-        reader.read_bits(3)?; // film_grain_params_ref_idx -- values would come from a loaded
-                              // reference's params, which this parser doesn't track (out of
-                              // scope: same "no cross-frame film-grain state" limitation as
-                              // PrevGmParams, but here it affects a real value, not just bit
-                              // consumption -- flagged, not silently guessed).
+        // `load_grain_params(film_grain_params_ref_idx)`: the parameters the slot's frame was
+        // refreshed with, under this frame's own seed. Like dav1d, the frame keeps applying grain
+        // whatever the slot held.
+        let slot = reader.read_bits(3)? as usize;
         return Ok(FilmGrainInfo {
             enabled: true,
             seed,
-            ..Default::default()
+            ..ref_state.film_grain[slot].clone()
         });
     }
 
-    let num_y_points = reader.read_bits(4)?;
-    for _ in 0..num_y_points {
-        reader.read_bits(8)?; // point_y_value
-        reader.read_bits(8)?; // point_y_scaling
-    }
-    let (chroma_scaling_from_luma, num_cb_points, num_cr_points) =
-        read_chroma_scaling_points(reader, seq, num_y_points)?;
+    let y_points = read_scaling_points(reader)?;
+    let num_y_points = y_points.len() as u32;
+    let chroma = read_chroma_scaling_points(reader, seq, num_y_points)?;
     let grain_scaling_shift = (reader.read_bits(2)? + 8) as u8;
     let ar_coeff_lag = reader.read_bits(2)? as u8;
-    let (ar_coeffs_y, ar_coeffs_uv) = read_ar_coeffs(
-        reader,
-        ar_coeff_lag,
-        num_y_points,
-        chroma_scaling_from_luma,
-        num_cb_points,
-        num_cr_points,
-    )?;
+    let ar = read_ar_coeffs(reader, ar_coeff_lag, &y_points, &chroma)?;
     let ar_coeff_shift = (reader.read_bits(2)? + 6) as u8;
     let grain_scale_shift = reader.read_bits(2)? as u8;
-    if num_cb_points > 0 {
-        reader.read_bits(8)?; // cb_mult
-        reader.read_bits(8)?; // cb_luma_mult
-        reader.read_bits(9)?; // cb_offset
-    }
-    if num_cr_points > 0 {
-        reader.read_bits(8)?; // cr_mult
-        reader.read_bits(8)?; // cr_luma_mult
-        reader.read_bits(9)?; // cr_offset
+    let mut uv_mult = [0i16; 2];
+    let mut uv_luma_mult = [0i16; 2];
+    let mut uv_offset = [0i16; 2];
+    for (plane, points) in [&chroma.cb_points, &chroma.cr_points]
+        .into_iter()
+        .enumerate()
+    {
+        if !points.is_empty() {
+            uv_mult[plane] = reader.read_bits(8)? as i16 - 128; // cb_mult / cr_mult
+            uv_luma_mult[plane] = reader.read_bits(8)? as i16 - 128; // cb_luma_mult / cr_luma_mult
+            uv_offset[plane] = reader.read_bits(9)? as i16 - 256; // cb_offset / cr_offset
+        }
     }
     let overlap = reader.read_bit()?;
     let clip_to_restricted_range = reader.read_bit()?;
@@ -75,89 +67,99 @@ pub(super) fn parse_film_grain_params(
         seed,
         scaling_shift: grain_scaling_shift,
         ar_coeff_lag,
-        ar_coeffs_y,
-        ar_coeffs_uv,
+        ar_coeffs_y: ar.y,
+        ar_coeffs_uv: ar.cb,
         ar_coeff_shift,
         grain_scale_shift,
-        chroma_scaling_from_luma,
+        chroma_scaling_from_luma: chroma.from_luma,
         overlap,
         clip_to_restricted_range,
+        y_points,
+        cb_points: chroma.cb_points,
+        cr_points: chroma.cr_points,
+        ar_coeffs_cr: ar.cr,
+        uv_mult,
+        uv_luma_mult,
+        uv_offset,
     })
 }
 
-/// `chroma_scaling_from_luma` and the Cb / Cr scaling points. Returns
-/// `(chroma_scaling_from_luma, num_cb_points, num_cr_points)`.
+/// A count (4 bits) and that many `(value, scaling)` pairs.
+fn read_scaling_points(reader: &mut BitReader) -> Result<Vec<(u8, u8)>> {
+    let count = reader.read_bits(4)?;
+    (0..count)
+        .map(|_| Ok((reader.read_bits(8)? as u8, reader.read_bits(8)? as u8)))
+        .collect()
+}
+
+/// `chroma_scaling_from_luma` and the Cb / Cr scaling points.
+struct ChromaScaling {
+    from_luma: bool,
+    cb_points: Vec<(u8, u8)>,
+    cr_points: Vec<(u8, u8)>,
+}
+
 fn read_chroma_scaling_points(
     reader: &mut BitReader,
     seq: &SequenceHeader,
     num_y_points: u32,
-) -> Result<(bool, u32, u32)> {
-    let chroma_scaling_from_luma = if seq.color_config.mono_chrome {
+) -> Result<ChromaScaling> {
+    let from_luma = if seq.color_config.mono_chrome {
         false
     } else {
         reader.read_bit()?
     };
-    let (num_cb_points, num_cr_points) = if seq.color_config.mono_chrome
-        || chroma_scaling_from_luma
+    let (cb_points, cr_points) = if seq.color_config.mono_chrome
+        || from_luma
         || (seq.color_config.subsampling_x && seq.color_config.subsampling_y && num_y_points == 0)
     {
-        (0, 0)
+        (Vec::new(), Vec::new())
     } else {
-        let cb = reader.read_bits(4)?;
-        for _ in 0..cb {
-            reader.read_bits(8)?;
-            reader.read_bits(8)?;
-        }
-        let cr = reader.read_bits(4)?;
-        for _ in 0..cr {
-            reader.read_bits(8)?;
-            reader.read_bits(8)?;
-        }
-        (cb, cr)
+        (read_scaling_points(reader)?, read_scaling_points(reader)?)
     };
-    Ok((chroma_scaling_from_luma, num_cb_points, num_cr_points))
+    Ok(ChromaScaling {
+        from_luma,
+        cb_points,
+        cr_points,
+    })
 }
 
-/// The auto-regressive coefficients. Returns `(ar_coeffs_y, ar_coeffs_uv)`; the Cr values are read
-/// but not kept.
+/// The auto-regressive coefficients of each plane, with the 128 bias removed.
+struct ArCoeffs {
+    y: Vec<i8>,
+    cb: Vec<i8>,
+    cr: Vec<i8>,
+}
+
 fn read_ar_coeffs(
     reader: &mut BitReader,
     ar_coeff_lag: u8,
-    num_y_points: u32,
-    chroma_scaling_from_luma: bool,
-    num_cb_points: u32,
-    num_cr_points: u32,
-) -> Result<(Vec<i8>, Vec<i8>)> {
-    let num_pos_luma = 2 * ar_coeff_lag as u32 * (ar_coeff_lag as u32 + 1);
-    let num_pos_chroma = if num_y_points > 0 {
-        num_pos_luma + 1
-    } else {
-        num_pos_luma
+    y_points: &[(u8, u8)],
+    chroma: &ChromaScaling,
+) -> Result<ArCoeffs> {
+    let num_pos_luma = 2 * ar_coeff_lag as usize * (ar_coeff_lag as usize + 1);
+    let num_pos_chroma = num_pos_luma + usize::from(!y_points.is_empty());
+    let mut read = |count: usize| -> Result<Vec<i8>> {
+        (0..count)
+            .map(|_| Ok((reader.read_bits(8)? as i32 - 128) as i8))
+            .collect()
     };
-    let mut ar_coeffs_y = Vec::new();
-    if num_y_points > 0 {
-        ar_coeffs_y.reserve(num_pos_luma as usize);
-        for _ in 0..num_pos_luma {
-            let raw = reader.read_bits(8)?;
-            ar_coeffs_y.push((raw as i32 - 128) as i8);
-        }
-    }
-    let mut ar_coeffs_uv = Vec::new();
-    if chroma_scaling_from_luma || num_cb_points > 0 {
-        for _ in 0..num_pos_chroma {
-            let raw = reader.read_bits(8)?;
-            ar_coeffs_uv.push((raw as i32 - 128) as i8);
-        }
-    }
-    if chroma_scaling_from_luma || num_cr_points > 0 {
-        for _ in 0..num_pos_chroma {
-            reader.read_bits(8)?; // ar_coeffs_cr -- appended separately from ar_coeffs_uv's Cb
-                                  // values in the spec; FilmGrainInfo has one combined
-                                  // ar_coeffs_uv field, so Cr values aren't separately kept
-                                  // (matches the existing FilmGrainInfo shape, not a new gap).
-        }
-    }
-    Ok((ar_coeffs_y, ar_coeffs_uv))
+    let y = if y_points.is_empty() {
+        Vec::new()
+    } else {
+        read(num_pos_luma)?
+    };
+    let cb = if chroma.from_luma || !chroma.cb_points.is_empty() {
+        read(num_pos_chroma)?
+    } else {
+        Vec::new()
+    };
+    let cr = if chroma.from_luma || !chroma.cr_points.is_empty() {
+        read(num_pos_chroma)?
+    } else {
+        Vec::new()
+    };
+    Ok(ArCoeffs { y, cb, cr })
 }
 
 #[cfg(test)]
@@ -215,7 +217,15 @@ mod tests {
     ) -> (FilmGrainInfo, u64) {
         let bytes = bits.bytes();
         let mut reader = BitReader::new(&bytes);
-        let info = parse_film_grain_params(&mut reader, seq, show, showable, frame_type).unwrap();
+        let info = parse_film_grain_params(
+            &mut reader,
+            seq,
+            &RefFrameState::new(),
+            show,
+            showable,
+            frame_type,
+        )
+        .unwrap();
         (info, reader.position())
     }
 
@@ -319,6 +329,63 @@ mod tests {
         assert_eq!(info.seed, 0x1234);
         assert_eq!(info.ar_coeff_lag, 0);
         assert!(info.ar_coeffs_y.is_empty());
+    }
+
+    /// What a frame refreshed slot `slot` with: a recognisable parameter set.
+    fn saved_grain() -> FilmGrainInfo {
+        FilmGrainInfo {
+            enabled: true,
+            seed: 99,
+            scaling_shift: 10,
+            ar_coeff_lag: 1,
+            ar_coeffs_y: vec![1, 2, 3, 4],
+            ar_coeffs_uv: vec![5, 6, 7, 8, 9],
+            ar_coeffs_cr: vec![-5, -6, -7, -8, -9],
+            y_points: vec![(0, 30), (255, 40)],
+            cb_points: vec![(10, 20)],
+            cr_points: vec![(30, 40)],
+            uv_mult: [-3, 4],
+            uv_luma_mult: [5, -6],
+            uv_offset: [-200, 255],
+            overlap: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn update_grain_zero_loads_the_slot_it_names_under_the_frames_own_seed() {
+        let mut state = RefFrameState::new();
+        state.film_grain[5] = saved_grain();
+        state.film_grain[4] = FilmGrainInfo::default();
+        let mut b = Bits::default();
+        b.put(1, 1).put(0x1234, 16);
+        b.put(0, 1); // update_grain = 0
+        b.put(5, 3); // film_grain_params_ref_idx
+        let bytes = b.bytes();
+        let info = parse_film_grain_params(
+            &mut BitReader::new(&bytes),
+            &yuv420(),
+            &state,
+            true,
+            true,
+            FrameType::Inter,
+        )
+        .unwrap();
+        assert_eq!(info.seed, 0x1234);
+        assert_eq!(
+            FilmGrainInfo { seed: 99, ..info },
+            saved_grain(),
+            "everything but the seed comes from slot 5"
+        );
+    }
+
+    #[test]
+    fn a_frame_that_loads_an_empty_slot_still_applies_grain_like_dav1d() {
+        let mut b = Bits::default();
+        b.put(1, 1).put(7, 16).put(0, 1).put(2, 3);
+        let (info, _) = parse(&yuv420(), &b, true, true, FrameType::Inter);
+        assert!(info.enabled);
+        assert!(info.y_points.is_empty());
     }
 
     #[test]

@@ -625,6 +625,7 @@ items:
       - crates/bitvue-av1-codec/src/frame_header_full.rs::RefFrameState
       - crates/bitvue-av1-codec/src/frame_header_full.rs::real_fixture_parses_every_frame_without_error
       - crates/bitvue-av1-codec/src/frame_header_full.rs::parse_segmentation_params_retains_real_feature_enabled_and_data
+      - crates/bitvue-av1-codec/src/overlay_extraction/cu_parser/oracle_test.rs::the_film_grain_clip_has_the_film_grain_parameters_dav1d_reads
     source:
       - DEVELOPMENT_PHASES.md §Phase 4 AV1 파싱 보강
   - id: CODEC-026

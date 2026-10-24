@@ -609,39 +609,42 @@ fn header_summary(clip: &[u8]) -> HeaderSummary {
 /// header parsed differently: find out which field before changing the numbers. The values were
 /// recorded from the parser as it was before any split of `parse_frame_header_full`, not from
 /// an independent oracle, so they prove "unchanged", not "correct" (the clips' symbol-level
-/// agreement with dav1d, in `cu_parser/oracle_test.rs`, is what vouches for correctness).
+/// agreement with dav1d, in `cu_parser/oracle_test.rs`, is what vouches for correctness). Re-recorded
+/// when `FilmGrainInfo` gained the scaling points, the Cr coefficients and the chroma multipliers:
+/// with those fields' text (all empty or zero in these clips) cut out of the `Debug` output the old
+/// numbers came out again.
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
     const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
-            (274, 1, 0, 479305632633257403),
+            (274, 1, 0, 588199865380866743),
         ),
         (
             "aomenc_testsrc2",
             include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
-            (16, 4, 3, 17769067187657452640),
+            (16, 4, 3, 4729721367337169264),
         ),
         (
             "aomenc_tilegroups",
             include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf"),
-            (12, 1, 0, 6758289758313352778),
+            (12, 1, 0, 11656466471076927050),
         ),
         (
             "aomenc_tiles5",
             include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf"),
-            (12, 1, 0, 15996414472953264184),
+            (12, 1, 0, 7465563672542036348),
         ),
         (
             "rav1e_testsrc2",
             include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
-            (17, 6, 5, 401060472620476296),
+            (17, 6, 5, 13681353827795637648),
         ),
         (
             "svtav1_testsrc2",
             include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
-            (17, 6, 5, 16610517413735288473),
+            (17, 6, 5, 13221103126010935209),
         ),
     ];
     let mismatches: Vec<String> = CLIPS
@@ -1782,8 +1785,39 @@ fn a_refreshed_slot_remembers_its_upscaled_size_and_show_existing_copies_it() {
         &Default::default(),
         &gm,
         (352, 288),
+        &Default::default(),
     );
     assert_eq!(state.size[..4], [(0, 0), (352, 288), (352, 288), (0, 0)]);
     state.copy_slot_to_all(2);
     assert_eq!(state.size, [(352, 288); 8]);
+}
+
+#[test]
+fn a_refreshed_slot_remembers_its_film_grain_and_show_existing_loads_and_copies_it() {
+    let grain = FilmGrainInfo {
+        enabled: true,
+        seed: 321,
+        y_points: vec![(0, 50)],
+        ..Default::default()
+    };
+    let mut state = RefFrameState::new();
+    refresh_ref_slots(
+        &mut state,
+        0b0000_0100,
+        5,
+        &Default::default(),
+        &[GM_IDENTITY_PARAMS; 8],
+        (352, 288),
+        &grain,
+    );
+    assert_eq!(state.film_grain[2], grain);
+    assert_eq!(state.film_grain[1], FilmGrainInfo::default());
+
+    // show_existing_frame = 1, frame_to_show_map_idx = 2
+    let shown = parse_frame_header_full(&[0b1010_0000], &base_seq(), &mut state).unwrap();
+    assert!(shown.show_existing_frame);
+    assert_eq!(shown.film_grain, grain, "load_grain_params(2)");
+
+    state.copy_slot_to_all(2);
+    assert!(state.film_grain.iter().all(|g| *g == grain));
 }
