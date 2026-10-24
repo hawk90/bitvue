@@ -316,7 +316,7 @@ fn digest(params: &FrameCodingParams, sb_size: u32, seeds: std::ops::Range<u64>)
 
 const GOLDEN: &[(&str, u64)] = &[
     ("inter-plain", 0x9fd69602fbcb179d),
-    ("inter-sb128", 0x9dbc6ea26fa234e6),
+    ("inter-sb128", 0x34895b47be3936a3),
     ("key", 0x16da0488f42875e1),
     ("key-intrabc", 0x67ae0c31fb614ba0),
     ("key-palette-filter", 0x9f1ce80241022f41),
@@ -331,7 +331,7 @@ const GOLDEN: &[(&str, u64)] = &[
     ("seg-temporal-pre", 0x7d7e899d3bd5f751),
     ("seg-skip-feature", 0x813d5986d9f95af5),
     ("seg-globalmv", 0x1f9df5fad2923276),
-    ("seg-everything", 0xbf3081b6cb4b2517),
+    ("seg-everything", 0x552ed577772d3985),
     ("lossless", 0x7cb8264a96ecabfa),
     ("txfm-only4x4", 0xaeac1a834a310285),
     ("txfm-switchable", 0xbc21d40192f1d614),
@@ -408,14 +408,14 @@ fn synthetic_matrix_reaches_the_untested_syntax() {
 /// volume, and `deep_streams_reach_the_rare_syntax` asserts that they do.
 const DEEP_GOLDEN: &[(&str, u64)] = &[
     ("inter-plain", 0x9d1a24bf19d7b816),
-    ("inter-sb128", 0xa446bafae0358031),
+    ("inter-sb128", 0xa65a0ee7338e984d),
     ("key", 0x20871000593d2064),
     ("key-intrabc", 0x6e3c96b31fb818f9),
     ("key-palette-filter", 0x85273a535fa5600e),
     ("skip-mode", 0x1bc2a512ab249298),
     ("compound", 0x29667bb2b1428faa),
     ("delta-q-lf", 0x81ea79155d38ca68),
-    ("delta-q-lf-sb128", 0x5bc6bd8ed6c4c9d1),
+    ("delta-q-lf-sb128", 0x88d3a34776b1f627),
     ("seg-no-update", 0x9d1a24bf19d7b816),
     ("seg-pre-skip", 0x5e7bd768ef4589ed),
     ("seg-post-skip", 0x2d5395d1ff0e6bf8),
@@ -423,7 +423,7 @@ const DEEP_GOLDEN: &[(&str, u64)] = &[
     ("seg-temporal-pre", 0xbd716696f15483e3),
     ("seg-skip-feature", 0xe2de2448fa2d762a),
     ("seg-globalmv", 0x40a3763f0ab76467),
-    ("seg-everything", 0xe7e3778e205f3a69),
+    ("seg-everything", 0xfe8dcfb397d741da),
     ("lossless", 0x569aa68c6957f751),
     ("txfm-only4x4", 0x3b9d070b9944e444),
     ("txfm-switchable", 0x5c93aedfe50411d0),

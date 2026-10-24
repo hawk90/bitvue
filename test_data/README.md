@@ -42,6 +42,9 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 | `av1_aomenc_tilegroups.ivf`, `av1_aomenc_tiles5.ivf` | aomenc, 320x240, 12 frames, several tiles / tile groups (#129) | presumably synthetic, command not recorded |
 | `av1_aomenc_globalmotion.ivf` | aomenc 3.15.2, 352x288, 30 frames, synthetic zoom: `gm_type = ROTZOOM` on frames 4, 8, ... (the only clip with global motion; `oracle_test.rs`) | commands below |
 | `av1_aomenc_superres.ivf` | aomenc 3.15.2, 352x288, 31 frames (30 shown + 1 hidden ALTREF) of `testsrc2`, every frame coded 313 wide (`SuperresDenom` 9) and upscaled to 352 (the only clip with superres; `oracle_test.rs`) | commands below |
+| `av1_aomenc_superres12.ivf` | the superres clip with denominator 12 (coded 235 wide; 128x128 inter blocks with a residual, read per 64x64 chunk; `oracle_test.rs`) | commands below |
+| `av1_aomenc_194x72.ivf` | aomenc 3.15.2, 194x72, 11 frames (10 shown + 1 hidden) of `testsrc2`: a width that is not a multiple of 8 (`oracle_test.rs`) | commands below |
+| `av1_aomenc_114x136_palette.ivf` | aomenc 3.15.2, 114x136, 2 frames of `testsrc2`, palette on and most other tools off: blocks reaching past the right edge (`oracle_test.rs`) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |
 | `avc_test.h264`, `hevc_test.hevc`, `vp9_test.ivf` | 320x240 | x264 / x265 / libvpx; content and command not recorded |
 
@@ -63,6 +66,30 @@ aomenc --cpu-used=1 --limit=30 --enable-global-motion=1 --lag-in-frames=0 --end-
 ffmpeg -y -f lavfi -i "testsrc2=size=352x288:rate=30:duration=1" -pix_fmt yuv420p -f yuv4mpegpipe src.y4m
 aomenc src.y4m --ivf -o av1_aomenc_superres.ivf --limit=30 --cpu-used=6 --end-usage=q --cq-level=30 --superres-mode=1 --superres-denominator=9 --superres-kf-denominator=9
 ```
+
+`av1_aomenc_superres12.ivf` (same source as above):
+
+```bash
+aomenc src.y4m --ivf -o av1_aomenc_superres12.ivf --limit=30 --cpu-used=6 --end-usage=q --cq-level=30 --superres-mode=1 --superres-denominator=12 --superres-kf-denominator=12
+```
+
+`av1_aomenc_194x72.ivf`:
+
+```bash
+ffmpeg -y -f lavfi -i "testsrc2=size=194x72:rate=30:duration=1" -pix_fmt yuv420p -f yuv4mpegpipe src.y4m
+aomenc src.y4m --ivf -o av1_aomenc_194x72.ivf --limit=10 --cpu-used=6 --end-usage=q --cq-level=30
+```
+
+`av1_aomenc_114x136_palette.ivf`:
+
+```bash
+ffmpeg -y -f lavfi -i "testsrc2=size=114x136:rate=30:duration=1" -pix_fmt yuv420p -f yuv4mpegpipe src.y4m
+aomenc src.y4m --ivf -o av1_aomenc_114x136_palette.ivf --limit=2 --cpu-used=6 --end-usage=q --cq-level=30 --tune-content=screen --enable-restoration=0 --enable-cdef=0 --enable-cfl-intra=0 --enable-filter-intra=0 --enable-intrabc=0 --enable-tx64=0 --enable-angle-delta=0 --enable-smooth-intra=0 --enable-paeth-intra=0 --enable-intra-edge-filter=0 --enable-rect-tx=0 --enable-rect-partitions=0 --enable-ab-partitions=0 --enable-1to4-partitions=0 --enable-palette=1
+```
+
+The dav1d digests in `oracle_test.rs` come from a dav1d build whose `ctx_norm` in `src/msac.c` prints
+`rng cnt dif` after every symbol (C path, `-Denable_asm=false`), reduced per frame to the symbol count
+and the FNV-1a digest of the `"{rng} {cnt} {dif}\n"` lines.
 
 ## Derived fixtures elsewhere
 

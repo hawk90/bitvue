@@ -118,6 +118,12 @@ pub struct TileContext {
     /// fixed-context-0 fallback and never touch these arrays.
     above_cul_level: Vec<u8>,
     left_cul_level: Vec<u8>,
+    /// `MiCols`/`MiRows`: the frame's size in 4x4 units. The arrays above are sized to whole
+    /// superblocks, but spec 5.11.39 / 8.3.2 ignore every column and row past the frame when
+    /// reading and writing the `all_zero` and `dc_sign` contexts. `u32::MAX` until
+    /// `set_frame_extent` (no clipping).
+    mi_cols: u32,
+    mi_rows: u32,
     above_dc_sign_category: Vec<u8>,
     left_dc_sign_category: Vec<u8>,
     /// Inter/IntraBC `read_var_tx_size()` (spec 5.11.17/18, `SymbolDecoder::read_txfm_split`)
@@ -232,6 +238,8 @@ impl TileContext {
             left_tx_class: vec![-1; tile_height_4x4.max(1) as usize],
             above_cul_level: vec![0; tile_width_4x4.max(1) as usize],
             left_cul_level: vec![0; tile_height_4x4.max(1) as usize],
+            mi_cols: u32::MAX,
+            mi_rows: u32::MAX,
             above_dc_sign_category: vec![1; tile_width_4x4.max(1) as usize],
             left_dc_sign_category: vec![1; tile_height_4x4.max(1) as usize],
             above_var_tx: vec![VAR_TX_UNSET; tile_width_4x4.max(1) as usize],

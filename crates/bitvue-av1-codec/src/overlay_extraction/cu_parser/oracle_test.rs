@@ -930,3 +930,174 @@ fn the_superres_clip_decodes_verified_on_every_frame() {
         .collect();
     assert!(unverified.is_empty(), "unverified frames: {unverified:?}");
 }
+
+/// The same clip, checked against dav1d symbol by symbol rather than by its padding alone.
+#[test]
+fn the_global_motion_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 30] = [
+        (42_546, 0x29bc_2213_ab74_b07b),
+        (9_889, 0x7586_16c5_563b_40d0),
+        (8_951, 0x59ab_9ace_5680_d784),
+        (8_553, 0x0798_6c0e_f081_8840),
+        (8_940, 0x0eda_4fcb_02a4_46d2),
+        (6_850, 0x7641_271c_415c_91fd),
+        (9_707, 0x6e24_c22c_57b4_c55c),
+        (8_287, 0x1d42_8647_c221_4359),
+        (9_479, 0x3c39_0857_1788_d357),
+        (9_524, 0x7865_6470_dc0c_bf71),
+        (9_022, 0xd3e6_bb0a_916f_7e6f),
+        (7_628, 0x4658_1c12_bac6_c4bb),
+        (10_731, 0xa056_0792_6fdd_79f0),
+        (8_311, 0xe040_4667_5971_6797),
+        (9_066, 0xd85c_5701_cd17_30c9),
+        (8_787, 0x799d_179a_64d7_3229),
+        (10_076, 0x18f9_8486_e43f_7721),
+        (8_547, 0x8620_b079_e605_58e3),
+        (9_781, 0xf180_605f_5fa7_3c1e),
+        (8_264, 0x7109_e630_0307_2a56),
+        (10_944, 0x3816_e774_6981_c5d3),
+        (8_963, 0x96be_1306_ce21_7d53),
+        (8_388, 0x5538_e54e_ac79_c17c),
+        (9_137, 0xe3bd_1ba3_4c82_458c),
+        (10_239, 0x6cf6_ccd2_65f9_2f85),
+        (8_848, 0x8715_c045_59c3_a5aa),
+        (9_506, 0x48ec_dc7f_53c9_0b1a),
+        (8_359, 0x7546_b016_05b3_3d19),
+        (10_973, 0x9bd2_1b46_5b71_2c21),
+        (9_665, 0xa6bd_01e5_e58d_8532),
+    ];
+    assert_clip_decodes_like_dav1d(GLOBAL_MOTION_CLIP, &ORACLE);
+}
+
+/// The same clip, checked against dav1d symbol by symbol rather than by its padding alone.
+#[test]
+fn the_superres_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 31] = [
+        (59_035, 0xf7f1_3475_0726_bd7b),
+        (38_007, 0x48ff_92ef_5eed_f46d),
+        (24_074, 0xeb3b_1ac5_a8a9_2886),
+        (19_663, 0xfe7c_036c_2c7a_2b17),
+        (16_765, 0x46bc_3bc9_6012_43a4),
+        (15_202, 0x4c85_5d91_e9f5_9724),
+        (14_603, 0x401a_fbff_e40b_87f6),
+        (16_304, 0x1e3b_47dc_bd38_0944),
+        (13_378, 0x8995_8fb1_4a91_96c2),
+        (14_238, 0xaf2b_8d95_05cb_cf79),
+        (18_001, 0x423d_1c59_eba7_948a),
+        (13_957, 0x1311_8ca3_998d_c3ae),
+        (15_300, 0x7771_6658_2c6b_f0fd),
+        (17_586, 0xc4b8_284e_c7ec_a8bf),
+        (15_194, 0xf47f_cf83_6cb8_38e2),
+        (13_689, 0xcbce_6480_503a_e755),
+        (19_346, 0xa58f_5909_5030_7483),
+        (17_722, 0x4e5b_2e4a_5cc4_ab96),
+        (14_424, 0xb38a_d1bf_7695_0c2b),
+        (14_084, 0x143f_d2d7_d0f3_8be7),
+        (18_281, 0xf619_3d0d_ce21_4d1a),
+        (14_585, 0xc1b7_bf52_932e_e25a),
+        (14_840, 0x9b9c_d0d5_4b3d_3532),
+        (18_693, 0xc3c0_f5dd_981d_3046),
+        (15_409, 0x82b9_5d4a_2fe5_4be3),
+        (15_566, 0xd7d6_6760_4e75_dce2),
+        (17_547, 0x87d8_1085_7074_22cf),
+        (14_407, 0x17b1_7580_68da_44db),
+        (14_703, 0xae20_5a51_f686_f4d4),
+        (7_364, 0x6a93_4194_eb1d_0937),
+        (15_840, 0x41f4_b652_2e48_9581),
+    ];
+    assert_clip_decodes_like_dav1d(SUPERRES_CLIP, &ORACLE);
+}
+
+/// `test_data/av1_aomenc_superres12.ivf`: the superres clip again with denominator 12, so every
+/// frame is coded 235 columns wide. That is a width where the last superblock column is mostly
+/// outside the frame, and the clip has inter blocks of 128x128 with a residual: a block wider or
+/// taller than 64 is read one 64x64 chunk at a time, each chunk being its luma transforms, then
+/// its U transform, then its V transform (spec 5.11.34). Reading all luma before any chroma
+/// desynced the first frame that coded such a block (#327).
+
+#[test]
+fn the_superres_denominator_12_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 31] = [
+        (45_744, 0xa453_d818_41db_f664),
+        (28_313, 0x4df9_6f62_7413_ea47),
+        (19_380, 0xd343_0976_eb24_b972),
+        (15_531, 0xeda1_2203_987c_5363),
+        (14_781, 0x8dcf_bcab_e33a_860f),
+        (14_464, 0x1b5b_eedd_e556_4880),
+        (12_726, 0x9154_9e6e_c28e_f21a),
+        (12_353, 0xc2d5_ce9b_1eeb_8b21),
+        (11_763, 0xaf42_14fb_3660_43ac),
+        (13_217, 0xafd1_c772_0560_6d1a),
+        (14_462, 0x0578_55db_d65c_c112),
+        (11_578, 0xee6b_baaa_fc05_3bae),
+        (12_107, 0x27db_efda_b1b2_8e4a),
+        (13_003, 0x5553_7d79_0bd8_eefa),
+        (12_381, 0xb221_1e1e_3fc9_4ab2),
+        (11_276, 0x8d13_63cc_2bae_1feb),
+        (15_629, 0xdef0_246a_ccef_34c3),
+        (14_419, 0x28a9_9650_2e40_185e),
+        (11_828, 0xe7f4_887a_7214_9341),
+        (11_853, 0x196c_a976_1370_fe54),
+        (14_629, 0x0d77_ce6f_49c3_89e3),
+        (12_074, 0x7c0f_d5dc_d4e3_6e7d),
+        (12_667, 0xb3b8_9343_bb01_fb30),
+        (13_987, 0x5667_3bc8_98ee_ecda),
+        (13_045, 0x8561_3eec_9a53_9f00),
+        (12_144, 0x2f02_7d0e_31c3_bbf4),
+        (13_227, 0xc38e_608a_9577_a450),
+        (10_931, 0x0402_3b10_f876_43ab),
+        (11_179, 0xab78_c58a_0aa2_9924),
+        (11_178, 0x7e4b_8eb4_2741_bfb8),
+        (13_348, 0x25bf_223d_a278_9584),
+    ];
+    assert_clip_decodes_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_superres12.ivf"),
+        &ORACLE,
+    );
+}
+
+/// `test_data/av1_aomenc_194x72.ivf`: 10 frames (and a hidden one) of `testsrc2` at 194x72. 194 is
+/// not a multiple of 8, so `MiCols` (50) is one 4x4 column more than `ceil(194 / 4)` (49): the motion
+/// field a frame saves for the next one takes the bottom-right 4x4 of each 8x8 cell, and in the
+/// last cell that is column 49. Using 49 saved another block's vector there and the frames that
+/// read it as a temporal candidate desynced (#327).
+
+#[test]
+fn the_194x72_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 11] = [
+        (13_859, 0x069f_27b7_c54f_8748),
+        (6_490, 0x8fd7_d60b_63db_4e01),
+        (3_709, 0xb828_4e25_6bdd_33d5),
+        (2_301, 0xd197_8af8_4be5_b583),
+        (2_232, 0x2619_29f7_b87e_b3f0),
+        (1_909, 0x4557_7de3_a2a3_a2ff),
+        (2_261, 0xc364_5073_5b24_29e2),
+        (1_807, 0xb695_074c_2dc1_3046),
+        (1_826, 0x9267_9fe0_fee6_8fa7),
+        (71, 0x239a_1561_0a8e_111b),
+        (2_641, 0xdaaa_c14b_5ada_5893),
+    ];
+    assert_clip_decodes_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_194x72.ivf"),
+        &ORACLE,
+    );
+}
+
+/// `test_data/av1_aomenc_114x136_palette.ivf`: two frames of `testsrc2` at 114x136 with palette
+/// blocks (screen-content tools on, most other tools off, command in `test_data/README.md`).
+/// `MiCols` is 30, so a 32x32 block at column 24 reaches two 4x4 columns past the frame. The
+/// coefficient contexts (`all_zero`, `dc_sign`) of those columns are not stored and not read
+/// (spec 5.11.39, 8.3.2); the superblock-aligned arrays kept them, and the next block under it
+/// read a stale value (#327).
+
+#[test]
+fn the_114x136_palette_clip_decodes_symbol_for_symbol_like_dav1d() {
+    const ORACLE: [(usize, u64); 2] = [
+        (15_356, 0x5314_2676_8fde_c64e),
+        (3_819, 0x4d64_47a9_8cd3_da20),
+    ];
+    assert_clip_decodes_like_dav1d(
+        include_bytes!("../../../../../test_data/av1_aomenc_114x136_palette.ivf"),
+        &ORACLE,
+    );
+}

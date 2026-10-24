@@ -1,6 +1,7 @@
-//! `residual()` (spec 5.11.34) for a non-skipped block: luma transform blocks first, then U, then
-//! V. Reading every transform block is required for bitstream alignment, not just for producing
-//! residual statistics -- see `SymbolDecoder::read_residual_block`'s doc.
+//! `residual()` (spec 5.11.34) for a non-skipped block: the luma transform blocks, then U, then V,
+//! one 64x64 chunk of the block at a time (a block of at most 64x64 is one chunk). Reading every
+//! transform block is required for bitstream alignment, not just for producing residual
+//! statistics -- see `SymbolDecoder::read_residual_block`'s doc.
 
 use super::types::CodingUnit;
 use crate::symbol::{LumaTxType, ResidualBlockStats, SymbolDecoder, TxClass1d};
@@ -19,13 +20,39 @@ pub(super) fn read_residual(
     cu: &mut CodingUnit,
     y_mode_raw: u8,
 ) -> Result<()> {
-    let (summary, luma_types) =
-        read_luma_residual(decoder, tile_ctx, rect, mi, frame, cu, y_mode_raw)?;
-    read_chroma_residual(decoder, tile_ctx, mi, frame, cu, &luma_types)?;
+    let mut summary = ResidualBlockStats::default();
+    // Luma transform type at every 4x4 of the block (dav1d `txtp_map`), which an inter block's
+    // chroma transforms inherit from.
+    let mut luma_types = vec![LumaTxType::DCT; (mi.width * mi.height) as usize];
+    // Spec 5.11.34: a block wider or taller than 64 is read one 64x64 chunk at a time, raster
+    // order, and each chunk is its luma transforms, then its U transform, then its V transform.
+    let (chunks_x, chunks_y) = (
+        rect.width.div_ceil(64).max(1),
+        rect.height.div_ceil(64).max(1),
+    );
+    for chunk_y in 0..chunks_y {
+        for chunk_x in 0..chunks_x {
+            let chunk = (chunk_x, chunk_y);
+            read_luma_chunk(
+                decoder,
+                tile_ctx,
+                rect,
+                mi,
+                frame,
+                cu,
+                y_mode_raw,
+                chunk,
+                (&mut summary, &mut luma_types),
+            )?;
+            read_chroma_residual(decoder, tile_ctx, mi, frame, cu, &luma_types, chunk)?;
+        }
+    }
     cu.residual = Some(summary);
     Ok(())
 }
 
+/// All the luma transform blocks of `cu` in one go (a block of at most 64x64 is a single chunk).
+#[cfg(test)]
 fn read_luma_residual(
     decoder: &mut SymbolDecoder,
     tile_ctx: &mut TileContext,
@@ -35,6 +62,44 @@ fn read_luma_residual(
     cu: &CodingUnit,
     y_mode_raw: u8,
 ) -> Result<(ResidualBlockStats, Vec<LumaTxType>)> {
+    let mut summary = ResidualBlockStats::default();
+    let mut luma_types = vec![LumaTxType::DCT; (mi.width * mi.height) as usize];
+    let (chunks_x, chunks_y) = (
+        rect.width.div_ceil(64).max(1),
+        rect.height.div_ceil(64).max(1),
+    );
+    for chunk_y in 0..chunks_y {
+        for chunk_x in 0..chunks_x {
+            read_luma_chunk(
+                decoder,
+                tile_ctx,
+                rect,
+                mi,
+                frame,
+                cu,
+                y_mode_raw,
+                (chunk_x, chunk_y),
+                (&mut summary, &mut luma_types),
+            )?;
+        }
+    }
+    Ok((summary, luma_types))
+}
+
+/// The luma transform blocks of 64x64 chunk `chunk` (`(column, row)` within the block) of `cu`,
+/// accumulated into `summary` and `luma_types`.
+#[allow(clippy::too_many_arguments)]
+fn read_luma_chunk(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut TileContext,
+    rect: BlockRect,
+    mi: MiRect,
+    frame: &FrameCodingParams,
+    cu: &CodingUnit,
+    y_mode_raw: u8,
+    chunk: (u32, u32),
+    (summary, luma_types): (&mut ResidualBlockStats, &mut [LumaTxType]),
+) -> Result<()> {
     let MiRect { x4, y4, .. } = mi;
     let FrameCodingParams {
         is_key_frame,
@@ -42,6 +107,11 @@ fn read_luma_residual(
         ..
     } = *frame;
     let tx_positions = luma_tx_positions(cu, rect, mi);
+    // Whether the whole block is one transform block, not just this chunk.
+    let is_single_tx_block = tx_positions.len() == 1;
+    let in_chunk = |&(tx_x4, tx_y4, _, _): &(u32, u32, u32, u32)| {
+        ((tx_x4 - x4) >> 4, (tx_y4 - y4) >> 4) == chunk
+    };
     // Real `txb_skip`/`dc_sign` neighbor context is only trustworthy where transform-block
     // boundaries are real (regular key-frame intra via `tx_size()`, or inter/IntraBC via real
     // `tx_blocks` -- both real bitstream-derived boundaries); other CUs keep the
@@ -51,12 +121,7 @@ fn read_luma_residual(
     // dav1d's `b->intra`: a block's own prediction kind, not the frame type (intra blocks occur in
     // inter frames), and IntraBC blocks count as inter for the transform-set choice.
     let is_intra_block = cu.is_intra() && !cu.use_intrabc;
-    let is_single_tx_block = tx_positions.len() == 1;
-    let mut summary = ResidualBlockStats::default();
-    // Luma transform type at every 4x4 of the block (dav1d `txtp_map`), which an inter block's
-    // chroma transforms inherit from.
-    let mut luma_types = vec![LumaTxType::DCT; (mi.width * mi.height) as usize];
-    for (tx_x4, tx_y4, tx_w_px, tx_h_px) in tx_positions {
+    for (tx_x4, tx_y4, tx_w_px, tx_h_px) in tx_positions.into_iter().filter(in_chunk) {
         let (tx_w4, tx_h4) = (tx_w_px / 4, tx_h_px / 4);
 
         let (txb_skip_ctx, dc_sign_ctx) = if use_real_residual_ctx {
@@ -110,7 +175,7 @@ fn read_luma_residual(
         summary.sum_abs_level += block.sum_abs_level;
         summary.max_level = summary.max_level.max(block.max_level);
     }
-    Ok((summary, luma_types))
+    Ok(())
 }
 
 /// The luma transform blocks of `cu` as `(x4, y4, width_px, height_px)`, in reading order.
@@ -185,6 +250,7 @@ fn read_chroma_residual(
     frame: &FrameCodingParams,
     cu: &CodingUnit,
     luma_types: &[LumaTxType],
+    chunk: (u32, u32),
 ) -> Result<()> {
     let MiRect { x4, y4, .. } = mi;
     let tx_type_flags = frame.tx_type_flags;
@@ -219,11 +285,19 @@ fn read_chroma_residual(
         let (chroma_tx_w4, chroma_tx_h4) = (chroma_tx_w / 4, chroma_tx_h / 4);
         let not_one_blk = chroma_tiles_x * chroma_tiles_y > 1;
         let (cx4_base, cy4_base) = (x4 / 2, y4 / 2);
+        // A chroma transform (at most 32 samples a side, i.e. 64 luma) is one 64x64 chunk of
+        // the block, so `chunk` picks the single tile of each plane that belongs to it.
+        let (chunk_col, chunk_row) = chunk;
         for plane in 0..2usize {
-            for tile_row in 0..chroma_tiles_y {
-                for tile_col in 0..chroma_tiles_x {
+            for tile_row in chunk_row..(chunk_row + 1).min(chroma_tiles_y) {
+                for tile_col in chunk_col..(chunk_col + 1).min(chroma_tiles_x) {
                     let cx4 = cx4_base + tile_col * chroma_tx_w4;
                     let cy4 = cy4_base + tile_row * chroma_tx_h4;
+                    // Spec 5.11.35: a transform block starting outside the frame (in chroma
+                    // samples, `startX >= (MiCols * MI_SIZE) >> subX`) is not coded.
+                    if cx4 >= frame.mi_cols >> 1 || cy4 >= frame.mi_rows >> 1 {
+                        continue;
+                    }
                     let txb_skip_ctx = tile_ctx.txb_skip_context_chroma(
                         plane,
                         cx4,
@@ -594,9 +668,10 @@ mod tests {
     }
 
     #[test]
-    fn a_128x128_block_has_four_32x32_chroma_transforms_per_plane() {
+    fn a_128x128_block_is_read_chunk_by_chunk_with_four_32x32_chroma_transforms_per_plane() {
         // 128x128 luma -> 64x64 chroma, capped at 32x32 per transform: 2x2 tiles in each of U, V.
-        let f = frame(false, (true, true), false);
+        let mut f = frame(false, (true, true), false);
+        (f.mi_cols, f.mi_rows) = (32, 32);
         let (r, mi) = rect(0, 0, 32, 32);
         for seed in 1..=8u64 {
             let data = noise(seed, 2048);
@@ -606,22 +681,18 @@ mod tests {
             let mut ctx = TileContext::new(64, 64);
             read_residual(&mut d, &mut ctx, r, mi, &f, &mut cu, 0).unwrap();
 
-            // Luma: four 64x64 tiles; chroma: per plane the four 32x32 tiles in raster order.
+            // Spec 5.11.34: one 64x64 chunk at a time in raster order, each being its 64x64 luma
+            // transform and then its 32x32 U and V transforms.
             let mut want_d = SymbolDecoder::new(&data).unwrap();
             let mut want_ctx = TileContext::new(64, 64);
-            manual_luma(
-                &mut want_d,
-                &mut want_ctx,
-                &[
-                    (0, 0, 64, 64),
-                    (16, 0, 64, 64),
-                    (0, 16, 64, 64),
-                    (16, 16, 64, 64),
-                ],
-                false,
-            );
-            for plane in 0..2usize {
-                for (cx4, cy4) in [(0, 0), (8, 0), (0, 8), (8, 8)] {
+            for (luma, (cx4, cy4)) in [
+                ((0, 0, 64, 64), (0, 0)),
+                ((16, 0, 64, 64), (8, 0)),
+                ((0, 16, 64, 64), (0, 8)),
+                ((16, 16, 64, 64), (8, 8)),
+            ] {
+                manual_luma(&mut want_d, &mut want_ctx, &[luma], false);
+                for plane in 0..2usize {
                     let skip_ctx = want_ctx.txb_skip_context_chroma(plane, cx4, cy4, 8, 8, true);
                     let sign_ctx = want_ctx.dc_sign_context_chroma(plane, cx4, cy4, 8, 8);
                     let b = want_d
@@ -676,7 +747,8 @@ mod tests {
             // 64x64 -> chroma 32x32: one tile, and one luma transform.
             (64, 64, vec![(0, 0, 64, 64)], vec![(0, 0)], (8, 8), false),
         ];
-        let f = frame(false, (true, true), false);
+        let mut f = frame(false, (true, true), false);
+        (f.mi_cols, f.mi_rows) = (32, 32);
         for (w, h, luma, chroma, (tw4, th4), not_one) in cases {
             let (r, mi) = rect(0, 0, w / 4, h / 4);
             for seed in 1..=8u64 {
@@ -689,9 +761,10 @@ mod tests {
 
                 let mut want_d = SymbolDecoder::new(&data).unwrap();
                 let mut want_ctx = TileContext::new(64, 64);
-                manual_luma(&mut want_d, &mut want_ctx, &luma, false);
-                for plane in 0..2usize {
-                    for &(cx4, cy4) in &chroma {
+                // One 64x64 chunk at a time: its luma transform, then its U and V tile.
+                for (&luma, &(cx4, cy4)) in luma.iter().zip(&chroma) {
+                    manual_luma(&mut want_d, &mut want_ctx, &[luma], false);
+                    for plane in 0..2usize {
                         let skip_ctx =
                             want_ctx.txb_skip_context_chroma(plane, cx4, cy4, tw4, th4, not_one);
                         let sign_ctx = want_ctx.dc_sign_context_chroma(plane, cx4, cy4, tw4, th4);
@@ -716,6 +789,33 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_chroma_transform_starting_outside_the_frame_is_not_coded() {
+        // A 128x64 block has a 32x32 chroma transform per 64-wide chunk. In a frame 16 4x4 columns
+        // (64 pixels) wide the second chunk starts at chroma column 8 >= 16 / 2: nothing is read.
+        let mut f = frame(false, (true, true), false);
+        (f.mi_cols, f.mi_rows) = (16, 32);
+        let (_, mi) = rect(0, 0, 32, 16);
+        let cu = CodingUnit::new(0, 0, 128, 64);
+        let luma_types = vec![LumaTxType::DCT; (mi.width * mi.height) as usize];
+        let data = noise(7, 256);
+        let mut ctx = TileContext::new(64, 64);
+
+        let mut outside = SymbolDecoder::new(&data).unwrap();
+        read_chroma_residual(&mut outside, &mut ctx, mi, &f, &cu, &luma_types, (1, 0)).unwrap();
+        let untouched = SymbolDecoder::new(&data).unwrap();
+        assert_eq!(fingerprint(&mut outside), {
+            let mut u = untouched;
+            fingerprint(&mut u)
+        });
+
+        // The first chunk is inside and does read.
+        let mut inside = SymbolDecoder::new(&data).unwrap();
+        read_chroma_residual(&mut inside, &mut ctx, mi, &f, &cu, &luma_types, (0, 0)).unwrap();
+        let mut fresh = SymbolDecoder::new(&data).unwrap();
+        assert_ne!(fingerprint(&mut inside), fingerprint(&mut fresh));
     }
 
     #[test]
