@@ -41,7 +41,6 @@ mod tree;
 mod types;
 
 pub(crate) use parse::parse_partition_recursive;
-pub use parse::{parse_partition_tree, partition_tree_to_grid};
 #[cfg(test)]
 use tree::child_position;
 pub(crate) use tree::mi_units;
@@ -126,55 +125,6 @@ mod tests {
         assert_eq!(
             child_position(8, 16, 0, PartitionType::None, BlockSize::Block16x16),
             (8, 16)
-        );
-    }
-
-    #[test]
-    fn the_grid_has_one_block_per_leaf_with_its_depth_and_partition() {
-        let mut root = PartitionNode::new(0, 0, BlockSize::Block32x32, PartitionType::Split);
-        for (x, y, partition) in [
-            (0, 0, PartitionType::None),
-            (16, 0, PartitionType::Horz),
-            (0, 16, PartitionType::Vert),
-            (16, 16, PartitionType::None),
-        ] {
-            root.children
-                .push(PartitionNode::new(x, y, BlockSize::Block16x16, partition));
-        }
-
-        let grid = partition_tree_to_grid(&root, 32, 32, 32);
-
-        let blocks: Vec<_> = grid
-            .blocks
-            .iter()
-            .map(|b| (b.x, b.y, b.width, b.height, b.partition, b.depth))
-            .collect();
-        use bitvue_engine::partition_grid::PartitionType as Grid;
-        assert_eq!(
-            blocks,
-            vec![
-                (0, 0, 16, 16, Grid::None, 1),
-                (16, 0, 16, 16, Grid::Horz, 1),
-                (0, 16, 16, 16, Grid::Vert, 1),
-                (16, 16, 16, 16, Grid::None, 1),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_tree_that_is_a_single_leaf_is_one_block_at_depth_zero() {
-        let root = PartitionNode::new(0, 0, BlockSize::Block64x64, PartitionType::None);
-
-        let grid = partition_tree_to_grid(&root, 64, 64, 64);
-
-        assert_eq!(grid.blocks.len(), 1);
-        assert_eq!(
-            (
-                grid.blocks[0].width,
-                grid.blocks[0].height,
-                grid.blocks[0].depth
-            ),
-            (64, 64, 0)
         );
     }
 
