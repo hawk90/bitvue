@@ -155,16 +155,12 @@ impl IvfFrameBuilder {
 
 /// Parse IVF header from data
 pub fn parse_ivf_header(data: &[u8]) -> Result<IvfHeader, BitvueError> {
-    // Validate header size upfront
-    let header_bytes = data.get(0..32).ok_or(BitvueError::InsufficientData {
+    let header: &[u8; 32] = data.first_chunk().ok_or(BitvueError::InsufficientData {
         needed: 32,
         available: data.len(),
     })?;
 
-    // Use safe array accesses via get()
-    let signature: [u8; 4] = header_bytes[0..4]
-        .try_into()
-        .map_err(|_| BitvueError::InvalidData("Invalid IVF signature length".to_string()))?;
+    let signature = [header[0], header[1], header[2], header[3]];
     if &signature != b"DKIF" {
         return Err(BitvueError::InvalidData(format!(
             "Invalid IVF signature: {:?}",
@@ -172,78 +168,22 @@ pub fn parse_ivf_header(data: &[u8]) -> Result<IvfHeader, BitvueError> {
         )));
     }
 
-    let version_bytes: [u8; 2] = header_bytes
-        .get(4..6)
-        .ok_or_else(|| BitvueError::InvalidData("IVF header too short for version".to_string()))?
-        .try_into()
-        .map_err(|_| BitvueError::InvalidData("IVF version bytes invalid".to_string()))?;
-    let version = u16::from_le_bytes(version_bytes);
-
-    let header_size_bytes: [u8; 2] = header_bytes
-        .get(6..8)
-        .ok_or_else(|| {
-            BitvueError::InvalidData("IVF header too short for header_size".to_string())
-        })?
-        .try_into()
-        .map_err(|_| BitvueError::InvalidData("IVF header_size bytes invalid".to_string()))?;
-    let header_size = u16::from_le_bytes(header_size_bytes);
-
-    let fourcc: [u8; 4] = header_bytes
-        .get(8..12)
-        .and_then(|s| s.try_into().ok())
-        .ok_or_else(|| BitvueError::InvalidData("Invalid IVF fourcc length".to_string()))?;
-
-    let width_bytes: [u8; 2] = header_bytes
-        .get(12..14)
-        .ok_or_else(|| BitvueError::InvalidData("IVF header too short for width".to_string()))?
-        .try_into()
-        .map_err(|_| BitvueError::InvalidData("IVF width bytes invalid".to_string()))?;
-    let width = u16::from_le_bytes(width_bytes);
-
-    let height_bytes: [u8; 2] = header_bytes
-        .get(14..16)
-        .ok_or_else(|| BitvueError::InvalidData("IVF header too short for height".to_string()))?
-        .try_into()
-        .map_err(|_| BitvueError::InvalidData("IVF height bytes invalid".to_string()))?;
-    let height = u16::from_le_bytes(height_bytes);
-
-    let framerate_den_bytes: [u8; 4] = header_bytes
-        .get(16..20)
-        .ok_or_else(|| {
-            BitvueError::InvalidData("IVF header too short for framerate_den".to_string())
-        })?
-        .try_into()
-        .map_err(|_| BitvueError::InvalidData("IVF framerate_den bytes invalid".to_string()))?;
-    let framerate_den = u32::from_le_bytes(framerate_den_bytes);
-
-    let framerate_num_bytes: [u8; 4] = header_bytes
-        .get(20..24)
-        .ok_or_else(|| {
-            BitvueError::InvalidData("IVF header too short for framerate_num".to_string())
-        })?
-        .try_into()
-        .map_err(|_| BitvueError::InvalidData("IVF framerate_num bytes invalid".to_string()))?;
-    let framerate_num = u32::from_le_bytes(framerate_num_bytes);
-
-    let frame_count_bytes: [u8; 4] = header_bytes
-        .get(24..28)
-        .ok_or_else(|| {
-            BitvueError::InvalidData("IVF header too short for frame_count".to_string())
-        })?
-        .try_into()
-        .map_err(|_| BitvueError::InvalidData("IVF frame_count bytes invalid".to_string()))?;
-    let frame_count = u32::from_le_bytes(frame_count_bytes);
+    // Offsets are constants inside the 32-byte array, so none of these reads can fail.
+    let u16_at = |at: usize| u16::from_le_bytes([header[at], header[at + 1]]);
+    let u32_at = |at: usize| {
+        u32::from_le_bytes([header[at], header[at + 1], header[at + 2], header[at + 3]])
+    };
 
     Ok(IvfHeader {
         signature,
-        version,
-        header_size,
-        fourcc,
-        width,
-        height,
-        framerate_den,
-        framerate_num,
-        frame_count,
+        version: u16_at(4),
+        header_size: u16_at(6),
+        fourcc: [header[8], header[9], header[10], header[11]],
+        width: u16_at(12),
+        height: u16_at(14),
+        framerate_den: u32_at(16),
+        framerate_num: u32_at(20),
+        frame_count: u32_at(24),
     })
 }
 
@@ -254,28 +194,27 @@ pub fn parse_ivf_frames(data: &[u8]) -> Result<(IvfHeader, Vec<IvfFrame>), Bitvu
     let mut offset = header.header_size as usize;
 
     while frames.len() < IVF_MAX_FRAME_COUNT {
-        // Check for overflow in offset + 12 calculation
-        let offset_end = offset.checked_add(12).ok_or_else(|| {
-            BitvueError::InvalidData("IVF offset would cause integer overflow".to_string())
-        })?;
-
-        let frame_header = match data.get(offset..offset_end) {
-            Some(h) => h,
-            None => break, // End of data
+        // A frame header that is not all there ends the list.
+        let Some(frame_header) = data.get(offset..).and_then(|rest| rest.first_chunk::<12>())
+        else {
+            break;
         };
-        let frame_size_bytes: [u8; 4] = frame_header
-            .get(0..4)
-            .ok_or_else(|| BitvueError::InvalidData("IVF frame header incomplete".to_string()))?
-            .try_into()
-            .map_err(|_| BitvueError::InvalidData("IVF frame size bytes invalid".to_string()))?;
-        let frame_size = u32::from_le_bytes(frame_size_bytes);
-
-        let timestamp_bytes: [u8; 8] = frame_header
-            .get(4..12)
-            .ok_or_else(|| BitvueError::InvalidData("IVF frame timestamp incomplete".to_string()))?
-            .try_into()
-            .map_err(|_| BitvueError::InvalidData("IVF timestamp bytes invalid".to_string()))?;
-        let timestamp = u64::from_le_bytes(timestamp_bytes);
+        let frame_size = u32::from_le_bytes([
+            frame_header[0],
+            frame_header[1],
+            frame_header[2],
+            frame_header[3],
+        ]);
+        let timestamp = u64::from_le_bytes([
+            frame_header[4],
+            frame_header[5],
+            frame_header[6],
+            frame_header[7],
+            frame_header[8],
+            frame_header[9],
+            frame_header[10],
+            frame_header[11],
+        ]);
 
         offset += 12;
 
@@ -288,32 +227,23 @@ pub fn parse_ivf_frames(data: &[u8]) -> Result<(IvfHeader, Vec<IvfFrame>), Bitvu
             )));
         }
 
-        // Check for integer overflow in offset calculation
-        let frame_end = offset.checked_add(frame_size as usize).ok_or_else(|| {
-            BitvueError::InvalidData("IVF frame size would cause integer overflow".to_string())
-        })?;
-
-        // Check if frame data is available
-        if frame_end > data.len() {
+        // Frame data that is cut short ends the list. (`offset` is at most `data.len()` here and
+        // the size is at most `IVF_MAX_FRAME_SIZE`, so the end cannot overflow.)
+        let frame_end = offset + frame_size as usize;
+        let Some(frame_data) = data.get(offset..frame_end) else {
             break;
-        }
-
-        let frame_data = data
-            .get(offset..frame_end)
-            .ok_or_else(|| BitvueError::InvalidData("IVF frame data out of bounds".to_string()))?
-            .to_vec();
+        };
 
         // Extract temporal_id from frame header OBU
-        let temporal_id = extract_temporal_id_from_frame(&frame_data).unwrap_or(0);
+        let temporal_id = extract_temporal_id_from_frame(frame_data).unwrap_or(0);
 
         frames.push(IvfFrame {
             size: frame_size,
             timestamp,
-            data: frame_data,
+            data: frame_data.to_vec(),
             temporal_id,
         });
 
-        // Move offset to end of this frame (we already validated frame_end is valid)
         offset = frame_end;
     }
 
