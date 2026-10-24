@@ -47,6 +47,7 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 | `av1_aomenc_filmgrain.ivf` | aomenc 3.15.2, 352x288, 11 frames (10 shown + 1 hidden) of `testsrc2` with film grain test vector 5: scaling points for all planes, `update_grain = 0` on 9 frames (`oracle_test.rs`) | commands below |
 | `av1_aomenc_filmgrain_cfl.ivf` | same source, film grain test vector 15: `chroma_scaling_from_luma` (`oracle_test.rs`) | commands below |
 | `av1_aomenc_filmgrain_luma.ivf` | same source, film grain test vector 6: 14 luma points, no chroma points (`oracle_test.rs`) | commands below |
+| `av1_fuzz_oversized_frame.ivf` | 5.6 KB, one key frame declaring 65536x65536 (no real picture data): minimized from a `stream_analysis` fuzz input that was itself a mutation of the clips above. Regression for the stateful decode allocating per declared frame size (`stream_state_test.rs`) | produced by the fuzzer: `cargo +nightly fuzz tmin -s none stream_analysis <artifact>` |
 | `av1_aomenc_194x72.ivf` | aomenc 3.15.2, 194x72, 11 frames (10 shown + 1 hidden) of `testsrc2`: a width that is not a multiple of 8 (`oracle_test.rs`) | commands below |
 | `av1_aomenc_114x136_palette.ivf` | aomenc 3.15.2, 114x136, 2 frames of `testsrc2`, palette on and most other tools off: blocks reaching past the right edge (`oracle_test.rs`) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |

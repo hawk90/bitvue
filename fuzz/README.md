@@ -18,6 +18,7 @@ cargo +nightly fuzz run frame_analysis -- -max_total_time=60
 | `obu_stream` | `ObuIterator`, `parse_all_obus`, `parse_all_obus_resilient` | panics, non-terminating iteration |
 | `syntax_parser` | `parse_bitstream_syntax`, `parse_obu_syntax` | syntax-tree builder panics |
 | `frame_analysis` | `ParsedFrame::parse` + QP/MV/partition/prediction/transform extractors | sequence/frame header, symbol decoder, coding-unit parser panics (deepest path) |
+| `stream_analysis` | `StreamAnalyzer` over a whole IVF: frame headers with reference-slot state, tile decode with saved CDFs / motion fields, checkpoint rewind | cross-frame state panics (slots, projected motion field, film grain, scaled references), multi-tile and superres paths |
 | `av1_decode` | `Av1Decoder` (dav1d) | decoder wrapper robustness |
 
 ## CI
@@ -33,8 +34,17 @@ a target means adding its `[[bin]]` entry, or that check fails. This does not ru
 below from `test_data/av1_*.ivf` (40 frames per clip by default; nothing is copied into the repo).
 Random bytes rarely get past the sequence header, so seed
 `frame_analysis`, `obu_stream`, `syntax_parser` and `obu_parser` with the first frame payloads of
-`test_data/av1_*.ivf` (IVF frame data without the 12-byte frame header), and `ivf_parser`/`av1_decode`
+`test_data/av1_*.ivf` (IVF frame data without the 12-byte frame header), and `ivf_parser`/`av1_decode`/`stream_analysis`
 with whole files. Without seeds `frame_analysis` stays at shallow coverage.
+
+## Memory limit
+
+cargo-fuzz builds with AddressSanitizer, whose quarantine of freed memory and shadow memory make the
+process 5-10x larger than it is without it (a 16 KB `stream_analysis` input that needs 25 MB in a debug
+test run showed 356 MB). With `-rss_limit_mb=1024` that produced three "out-of-memory" artifacts which were
+not bugs. Give ASan runs `-rss_limit_mb=3072` or more, or run `cargo +nightly fuzz run -s none <target>`:
+without the sanitizer it is much faster and still catches panics, index and overflow errors (debug
+assertions stay on), only memory errors in `unsafe` code are missed.
 
 ## Crashes
 

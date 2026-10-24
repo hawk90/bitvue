@@ -139,3 +139,40 @@ fn quantizer_category_steps_up_just_above_20_60_and_120() {
         .collect();
     assert_eq!(cats, [0, 0, 0, 1, 1, 2, 2, 3, 3]);
 }
+
+/// `test_data/av1_fuzz_oversized_frame.ivf` (5.6 KB, minimized from a `stream_analysis` fuzz
+/// input that was itself a mutation of our own clips): one key frame whose sequence header allows
+/// 65536 x 65536 and whose frame is 65536 x 65536. It is past the decode limit, so it is not
+/// decoded; its saved motion field used to be sized by the declared extent anyway (3 GB, 455 ms).
+/// The test binaries run under a 1 GiB live-heap cap that aborts the process, so going back to
+/// the old sizing fails this test.
+#[test]
+fn frames_past_the_decode_limit_are_not_decoded_and_save_no_motion_field() {
+    const CLIP: &[u8] = include_bytes!("../../../../test_data/av1_fuzz_oversized_frame.ivf");
+    let mut analyzer = crate::overlay_extraction::StreamAnalyzer::with_limits(CLIP, 2, 2).unwrap();
+    let mut oversized = 0;
+    for index in 0..analyzer.frame_count() {
+        let frame = analyzer.analyze(index).unwrap();
+        let dims = frame.dimensions;
+        if !frame_within_decode_limit(&dims) {
+            oversized += 1;
+            let decoded = frame.decoded.as_ref().expect("the frame has tile data");
+            assert!(decoded.units.is_empty(), "frame {index} was decoded");
+        }
+    }
+    assert_eq!(oversized, 1, "the clip no longer has its oversized frame");
+}
+
+#[test]
+fn the_decode_limit_is_level_6_3s_max_pic_size() {
+    use crate::overlay_extraction::parser::FrameDimensions;
+    let dims = |width, height| FrameDimensions {
+        width,
+        height,
+        ..Default::default()
+    };
+    assert!(frame_within_decode_limit(&dims(16384, 2176))); // exactly 35,651,584
+    assert!(!frame_within_decode_limit(&dims(16384, 2177)));
+    assert!(!frame_within_decode_limit(&dims(65536, 65536)));
+    assert!(frame_within_decode_limit(&dims(0, 0)));
+}
