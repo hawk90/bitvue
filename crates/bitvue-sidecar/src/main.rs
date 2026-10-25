@@ -3,7 +3,7 @@
 //! ("sidecar 결정" / "bitvue-protocol wire schema v0" / "동시성 모델") for the full design.
 //!
 //! This file is process bootstrap + the stdin/stdout frame loop + worker-thread orchestration
-//! only (`main`/`read_frame`/`write_frame`/`spawn_request`) -- every command handler and the
+//! only (`main`/`spawn_request`; the frame codec is `bitvue_protocol::{read_frame, write_frame}`) -- every command handler and the
 //! method-dispatch table live in `request_dispatch.rs` and the per-command modules it calls into
 //! (see `request_dispatch.rs`'s module doc for the full command list and the reasoning for the
 //! `bitvue-indexer`-backed commands not being `Core::handle_command` variants).
@@ -62,7 +62,7 @@
 //! stays readable from the Electron main process's captured logs.
 
 use std::collections::HashMap;
-use std::io::{self, Read, Write};
+use std::io;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -92,7 +92,7 @@ mod test_support;
 pub(crate) use request_dispatch::{dispatch, DebugYuvSlot};
 
 use bitvue_engine::Core;
-use bitvue_protocol::{FrameHeader, FrameKind, Request, FRAME_HEADER_LEN};
+use bitvue_protocol::{read_frame, write_frame, FrameKind, Request};
 use request_dispatch::DecodeSessionsSlot;
 
 fn main() {
@@ -177,41 +177,13 @@ fn main() {
     }
 }
 
-fn read_frame<R: Read>(reader: &mut R) -> io::Result<Option<(FrameHeader, Vec<u8>)>> {
-    let mut header_buf = [0u8; FRAME_HEADER_LEN];
-    match reader.read_exact(&mut header_buf) {
-        Ok(()) => {}
-        Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(err) => return Err(err),
-    }
-    let header = FrameHeader::decode(&header_buf)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-    let mut payload = vec![0u8; header.payload_len as usize];
-    reader.read_exact(&mut payload)?;
-    Ok(Some((header, payload)))
-}
-
-fn write_frame<W: Write>(
-    writer: &mut W,
-    kind: FrameKind,
-    correlation_id: u32,
-    payload: &[u8],
-) -> io::Result<()> {
-    let header = FrameHeader {
-        kind,
-        correlation_id,
-        payload_len: payload.len() as u32,
-    };
-    writer.write_all(&header.encode())?;
-    writer.write_all(payload)?;
-    writer.flush()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_support::encode_frames;
-    use bitvue_protocol::{HelloParams, HelloResult, Response, PROTOCOL_VERSION};
+    use bitvue_protocol::{
+        FrameHeader, HelloParams, HelloResult, Response, FRAME_HEADER_LEN, PROTOCOL_VERSION,
+    };
     use std::io::Cursor;
     use std::sync::atomic::AtomicBool;
 
