@@ -55,7 +55,7 @@ fn parse_all_coding_units_with_temporal(
 /// Most luma samples a frame may have for the decode to allocate its per-tile context: AV1
 /// level 6.3's `MaxPicSize` (spec A.3). The frame header's 16-bit width and height allow 65536 x
 /// 65536, whose context grid alone is over 2 GB (found by the `frame_analysis` fuzz target).
-const MAX_FRAME_LUMA_SAMPLES: u64 = 35_651_584;
+pub const MAX_FRAME_LUMA_SAMPLES: u64 = 35_651_584;
 
 /// Whether a frame of `dims` is small enough for anything sized by the frame (the tile context,
 /// the saved motion field, the projected one) to be allocated. A 5 KB file can declare 65536 x

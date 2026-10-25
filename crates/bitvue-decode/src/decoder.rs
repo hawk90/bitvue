@@ -296,7 +296,27 @@ struct IvfFrameHeaderWithOffset {
 impl Av1Decoder {
     /// Creates a new AV1 decoder
     pub fn new() -> Result<Self> {
-        let decoder = Decoder::new().map_err(|e| DecodeError::Init(e.to_string()))?;
+        Self::with_settings(Self::base_settings())
+    }
+
+    /// dav1d's defaults, except for two limits found by the `av1_decode` fuzz target:
+    ///
+    /// - A frame larger than AV1 level 6.3 allows is refused. Without it a 5 KB file declaring
+    ///   65536x65536 made dav1d allocate over 10 GB for the picture.
+    /// - Frame threading is off (`max_frame_delay = 1`; tile threads still run). With it on,
+    ///   repeated decodes of a corrupt clip hung in `dav1d_get_picture` with every worker asleep.
+    ///   It also makes `get_frame` return a frame right after the `send_data` that completes it,
+    ///   instead of a pipeline-depth later.
+    fn base_settings() -> dav1d::Settings {
+        let mut settings = dav1d::Settings::new();
+        settings.set_frame_size_limit(bitvue_av1_codec::MAX_FRAME_LUMA_SAMPLES as u32);
+        settings.set_max_frame_delay(1);
+        settings
+    }
+
+    fn with_settings(settings: dav1d::Settings) -> Result<Self> {
+        let decoder =
+            Decoder::with_settings(&settings).map_err(|e| DecodeError::Init(e.to_string()))?;
         Ok(Self {
             decoder,
             last_obu_data: None,
@@ -309,14 +329,9 @@ impl Av1Decoder {
     /// decoded signal before film grain synthesis is applied).  Set to `true`
     /// for the default post-grain output.
     pub fn new_with_apply_grain(apply_grain: bool) -> Result<Self> {
-        let mut settings = dav1d::Settings::new();
+        let mut settings = Self::base_settings();
         settings.set_apply_grain(apply_grain);
-        let decoder =
-            Decoder::with_settings(&settings).map_err(|e| DecodeError::Init(e.to_string()))?;
-        Ok(Self {
-            decoder,
-            last_obu_data: None,
-        })
+        Self::with_settings(settings)
     }
 
     /// Sends data to the decoder (clones the slice into an owned Vec)
@@ -329,6 +344,17 @@ impl Av1Decoder {
     /// This is more efficient than `send_data` when you already have owned data,
     /// as it avoids cloning. Use this for IVF frame extraction.
     pub fn send_data_owned(&mut self, data: Vec<u8>, timestamp: i64) -> Result<()> {
+        // After an EAGAIN dav1d holds the unconsumed input, and the wrapped decoder panics if
+        // more is sent before it has taken that. Corrupt input reaches this state: a picture
+        // error leaves the earlier EAGAIN unresolved.
+        if let Err(e) = self.decoder.send_pending_data() {
+            if e.is_again() {
+                return Err(DecodeError::Decode(
+                    "decoder has unconsumed input; its frames must be drained first".to_string(),
+                ));
+            }
+            // Any other error means dav1d dropped that data; this frame can still be tried.
+        }
         // Keep a copy for QP extraction after dav1d produces the picture.
         self.last_obu_data = Some(data.clone());
         self.decoder
@@ -758,10 +784,10 @@ impl Av1Decoder {
                     timestamp,
                     e
                 );
-            } else {
-                while let Ok(frame) = self.get_frame() {
-                    decoded_frames.push(frame);
-                }
+            }
+            // Also after a failed send: EAGAIN means "take the frames out first".
+            while let Ok(frame) = self.get_frame() {
+                decoded_frames.push(frame);
             }
 
             remaining = remaining.saturating_sub(12 + frame_size);
@@ -802,10 +828,10 @@ impl Av1Decoder {
                     frame_header.timestamp,
                     e
                 );
-            } else {
-                while let Ok(frame) = self.get_frame() {
-                    decoded_frames.push(frame);
-                }
+            }
+            // Also after a failed send: EAGAIN means "take the frames out first".
+            while let Ok(frame) = self.get_frame() {
+                decoded_frames.push(frame);
             }
 
             frame_idx += 1;
