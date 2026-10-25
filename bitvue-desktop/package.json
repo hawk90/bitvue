@@ -4,9 +4,9 @@
   "description": "Electron main-process side of the bitvue-sidecar bridge (Node child_process client for bitvue-protocol over stdio). Standalone package, not an npm workspace member.",
   "private": true,
   "type": "module",
-  "packageManager": "npm@12.2.0",
+  "packageManager": "npm@12.2.1",
   "engines": {
-    "node": ">=24.22.0"
+    "node": ">=24.22.1"
   },
   "main": "dist/electron/main.js",
   "scripts": {
@@ -25,8 +25,8 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
-    "electron": "^44.7.2",
-    "electron-builder": "^26.15.3",
+    "electron": "^44.9.3",
+    "electron-builder": "^26.18.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   },

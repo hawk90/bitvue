@@ -13,7 +13,7 @@ bitvue-av1-codec = { path = "../crates/bitvue-av1-codec" }
 bitvue-engine = { path = "../crates/bitvue-engine" }
 bitvue-decode = { path = "../crates/bitvue-decode" }
 bitvue-protocol = { path = "../crates/bitvue-protocol" }
-serde_json = "1"
+serde_json = "1.0.154"
 
 # Keep out of the parent workspace
 [workspace]
