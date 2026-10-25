@@ -127,7 +127,7 @@ jobs:
           components: rustfmt, clippy
           cache: false
           build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: lint
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -154,7 +154,7 @@ jobs:
         with:
           cache: false
           build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: fuzz
           shared-key: fuzz
@@ -208,7 +208,7 @@ jobs:
           build-warnings: allow
       # One cache per OS, written from main by a single representative job. bitvue-cli has the
       # largest third-party dependency set, so its cache serves every other crate's job.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: test-${{ matrix.os }}
           save-if: ${{ github.ref == 'refs/heads/main' && matrix.crate == 'bitvue-cli' }}
@@ -238,7 +238,7 @@ jobs:
         with:
           cache: false
           build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: vmaf-${{ matrix.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -285,7 +285,7 @@ jobs:
         with:
           cache: false
           build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: vvdec-${{ matrix.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -322,7 +322,7 @@ jobs:
         with:
           cache: false
           build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: parity
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -352,14 +352,14 @@ jobs:
       # rust-cache resolves `<workspace> -> <target>` with the target *relative to the workspace*
       # (an absolute path is joined under it), so point it at CARGO_TARGET_DIR=/tmp/t (set below)
       # via a relative path from /home/runner/work/bitvue/bitvue.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ". -> ../../../../../tmp/t"
           shared-key: "coverage"
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: cargo-llvm-cov
 
@@ -416,7 +416,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: '24.22.0'
+          node-version: '24.22.1'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
@@ -449,7 +449,7 @@ jobs:
         with:
           cache: false
           build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: desktop
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -458,7 +458,7 @@ jobs:
         run: cargo build -p bitvue-sidecar
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: '24.22.0'
+          node-version: '24.22.1'
           cache: 'npm'
           cache-dependency-path: |
             frontend/package-lock.json
@@ -512,7 +512,7 @@ jobs:
         with:
           cache: false
           build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: docs
           save-if: ${{ github.ref == 'refs/heads/main' }}
