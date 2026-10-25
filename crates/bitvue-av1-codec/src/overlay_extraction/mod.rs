@@ -30,6 +30,7 @@
 
 mod cache;
 pub(crate) mod cu_parser;
+pub use cu_parser::MAX_FRAME_LUMA_SAMPLES;
 pub(crate) mod cu_spatial_index;
 mod deblocking;
 mod energy_extractor;

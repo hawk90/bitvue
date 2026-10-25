@@ -63,7 +63,7 @@ pub use overlay_extraction::{
     extract_mv_grid, extract_mv_grid_from_parsed, extract_partition_grid,
     extract_partition_grid_from_parsed, extract_prediction_mode_grid,
     extract_prediction_mode_grid_from_parsed, extract_qp_grid, extract_qp_grid_from_parsed,
-    extract_transform_grid, extract_transform_grid_from_parsed,
+    extract_transform_grid, extract_transform_grid_from_parsed, MAX_FRAME_LUMA_SAMPLES,
 };
 pub use sequence::{parse_sequence_header, Av1Profile, ColorConfig, SequenceHeader};
 pub use symbol::{update_cdf, ArithmeticDecoder, CdfContext, PartitionCdf, SymbolDecoder};
