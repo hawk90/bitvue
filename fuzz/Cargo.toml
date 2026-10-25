@@ -12,6 +12,8 @@ libfuzzer-sys = "0.4.13"
 bitvue-av1-codec = { path = "../crates/bitvue-av1-codec" }
 bitvue-engine = { path = "../crates/bitvue-engine" }
 bitvue-decode = { path = "../crates/bitvue-decode" }
+bitvue-protocol = { path = "../crates/bitvue-protocol" }
+serde_json = "1"
 
 # Keep out of the parent workspace
 [workspace]
@@ -68,6 +70,13 @@ bench = false
 [[bin]]
 name = "av1_decode"
 path = "fuzz_targets/av1_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "protocol_frames"
+path = "fuzz_targets/protocol_frames.rs"
 test = false
 doc = false
 bench = false

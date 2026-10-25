@@ -3,7 +3,7 @@
 
 Random bytes rarely get past the sequence header, so frame_analysis, obu_stream, syntax_parser
 and obu_parser start from real IVF frame payloads (no 12-byte frame header); ivf_parser,
-av1_decode and stream_analysis start from whole files. The corpus is gitignored: this regenerates it, nothing from
+av1_decode and stream_analysis start from whole files; protocol_frames starts from a few hand-built frames. The corpus is gitignored: this regenerates it, nothing from
 test_data/ is copied into the repo.
 
 Usage: scripts/fuzz_seed_corpus.py [--max-frames N]    (default 40 frames per clip)
@@ -16,6 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FRAME_TARGETS = ("frame_analysis", "obu_stream", "syntax_parser", "obu_parser")
 FILE_TARGETS = ("ivf_parser", "av1_decode", "stream_analysis")
+PROTOCOL_TARGET = "protocol_frames"
 
 
 def ivf_frames(data: bytes):
@@ -31,6 +32,23 @@ def ivf_frames(data: bytes):
             return
         yield data[pos:pos + size]
         pos += size
+
+
+def protocol_seeds():
+    """Framed control/data/event messages as bitvue-desktop writes them (see bitvue-protocol)."""
+    def frame(kind: int, cid: int, body: bytes) -> bytes:
+        return struct.pack("<BII", kind, cid, len(body)) + body
+
+    hello = b'{"id":1,"method":"hello","params":{"client_version":"0.1.0"}}'
+    cancel = b'{"id":2,"method":"cancel_request","params":{"target_id":1}}'
+    ok = b'{"id":1,"ok":true,"result":{"protocol_version":"0.1.0","capabilities":[]}}'
+    err = b'{"id":3,"ok":false,"error":{"code":"PARSE","message":"bad OBU","offset":4096}}'
+    yield "hello", frame(0, 1, hello)
+    yield "session", frame(0, 1, hello) + frame(0, 2, cancel) + frame(1, 2, bytes(range(64)))
+    yield "responses", frame(0, 1, ok) + frame(0, 3, err) + frame(2, 0, b"{}")
+    yield "empty_payload", frame(1, 9, b"")
+    yield "truncated", frame(0, 1, hello)[:-5]
+    yield "huge_declared_length", struct.pack("<BII", 0, 1, 0xFFFFFFFF)
 
 
 def main() -> int:
@@ -58,6 +76,11 @@ def main() -> int:
             for t in FRAME_TARGETS:
                 (corpus / t / f"{clip.stem}_{i:03d}").write_bytes(payload)
                 written[t] += 1
+    (corpus / PROTOCOL_TARGET).mkdir(parents=True, exist_ok=True)
+    written[PROTOCOL_TARGET] = 0
+    for name, data in protocol_seeds():
+        (corpus / PROTOCOL_TARGET / name).write_bytes(data)
+        written[PROTOCOL_TARGET] += 1
     for t, n in written.items():
         print(f"fuzz/corpus/{t}: {n} seeds")
     return 0

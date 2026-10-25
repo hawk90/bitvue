@@ -217,7 +217,18 @@ dependencies = [
  "bitvue-av1-codec",
  "bitvue-decode",
  "bitvue-engine",
+ "bitvue-protocol",
  "libfuzzer-sys",
+ "serde_json",
+]
+
+[[package]]
+name = "bitvue-protocol"
+version = "0.12.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

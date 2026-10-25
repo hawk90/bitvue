@@ -8,6 +8,7 @@
 //! [`WireErrorCode`] is the sidecar binary's job, not this crate's.
 
 use serde::{Deserialize, Serialize};
+use std::io::{self, Read, Write};
 
 /// Frame header size in bytes: 1 (kind) + 4 (correlation_id, little-endian) + 4 (payload_len, little-endian).
 pub const FRAME_HEADER_LEN: usize = 9;
@@ -63,6 +64,53 @@ impl FrameHeader {
             payload_len,
         })
     }
+}
+
+/// Read one frame. `Ok(None)` is a clean end of stream (no byte of a next header arrived).
+///
+/// The payload buffer grows with the bytes that actually arrive, never with the length the
+/// header claims: a 9-byte header may declare 4 GiB, and the peer is not obliged to send it.
+pub fn read_frame<R: Read>(reader: &mut R) -> io::Result<Option<(FrameHeader, Vec<u8>)>> {
+    let mut header_buf = [0u8; FRAME_HEADER_LEN];
+    match reader.read_exact(&mut header_buf) {
+        Ok(()) => {}
+        Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+        Err(err) => return Err(err),
+    }
+    let header = FrameHeader::decode(&header_buf)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    let mut payload = Vec::new();
+    reader
+        .by_ref()
+        .take(u64::from(header.payload_len))
+        .read_to_end(&mut payload)?;
+    if payload.len() != header.payload_len as usize {
+        return Err(io::ErrorKind::UnexpectedEof.into());
+    }
+    Ok(Some((header, payload)))
+}
+
+/// Write one frame (header, payload, flush).
+pub fn write_frame<W: Write>(
+    writer: &mut W,
+    kind: FrameKind,
+    correlation_id: u32,
+    payload: &[u8],
+) -> io::Result<()> {
+    let payload_len = u32::try_from(payload.len()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "payload does not fit the u32 length field",
+        )
+    })?;
+    let header = FrameHeader {
+        kind,
+        correlation_id,
+        payload_len,
+    };
+    writer.write_all(&header.encode())?;
+    writer.write_all(payload)?;
+    writer.flush()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -192,6 +240,66 @@ mod tests {
             FrameHeader::decode(&buf),
             Err(ProtocolError::UnknownFrameKind(255))
         ));
+    }
+
+    fn frame_bytes(kind: u8, id: u32, declared_len: u32, body: &[u8]) -> Vec<u8> {
+        let mut v = vec![kind];
+        v.extend_from_slice(&id.to_le_bytes());
+        v.extend_from_slice(&declared_len.to_le_bytes());
+        v.extend_from_slice(body);
+        v
+    }
+
+    #[test]
+    fn a_header_declaring_4_gib_does_not_allocate_4_gib() {
+        // Nine bytes, no body: the test allocator aborts above 1 GiB live heap.
+        let mut input = io::Cursor::new(frame_bytes(0, 7, u32::MAX, b""));
+        let err = read_frame(&mut input).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn a_short_body_is_an_error_not_a_frame() {
+        let mut input = io::Cursor::new(frame_bytes(0, 7, 10, b"abc"));
+        let err = read_frame(&mut input).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn a_partial_header_is_a_clean_end_of_stream() {
+        for n in 0..FRAME_HEADER_LEN {
+            let mut input = io::Cursor::new(vec![0u8; n]);
+            assert!(read_frame(&mut input).unwrap().is_none(), "{n} bytes");
+        }
+    }
+
+    #[test]
+    fn an_unknown_kind_is_invalid_data() {
+        let mut input = io::Cursor::new(frame_bytes(9, 1, 0, b""));
+        let err = read_frame(&mut input).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn frames_follow_each_other_and_round_trip() {
+        let mut wire = Vec::new();
+        write_frame(&mut wire, FrameKind::Control, 1, b"{}").unwrap();
+        write_frame(&mut wire, FrameKind::Data, 2, b"").unwrap();
+        write_frame(&mut wire, FrameKind::Event, 0, &[0xff; 70_000]).unwrap();
+        let mut input = io::Cursor::new(wire);
+        let (h, p) = read_frame(&mut input).unwrap().unwrap();
+        assert_eq!(
+            (h.kind, h.correlation_id, p.as_slice()),
+            (FrameKind::Control, 1, &b"{}"[..])
+        );
+        let (h, p) = read_frame(&mut input).unwrap().unwrap();
+        assert_eq!((h.kind, h.correlation_id, p.len()), (FrameKind::Data, 2, 0));
+        let (h, p) = read_frame(&mut input).unwrap().unwrap();
+        assert_eq!(
+            (h.kind, h.correlation_id, p.len()),
+            (FrameKind::Event, 0, 70_000)
+        );
+        assert!(read_frame(&mut input).unwrap().is_none());
     }
 
     #[test]
