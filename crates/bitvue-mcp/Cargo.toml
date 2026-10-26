@@ -13,7 +13,7 @@ bitvue-engine = { path = "../bitvue-engine" }
 bitvue-av1-codec = { path = "../bitvue-av1-codec" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-tokio = { version = "1.53.3", features = ["full"] }
+tokio = { version = "1.54.1", features = ["full"] }
 async-trait = "0.1.92"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
