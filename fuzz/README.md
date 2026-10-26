@@ -31,7 +31,7 @@ a target means adding its `[[bin]]` entry, or that check fails. This does not ru
 
 ## Scheduled run
 
-`.github/workflows/fuzz.yml` fuzzes every target except `av1_decode` for 120 s each, Mondays 03:00 UTC
+`.github/workflows/fuzz.yml` fuzzes every target for 120 s each, Mondays 03:00 UTC
 (or on demand: Actions -> Fuzz -> Run workflow, with a `seconds` input). Each run starts from the corpus
 the previous one cached and from `scripts/fuzz_seed_corpus.py`, minimizes it afterwards (`cmin`) and
 uploads `fuzz/artifacts/<target>` when it fails. It runs with `-s none` for the reasons under "Memory

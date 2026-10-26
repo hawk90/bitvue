@@ -48,11 +48,10 @@ if [[ $status -ne 0 ]]; then
 fi
 
 # The scheduled fuzz workflow lists its targets by hand; a target that is registered but missing from
-# the matrix would never run. av1_decode is left out on purpose (see the workflow's header).
+# the matrix would never run.
 workflow="../.github/workflows/fuzz.yml"
 for file in "${files[@]}"; do
   name="$(basename "$file" .rs)"
-  [[ "$name" == "av1_decode" ]] && continue
   if ! grep -Fxq "          - $name" "$workflow"; then
     echo "fuzz target $name is not in the target matrix of .github/workflows/fuzz.yml" >&2
     status=1
