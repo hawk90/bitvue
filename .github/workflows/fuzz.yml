@@ -10,8 +10,8 @@ name: Fuzz
 #     showed 356 MB instead of 25 MB), which made the 1 GB limit report bugs that were not there. The
 #     sanitizer-free build is also several times faster, and still catches panics, index and overflow
 #     errors (debug assertions stay on). Memory errors in `unsafe` code are what it gives up.
-#   - `av1_decode` is not here: it needs the dav1d library and spends its time in C code, so it
-#     needs its own time budget (open item of #135).
+#   - `av1_decode` fuzzes our wrapper around dav1d (installed by the action below), not dav1d itself,
+#     which upstream covers. It found three wrapper defects (#341), so it runs here with the rest.
 #   - The corpus cache is saved only by a job that succeeded, and is minimized first (`cmin`), so it
 #     cannot grow without bound. The repo's Actions cache is limited to 10 GB.
 
@@ -52,6 +52,7 @@ jobs:
           - ivf_parser
           - leb128
           - protocol_frames
+          - av1_decode
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
