@@ -33,7 +33,7 @@
     "@vscode/codicons": "^0.0.46-24",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-resizable-panels": "^4.14.8"
+    "react-resizable-panels": "^4.15.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
