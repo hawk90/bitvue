@@ -428,12 +428,25 @@ mod tests {
 
     use crate::tile::coding_unit::types::RefFrame;
 
-    /// Collects the `message` of every tracing event emitted on this thread while it is the
-    /// default subscriber.
-    #[derive(Clone, Default)]
-    struct Capture(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+    /// Collects the `message` of every tracing event, per emitting thread. It is installed once as
+    /// the process-wide subscriber: a scoped one (`with_default`) races with other tests' callsite
+    /// registrations over tracing's global interest cache and sometimes sees nothing (#336).
+    #[derive(Default)]
+    struct Capture(std::sync::Mutex<std::collections::HashMap<std::thread::ThreadId, Vec<String>>>);
 
-    impl tracing::Subscriber for Capture {
+    fn capture() -> &'static Capture {
+        static CAPTURE: std::sync::OnceLock<&'static Capture> = std::sync::OnceLock::new();
+        CAPTURE.get_or_init(|| {
+            let capture: &'static Capture = Box::leak(Box::default());
+            tracing::subscriber::set_global_default(CaptureRef(capture))
+                .expect("no other test installs a global subscriber");
+            capture
+        })
+    }
+
+    struct CaptureRef(&'static Capture);
+
+    impl tracing::Subscriber for CaptureRef {
         fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
             true
         }
@@ -453,7 +466,10 @@ mod tests {
             }
             let mut m = Message(String::new());
             event.record(&mut m);
-            self.0.lock().unwrap().push(m.0);
+            let mut logs = self.0 .0.lock().unwrap();
+            logs.entry(std::thread::current().id())
+                .or_default()
+                .push(m.0);
         }
         fn enter(&self, _: &tracing::span::Id) {}
         fn exit(&self, _: &tracing::span::Id) {}
@@ -480,15 +496,16 @@ mod tests {
     };
 
     fn read(data: &[u8], skip_mode: bool) -> (CodingUnit, Vec<String>, u32) {
-        let capture = Capture::default();
+        let capture = capture();
+        let me = std::thread::current().id();
         let mut d = SymbolDecoder::new(data).unwrap();
         let mut ctx = TileContext::new(32, 32);
         let mut cu = compound_cu(skip_mode);
         let frame = FrameCodingParams::for_tests();
-        tracing::subscriber::with_default(capture.clone(), || {
-            read_compound_mode_info(&mut d, &mut ctx, RECT, MI, &frame, &mut cu).unwrap();
-        });
-        let logs = capture.0.lock().unwrap().clone();
+        // Only the events of the read itself count, not those of building the decoder above.
+        capture.0.lock().unwrap().remove(&me);
+        read_compound_mode_info(&mut d, &mut ctx, RECT, MI, &frame, &mut cu).unwrap();
+        let logs = capture.0.lock().unwrap().remove(&me).unwrap_or_default();
         (cu, logs, d.read_bools_n(24).unwrap())
     }
 
