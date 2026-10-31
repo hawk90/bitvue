@@ -262,7 +262,6 @@ impl ParsedFrame {
         // Build lightweight OBU references
         let mut frame = Self::scaffold(Arc::clone(&obu_data));
         frame.obus.reserve(obus_vec.len());
-        let mut offset = 0;
         // The tile bytes of the frame parsed last; moved into `frame` once the loop is done.
         let mut tile_data = Vec::new();
         // Retained across the loop so the frame-header OBU (which comes after the sequence
@@ -270,13 +269,17 @@ impl ParsedFrame {
         let mut seq_header: Option<crate::SequenceHeader> = None;
 
         for obu in &obus_vec {
-            let payload_start = offset + obu.header.header_size;
-            let payload_end = payload_start + obu.payload.len();
+            // The payload ends where the OBU ends; header_size alone left out the obu_size field,
+            // so the ranges drifted off the payloads by its length, accumulating (#232).
+            let payload_end = (obu.offset as usize)
+                .saturating_add(obu.total_size as usize)
+                .min(obu_data.len());
+            let payload_start = payload_end.saturating_sub(obu.payload.len());
 
             frame.obus.push(ObuRef {
                 obu_type: obu.header.obu_type,
                 payload_start,
-                payload_end: payload_end.min(obu_data.len()),
+                payload_end,
             });
 
             // Extract information based on OBU type
@@ -304,8 +307,6 @@ impl ParsedFrame {
                 ObuType::TileGroup => frame.absorb_tile_group_obu(&obu.payload, &mut tile_data),
                 _ => {}
             }
-
-            offset = payload_end;
         }
 
         frame.finish_superblock_grid();
