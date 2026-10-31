@@ -52,8 +52,8 @@ pub struct ParsedFrame {
     /// `reduced_tx_set` (spec 5.9.2) -- see `FrameHeader::reduced_tx_set`'s doc. Same
     /// sourcing/fallback story as `reference_select`.
     pub reduced_tx_set: bool,
-    /// `CodedLossless` (spec 5.9.2/7.12.3): `base_q_idx == 0 && y_dc_delta_q == 0 &&
-    /// uv_dc_delta_q == 0`. Doesn't factor in segmentation's per-segment `SEG_LVL_ALT_Q` override
+    /// `CodedLossless` (spec 5.9.2/7.12.3): `base_q_idx == 0` and all five delta-Q terms zero
+    /// (`DeltaQYDc`, `DeltaQUDc`, `DeltaQUAc`, `DeltaQVDc`, `DeltaQVAc`). Doesn't factor in segmentation's per-segment `SEG_LVL_ALT_Q` override
     /// (real spec's per-segment `LosslessArray`) even though `segmentation` (below) is now real --
     /// frame-wide only, matches
     /// `frame_header_full.rs`'s own `coded_lossless` derivation (see that module's doc). `false`

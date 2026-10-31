@@ -780,6 +780,44 @@ mod tests {
     }
 
     #[test]
+    fn every_one_of_the_five_delta_q_terms_breaks_lossless() {
+        // #245: only the Y and U DC terms used to be looked at
+        let (seq, payload) = first_frame();
+        let mut header =
+            parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
+        header.base_q_idx = Some(0);
+        let lossless = |h: &crate::frame_header::FrameHeader| {
+            let mut frame = ParsedFrame::scaffold(Arc::from([0u8]));
+            frame.apply_full_header(h, &seq, &[0; 8]);
+            frame.coded_lossless
+        };
+        header.y_dc_delta_q = Some(0);
+        header.uv_dc_delta_q = Some(0);
+        header.uv_ac_delta_q = Some(0);
+        header.v_dc_delta_q = Some(0);
+        header.v_ac_delta_q = Some(0);
+        assert!(lossless(&header));
+        type Set = fn(&mut crate::frame_header::FrameHeader, Option<i8>);
+        let setters: [(&str, Set); 5] = [
+            ("y_dc", |h, v| h.y_dc_delta_q = v),
+            ("u_dc", |h, v| h.uv_dc_delta_q = v),
+            ("u_ac", |h, v| h.uv_ac_delta_q = v),
+            ("v_dc", |h, v| h.v_dc_delta_q = v),
+            ("v_ac", |h, v| h.v_ac_delta_q = v),
+        ];
+        for (name, set) in setters {
+            for nonzero in [1, -1] {
+                let mut h = header.clone();
+                set(&mut h, Some(nonzero));
+                assert!(!lossless(&h), "{name} = {nonzero}");
+            }
+            let mut h = header.clone();
+            set(&mut h, None);
+            assert!(lossless(&h), "{name} absent counts as 0");
+        }
+    }
+
+    #[test]
     fn the_scaffold_holds_the_spec_fallbacks_for_values_no_header_supplied() {
         let frame = ParsedFrame::parse(&[]).unwrap();
         assert!(frame.disable_frame_end_update_cdf);

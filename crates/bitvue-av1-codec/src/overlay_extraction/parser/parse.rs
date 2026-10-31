@@ -174,9 +174,19 @@ impl ParsedFrame {
         self.delta_lf_present = full_hdr.delta_lf_present;
         self.delta_lf_multi = full_hdr.delta_lf_multi;
         self.reduced_tx_set = full_hdr.reduced_tx_set;
+        // Spec CodedLossless: base_q_idx and all five delta-Q terms are zero (an absent term is 0).
+        // Checking only the Y/U DC terms called a frame with a non-zero DeltaQUAc lossless while
+        // the header parser, which reads the cdef/loop-filter bits, did not (#245).
         self.coded_lossless = full_hdr.base_q_idx == Some(0)
-            && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
-            && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
+            && [
+                full_hdr.y_dc_delta_q,
+                full_hdr.uv_dc_delta_q,
+                full_hdr.uv_ac_delta_q,
+                full_hdr.v_dc_delta_q,
+                full_hdr.v_ac_delta_q,
+            ]
+            .iter()
+            .all(|delta| delta.unwrap_or(0) == 0);
         self.txfm_mode = full_hdr.txfm_mode;
         self.use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
         self.primary_ref_frame = full_hdr.primary_ref_frame;
