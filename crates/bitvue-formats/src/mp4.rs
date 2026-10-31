@@ -73,6 +73,8 @@ pub struct BoxHeader {
     pub size: u64,
     /// Offset where box data starts (after header)
     pub data_offset: u64,
+    /// Length of the header as written: 8, or 16 when the 64-bit `largesize` form was used
+    pub header_size: u64,
 }
 
 impl BoxHeader {
@@ -109,6 +111,7 @@ impl BoxHeader {
             box_type,
             size,
             data_offset,
+            header_size,
         })
     }
 
@@ -127,16 +130,7 @@ impl BoxHeader {
 
     /// Get data size (excluding header)
     pub fn data_size(&self) -> u64 {
-        self.size.saturating_sub(self.header_size())
-    }
-
-    /// Get header size
-    fn header_size(&self) -> u64 {
-        if self.size > u32::MAX as u64 {
-            16 // size(4) + type(4) + largesize(8)
-        } else {
-            8 // size(4) + type(4)
-        }
+        self.size.saturating_sub(self.header_size)
     }
 }
 
@@ -406,13 +400,20 @@ fn parse_ftyp(
     header: &BoxHeader,
     info: &mut Mp4Info,
 ) -> Result<(), BitvueError> {
+    // major_brand (4) + minor_version (4) are mandatory
+    if header.data_size() < 8 {
+        return Err(BitvueError::InvalidData(format!(
+            "ftyp box has {} data bytes, needs at least 8",
+            header.data_size()
+        )));
+    }
     let brand = read_box_type(cursor)?;
     info.brand = Some(String::from_utf8_lossy(&brand).to_string());
 
     let _minor_version = read_u32(cursor)?;
 
     // Compatible brands
-    let remaining = header.data_size() - 8;
+    let remaining = header.data_size() - 8; // >= 0, checked above
     for _ in 0..(remaining / 4) {
         let compat = read_box_type(cursor)?;
         info.compatible_brands
@@ -1340,12 +1341,14 @@ mod box_tests {
             box_type: [b'a', 0xA9, b'c', b'd'],
             size: 8,
             data_offset: 8,
+            header_size: 8,
         };
         assert_eq!(h.box_type_str(), "a\u{FFFD}cd");
         let h = BoxHeader {
             box_type: *b"moov",
             size: 8,
             data_offset: 8,
+            header_size: 8,
         };
         assert_eq!(h.box_type_str(), "moov");
     }
@@ -1990,7 +1993,7 @@ mod box_tests {
         assert!(e.contains("overlap"), "{e}");
     }
 
-    // ---- known bugs: fail until fixed (#264) ----
+    // ---- box header forms and short ftyp (#264) ----
 
     #[test]
     fn chunk_offsets_out_of_file_order_are_not_an_overlap() {
@@ -2006,7 +2009,27 @@ mod box_tests {
     }
 
     #[test]
-    #[ignore = "#264: header_size is guessed from the size"]
+    fn header_size_is_what_was_written_not_guessed_from_the_size() {
+        let parse = |bytes: &[u8]| BoxHeader::parse(&mut Cursor::new(bytes)).unwrap();
+        // 8-byte form
+        let h = parse(&bx(b"free", &[1, 2, 3]));
+        assert_eq!((h.header_size, h.size, h.data_size()), (8, 11, 3));
+        // 16-byte form with a size that would fit the 8-byte one
+        let mut large = be(&[1]);
+        large.extend_from_slice(b"free");
+        large.extend(be64(&[19]));
+        large.extend_from_slice(&[1, 2, 3]);
+        let h = parse(&large);
+        assert_eq!((h.header_size, h.data_offset, h.data_size()), (16, 16, 3));
+        // size 0: to the end of the file, 8-byte header
+        let mut to_end = be(&[0]);
+        to_end.extend_from_slice(b"mdat");
+        to_end.extend_from_slice(&[7; 5]);
+        let h = parse(&to_end);
+        assert_eq!((h.header_size, h.size, h.data_size()), (8, 13, 5));
+    }
+
+    #[test]
     fn large_size_box_below_4gib_is_skipped_correctly() {
         let mut f = be(&[1]);
         f.extend_from_slice(b"free");
@@ -2017,11 +2040,11 @@ mod box_tests {
     }
 
     #[test]
-    #[ignore = "#264: data_size() - 8 underflows"]
     fn short_ftyp_followed_by_more_boxes_is_an_error_not_a_panic() {
         let mut f = be(&[12]);
         f.extend_from_slice(b"ftypisom");
         f.extend(bx(b"free", &[]));
-        assert!(parse_mp4(&f).is_ok() || parse_mp4(&f).is_err());
+        let e = parse_mp4(&f).unwrap_err().to_string();
+        assert!(e.contains("ftyp"), "{e}");
     }
 }
