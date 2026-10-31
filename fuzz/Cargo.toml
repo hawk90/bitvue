@@ -80,3 +80,10 @@ path = "fuzz_targets/protocol_frames.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "tile_group_split"
+path = "fuzz_targets/tile_group_split.rs"
+test = false
+doc = false
+bench = false
