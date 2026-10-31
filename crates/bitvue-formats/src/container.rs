@@ -82,7 +82,11 @@ impl<const N: usize> MagicBytes<N> {
     /// Check if this magic bytes matches at a specific offset in buffer
     #[inline]
     pub fn matches_at(&self, buffer: &[u8], offset: usize) -> bool {
-        buffer.len() >= offset + N && buffer[offset..offset + N] == self.0
+        // checked_add: a huge offset must not overflow (and wrap to a small, matching range)
+        offset
+            .checked_add(N)
+            .and_then(|end| buffer.get(offset..end))
+            .is_some_and(|window| window == self.0)
     }
 }
 
@@ -908,8 +912,14 @@ mod detection_tests {
     }
 
     #[test]
-    #[ignore = "#267: offset + N overflows for huge offsets"]
     fn matches_at_with_a_huge_offset_is_false_not_a_panic() {
-        assert!(!MagicBytes::new(*b"ab").matches_at(b"abab", usize::MAX));
+        let m = MagicBytes::new(*b"ab");
+        // offsets whose offset + N wraps to a small number (the release-build failure mode)
+        for offset in [usize::MAX, usize::MAX - 1, usize::MAX - 2] {
+            assert!(!m.matches_at(b"abab", offset), "{offset}");
+        }
+        // the last valid position still matches; one past it does not
+        assert!(m.matches_at(b"xxab", 2));
+        assert!(!m.matches_at(b"xxab", 3));
     }
 }
