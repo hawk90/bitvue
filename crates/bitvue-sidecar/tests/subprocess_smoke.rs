@@ -173,4 +173,76 @@ fn all_in_flight_responses_arrive_even_when_stdin_closes_immediately_after() {
     assert!(status.success(), "sidecar exited with {status:?}");
 }
 
+/// #345 end to end: with the deadline forced to 1 ms, a decode-heavy request (`get_thumbnails` on
+/// the real AV1 fixture takes far longer) is answered with a deadline error by the real process,
+/// the sidecar keeps serving afterwards, and it still exits cleanly on stdin EOF even though the
+/// abandoned worker may still be running.
+#[test]
+fn request_past_its_deadline_gets_an_error_and_the_sidecar_stays_alive() {
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test_data/av1_test.ivf");
+    let bin = env!("CARGO_BIN_EXE_bitvue-sidecar");
+    let mut child = Command::new(bin)
+        .env("BITVUE_REQUEST_DEADLINE_MS", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn bitvue-sidecar binary");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+
+    // `hello` finishes inside 1 ms only by luck, so it is not asserted on; just consume it.
+    write_request(
+        &mut stdin,
+        1,
+        "hello",
+        serde_json::json!({"client_version": "t"}),
+    );
+    let _ = read_frame_blocking(&mut stdout);
+
+    write_request(
+        &mut stdin,
+        2,
+        "open_stream",
+        serde_json::json!({"stream": "A", "path": fixture}),
+    );
+    let _ = read_frame_blocking(&mut stdout);
+    write_request(
+        &mut stdin,
+        3,
+        "index_stream",
+        serde_json::json!({"stream": "A"}),
+    );
+    let _ = read_frame_blocking(&mut stdout);
+
+    write_request(
+        &mut stdin,
+        4,
+        "get_thumbnails",
+        serde_json::json!({"stream": "A", "frame_indices": (0..50).collect::<Vec<u32>>()}),
+    );
+    let (_, body) = read_frame_blocking(&mut stdout);
+    let response: Response = serde_json::from_slice(&body).unwrap();
+    assert_eq!(response.id, 4);
+    assert!(!response.ok, "expected a deadline error, got {response:?}");
+    let message = response.error.unwrap().message;
+    assert!(message.contains("deadline"), "unexpected error: {message}");
+
+    // Still alive and answering.
+    write_request(
+        &mut stdin,
+        5,
+        "cancel_request",
+        serde_json::json!({"target_id": 999}),
+    );
+    let (_, body) = read_frame_blocking(&mut stdout);
+    let response: Response = serde_json::from_slice(&body).unwrap();
+    assert_eq!(response.id, 5);
+    assert!(response.ok, "{response:?}");
+
+    drop(stdin);
+    let status = child.wait().expect("sidecar process failed to exit");
+    assert!(status.success(), "sidecar exited with {status:?}");
+}
+
 bitvue_test_alloc::install!();
