@@ -93,3 +93,5 @@ fn gop_structure_counts_one_key_frame_and_the_rest_inter() {
     assert!(qps.iter().all(|&q| q <= 255));
     assert_eq!(qps[0], 42, "key frame base_q_idx as parsed today");
 }
+
+bitvue_test_alloc::install!();
