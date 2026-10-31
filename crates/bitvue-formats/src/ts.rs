@@ -67,9 +67,9 @@ struct PesPacket {
 /// A video sample extracted from a TS stream
 #[derive(Debug, Clone)]
 pub struct VideoSample {
-    /// Byte offset in the original data where the NAL unit starts
+    /// Byte offset of this sample in the concatenation of all samples of the stream
     pub offset: usize,
-    /// Size of the NAL unit in bytes
+    /// Size of the sample in bytes
     pub size: usize,
     /// Presentation timestamp (90 kHz clock)
     pub pts: Option<u64>,
@@ -77,7 +77,8 @@ pub struct VideoSample {
     pub dts: Option<u64>,
     /// Whether this is a keyframe (IDR for H.264, IRAP for HEVC)
     pub key_frame: bool,
-    /// Raw NAL unit bytes (without Annex B start codes)
+    /// Sample bytes: the whole access unit in Annex B form (4-byte start codes) when it comes from
+    /// `extract_*_video_samples`
     pub data: Vec<u8>,
 }
 
@@ -510,10 +511,27 @@ fn extract_video_samples_for_pid<F>(
 where
     F: Fn(&[u8]) -> bool,
 {
+    Ok(extract_nals_for_pid(data, video_pid, is_keyframe_fn)?
+        .into_iter()
+        .map(|(_, nal)| nal)
+        .collect())
+}
+
+/// Like `extract_video_samples_for_pid`, with each NAL tagged by the index of the PES packet it
+/// came from (what `group_access_units` needs).
+fn extract_nals_for_pid<F>(
+    data: &[u8],
+    video_pid: u16,
+    is_keyframe_fn: F,
+) -> Result<Vec<(usize, VideoSample)>>
+where
+    F: Fn(&[u8]) -> bool,
+{
     // (payload bytes, PTS, DTS)
     type PesBuffer = (Vec<u8>, Option<u64>, Option<u64>);
     let mut pes_buffers: HashMap<u16, PesBuffer> = HashMap::new();
-    let mut samples: Vec<VideoSample> = Vec::new();
+    let mut samples: Vec<(usize, VideoSample)> = Vec::new();
+    let mut pes_index: usize = 0;
     let mut byte_offset: usize = 0;
 
     let mut offset = 0;
@@ -532,16 +550,20 @@ where
                         }
                         let key_frame = is_keyframe_fn(&nal);
                         let size = nal.len();
-                        samples.push(VideoSample {
-                            offset: byte_offset,
-                            size,
-                            pts,
-                            dts,
-                            key_frame,
-                            data: nal,
-                        });
+                        samples.push((
+                            pes_index,
+                            VideoSample {
+                                offset: byte_offset,
+                                size,
+                                pts,
+                                dts,
+                                key_frame,
+                                data: nal,
+                            },
+                        ));
                         byte_offset += size;
                     }
+                    pes_index += 1;
                 }
 
                 // Start a new PES packet: parse its header to extract PTS/DTS
@@ -565,19 +587,69 @@ where
             }
             let key_frame = is_keyframe_fn(&nal);
             let size = nal.len();
-            samples.push(VideoSample {
-                offset: byte_offset,
-                size,
-                pts,
-                dts,
-                key_frame,
-                data: nal,
-            });
+            samples.push((
+                pes_index,
+                VideoSample {
+                    offset: byte_offset,
+                    size,
+                    pts,
+                    dts,
+                    key_frame,
+                    data: nal,
+                },
+            ));
             byte_offset += size;
         }
     }
 
     Ok(samples)
+}
+
+/// Join the NAL units of each access unit (one coded picture) into one sample.
+///
+/// A new access unit starts at every PES packet and, inside one PES packet, at an access unit
+/// delimiter (`is_aud`). The sample carries that unit's NALs in Annex B form (a 4-byte start code
+/// before each), the PES packet's PTS/DTS, and is a key frame if any of its NALs is. `offset` is the
+/// position in the concatenation of all samples.
+fn group_access_units(
+    nals: Vec<(usize, VideoSample)>,
+    is_aud: impl Fn(&[u8]) -> bool,
+) -> Vec<VideoSample> {
+    const START_CODE: [u8; 4] = [0, 0, 0, 1];
+    let mut units: Vec<VideoSample> = Vec::new();
+    let mut current_pes = None;
+
+    for (pes, nal) in nals {
+        let starts_unit = current_pes != Some(pes) || (is_aud(&nal.data) && !units.is_empty());
+        if starts_unit {
+            current_pes = Some(pes);
+            let offset = units.last().map_or(0, |u| u.offset + u.size);
+            units.push(VideoSample {
+                offset,
+                size: 0,
+                pts: nal.pts,
+                dts: nal.dts,
+                key_frame: false,
+                data: Vec::new(),
+            });
+        }
+        let unit = units.last_mut().expect("a unit was started above");
+        unit.key_frame |= nal.key_frame;
+        unit.data.extend_from_slice(&START_CODE);
+        unit.data.extend_from_slice(&nal.data);
+        unit.size = unit.data.len();
+    }
+    units
+}
+
+/// H.264 access unit delimiter (nal_unit_type 9).
+fn is_avc_aud(nal: &[u8]) -> bool {
+    nal.first().is_some_and(|b| b & 0x1F == 9)
+}
+
+/// H.265 access unit delimiter (nal_unit_type 35).
+fn is_hevc_aud(nal: &[u8]) -> bool {
+    nal.first().is_some_and(|b| (b >> 1) & 0x3F == 35)
 }
 
 /// Find the video PID in PMT streams matching a specific stream type.
@@ -641,10 +713,11 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>> {
     Ok(samples.into_iter().map(|s| s.data).collect())
 }
 
-/// Extract H.264/AVC video samples as structured VideoSample records.
+/// Extract H.264/AVC video samples: one `VideoSample` per access unit (coded picture).
 ///
-/// Like `extract_avc_samples` but returns full `VideoSample` structs with
-/// offset, size, PTS, DTS, and keyframe flag instead of just raw bytes.
+/// Unlike `extract_avc_samples`, which lists NAL units, each sample holds all NAL units of one
+/// picture (Annex B, 4-byte start codes) with its PTS/DTS and key-frame flag, so
+/// `result.len()` is the frame count.
 pub fn extract_avc_video_samples(data: &[u8]) -> Result<Vec<VideoSample>> {
     let (_pat_entries, pmt_streams) = extract_pat_pmt(data)?;
 
@@ -653,13 +726,15 @@ pub fn extract_avc_video_samples(data: &[u8]) -> Result<Vec<VideoSample>> {
         None => return Ok(Vec::new()),
     };
 
-    extract_video_samples_for_pid(data, video_pid, is_avc_keyframe)
+    let nals = extract_nals_for_pid(data, video_pid, is_avc_keyframe)?;
+    Ok(group_access_units(nals, is_avc_aud))
 }
 
-/// Extract H.265/HEVC video samples as structured VideoSample records.
+/// Extract H.265/HEVC video samples: one `VideoSample` per access unit (coded picture).
 ///
-/// Like `extract_hevc_samples` but returns full `VideoSample` structs with
-/// offset, size, PTS, DTS, and keyframe flag instead of just raw bytes.
+/// Unlike `extract_hevc_samples`, which lists NAL units, each sample holds all NAL units of one
+/// picture (Annex B, 4-byte start codes) with its PTS/DTS and key-frame flag, so
+/// `result.len()` is the frame count.
 pub fn extract_hevc_video_samples(data: &[u8]) -> Result<Vec<VideoSample>> {
     let (_pat_entries, pmt_streams) = extract_pat_pmt(data)?;
 
@@ -668,7 +743,8 @@ pub fn extract_hevc_video_samples(data: &[u8]) -> Result<Vec<VideoSample>> {
         None => return Ok(Vec::new()),
     };
 
-    extract_video_samples_for_pid(data, video_pid, is_hevc_keyframe)
+    let nals = extract_nals_for_pid(data, video_pid, is_hevc_keyframe)?;
+    Ok(group_access_units(nals, is_hevc_aud))
 }
 
 /// Extract PAT and PMT entries from TS data
@@ -1683,36 +1759,124 @@ mod stream_tests {
     }
 
     #[test]
-    fn avc_extractors_return_nal_units_with_timing() {
+    fn avc_extractors_list_nal_units_and_group_them_into_access_units() {
         let d = full_stream(
             STREAM_TYPE_AVC,
             &annex_b(&[(&[0, 0, 0, 1], &IDR), (&[0, 0, 1], &NON_IDR)]),
         );
+        // the plain extractor lists NAL units
         assert_eq!(
             extract_avc_samples(&d).unwrap(),
             vec![IDR.to_vec(), NON_IDR.to_vec()]
         );
+        // the video-sample extractor returns one sample per picture: here one PES, no delimiter
         let v = extract_avc_video_samples(&d).unwrap();
-        assert_eq!(v.len(), 2);
-        assert!(v[0].key_frame && !v[1].key_frame);
+        assert_eq!(v.len(), 1);
+        let mut expected = vec![0, 0, 0, 1];
+        expected.extend(IDR);
+        expected.extend([0, 0, 0, 1]);
+        expected.extend(NON_IDR);
+        assert_eq!(v[0].data, expected);
+        assert_eq!((v[0].offset, v[0].size), (0, expected.len()));
+        assert!(v[0].key_frame);
         assert_eq!((v[0].pts, v[0].dts), (Some(4500), Some(3000)));
         // a stream of another type yields nothing rather than an error
         assert!(extract_hevc_samples(&d).unwrap().is_empty());
         assert!(extract_hevc_video_samples(&d).unwrap().is_empty());
     }
 
+    /// Several pictures: one PES each, with the AUD, SPS/PPS and slices a real muxer writes.
+    fn avc_pictures_stream() -> Vec<u8> {
+        const AUD: [u8; 2] = [0x09, 0xF0];
+        const SPS: [u8; 2] = [0x67, 0x42];
+        const PPS: [u8; 2] = [0x68, 0xCE];
+        let mut d = psi_packets(&[(STREAM_TYPE_AVC, VIDEO_PID, &[])]);
+        for (i, nals) in [
+            vec![&AUD[..], &SPS[..], &PPS[..], &IDR[..]],
+            vec![&AUD[..], &NON_IDR[..]],
+            vec![&AUD[..], &NON_IDR[..]],
+        ]
+        .iter()
+        .enumerate()
+        {
+            let es: Vec<u8> = nals
+                .iter()
+                .flat_map(|n| [0u8, 0, 0, 1].into_iter().chain(n.iter().copied()))
+                .collect();
+            d.extend(pes_packets(
+                VIDEO_PID,
+                &pes(0xE0, Some(9000 + 3000 * i as u64), None, &es),
+                184,
+            ));
+        }
+        d
+    }
+
     #[test]
-    fn hevc_extractors_return_nal_units_with_keyframe_flags() {
+    fn video_samples_are_one_per_picture_with_that_pictures_timing_and_offsets() {
+        let d = avc_pictures_stream();
+        // 8 NAL units (AUD+SPS+PPS+IDR, AUD+slice, AUD+slice), 3 pictures
+        assert_eq!(extract_avc_samples(&d).unwrap().len(), 8);
+        let v = extract_avc_video_samples(&d).unwrap();
+        assert_eq!(v.len(), 3);
+        assert_eq!(
+            v.iter().map(|s| s.key_frame).collect::<Vec<_>>(),
+            vec![true, false, false]
+        );
+        assert_eq!(
+            v.iter().map(|s| s.pts).collect::<Vec<_>>(),
+            vec![Some(9000), Some(12000), Some(15000)]
+        );
+        // contiguous, and the samples concatenate back to every NAL unit
+        let mut at = 0;
+        for sample in &v {
+            assert_eq!((sample.offset, sample.size), (at, sample.data.len()));
+            at += sample.size;
+        }
+        let all: Vec<u8> = v.iter().flat_map(|s| s.data.iter().copied()).collect();
+        let nals = split_annex_b_nal_units(&all);
+        assert_eq!(nals, extract_avc_samples(&d).unwrap());
+    }
+
+    #[test]
+    fn a_delimiter_inside_one_pes_starts_another_picture() {
+        const AUD: [u8; 2] = [0x09, 0xF0];
+        let es = annex_b(&[
+            (&[0, 0, 0, 1], &AUD),
+            (&[0, 0, 0, 1], &IDR),
+            (&[0, 0, 0, 1], &AUD),
+            (&[0, 0, 0, 1], &NON_IDR),
+        ]);
+        let v = extract_avc_video_samples(&full_stream(STREAM_TYPE_AVC, &es)).unwrap();
+        assert_eq!(v.len(), 2);
+        assert_eq!(
+            v.iter().map(|s| s.key_frame).collect::<Vec<_>>(),
+            vec![true, false]
+        );
+        // a delimiter that is the very first NAL does not open an empty picture
+        let v = extract_avc_video_samples(&full_stream(
+            STREAM_TYPE_AVC,
+            &annex_b(&[(&[0, 0, 0, 1], &AUD), (&[0, 0, 0, 1], &NON_IDR)]),
+        ))
+        .unwrap();
+        assert_eq!(v.len(), 1);
+    }
+
+    #[test]
+    fn hevc_extractors_list_nal_units_and_group_them_into_access_units() {
+        let aud = [0x46u8, 0x01, 0x50]; // AUD_NUT (35)
         let idr = [0x26u8, 0x01, 0xAF]; // IDR_W_RADL
         let trail = [0x02u8, 0x01, 0xBF]; // TRAIL_R
         let d = full_stream(
             STREAM_TYPE_HEVC,
-            &annex_b(&[(&[0, 0, 0, 1], &idr), (&[0, 0, 1], &trail)]),
+            &annex_b(&[
+                (&[0, 0, 0, 1], &aud),
+                (&[0, 0, 0, 1], &idr),
+                (&[0, 0, 1], &aud),
+                (&[0, 0, 1], &trail),
+            ]),
         );
-        assert_eq!(
-            extract_hevc_samples(&d).unwrap(),
-            vec![idr.to_vec(), trail.to_vec()]
-        );
+        assert_eq!(extract_hevc_samples(&d).unwrap().len(), 4);
         let v = extract_hevc_video_samples(&d).unwrap();
         assert_eq!(
             v.iter().map(|s| s.key_frame).collect::<Vec<_>>(),
