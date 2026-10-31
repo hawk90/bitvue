@@ -147,6 +147,8 @@ pub struct Mp4Info {
     pub timescale: u32,
     /// Total number of samples
     pub sample_count: usize,
+    /// `track_ID` (`tkhd`) of the track these samples come from
+    pub track_id: Option<u32>,
     /// Handler type of the track these samples come from (`hdlr`, e.g. "vide", "soun")
     pub handler_type: Option<String>,
     /// Chunk offsets (`stco`/`co64`)
@@ -342,6 +344,7 @@ pub fn parse_mp4(data: &[u8]) -> Result<Mp4Info, BitvueError> {
 
     let mut cursor = Cursor::new(data);
     let mut info = Mp4Info::default();
+    let mut trex: Vec<Trex> = Vec::new();
 
     // Parse top-level boxes
     while cursor.position() < data.len() as u64 {
@@ -377,7 +380,11 @@ pub fn parse_mp4(data: &[u8]) -> Result<Mp4Info, BitvueError> {
             }
             b"moov" => {
                 // Movie box - contains metadata (start at depth 0)
-                parse_moov(&mut cursor, &header, &mut info, data, 0)?;
+                parse_moov(&mut cursor, &header, &mut info, &mut trex, data, 0)?;
+            }
+            b"moof" => {
+                // Movie fragment: more samples for the video track (fragmented MP4, DASH/CMAF)
+                parse_moof(&mut cursor, &header, &mut info, &trex)?;
             }
             b"mdat" => {
                 // Media data box - skip for now
@@ -428,6 +435,7 @@ fn parse_moov(
     cursor: &mut Cursor<&[u8]>,
     header: &BoxHeader,
     info: &mut Mp4Info,
+    trex: &mut Vec<Trex>,
     data: &[u8],
     depth: u8,
 ) -> Result<(), BitvueError> {
@@ -462,6 +470,10 @@ fn parse_moov(
                 let mut track = Mp4Info::default();
                 parse_trak(cursor, &child_header, &mut track, data, child_depth)?;
                 tracks.push(track);
+            }
+            b"mvex" => {
+                // Movie extends: per-track defaults for the fragments that follow
+                parse_mvex(cursor, &child_header, trex)?;
             }
             _ => {
                 // Skip other boxes
@@ -525,6 +537,11 @@ fn parse_trak(
         if &child_header.box_type == b"mdia" {
             // Media box
             parse_mdia(cursor, &child_header, info, data, child_depth)?;
+        } else if &child_header.box_type == b"tkhd" {
+            // Track header: version/flags (4), then creation + modification time (8 or 16)
+            let version = read_u8(cursor)?;
+            cursor.seek(SeekFrom::Current(if version == 1 { 19 } else { 11 }))?;
+            info.track_id = Some(read_u32(cursor)?);
         }
 
         cursor.seek(SeekFrom::Start(child_end))?;
@@ -1069,6 +1086,277 @@ fn parse_stss(
         info.key_frames.push(sample_number);
     }
 
+    Ok(())
+}
+
+/// `trex` defaults of one track (`mvex`), used by fragments that do not carry their own
+#[derive(Debug, Clone, Copy)]
+struct Trex {
+    track_id: u32,
+    duration: u32,
+    size: u32,
+    flags: u32,
+}
+
+/// Parse mvex (Movie Extends): collect the `trex` boxes
+fn parse_mvex(
+    cursor: &mut Cursor<&[u8]>,
+    header: &BoxHeader,
+    trex: &mut Vec<Trex>,
+) -> Result<(), BitvueError> {
+    let box_end = header
+        .data_offset
+        .checked_add(header.data_size())
+        .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
+    while cursor.position() < box_end {
+        let child = BoxHeader::parse(cursor)?;
+        let child_end = child
+            .data_offset
+            .checked_add(child.data_size())
+            .ok_or_else(|| {
+                BitvueError::InvalidData("MP4 child box end offset overflow".to_string())
+            })?;
+        if &child.box_type == b"trex" {
+            cursor.seek(SeekFrom::Current(4))?; // version + flags
+            let track_id = read_u32(cursor)?;
+            let _sample_description_index = read_u32(cursor)?;
+            trex.push(Trex {
+                track_id,
+                duration: read_u32(cursor)?,
+                size: read_u32(cursor)?,
+                flags: read_u32(cursor)?,
+            });
+        }
+        cursor.seek(SeekFrom::Start(child_end))?;
+    }
+    Ok(())
+}
+
+/// `tfhd` fields a following `trun` needs
+struct Tfhd {
+    track_id: u32,
+    base_data_offset: Option<u64>,
+    duration: Option<u32>,
+    size: Option<u32>,
+    flags: Option<u32>,
+}
+
+/// Sample flags: bit 16 is `sample_is_non_sync_sample`
+const SAMPLE_IS_NON_SYNC: u32 = 0x0001_0000;
+
+/// Parse moof (Movie Fragment): append the samples of the chosen track to `info`
+fn parse_moof(
+    cursor: &mut Cursor<&[u8]>,
+    header: &BoxHeader,
+    info: &mut Mp4Info,
+    trex: &[Trex],
+) -> Result<(), BitvueError> {
+    let moof_start = header.data_offset - header.header_size;
+    let box_end = header
+        .data_offset
+        .checked_add(header.data_size())
+        .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
+    while cursor.position() < box_end {
+        let child = BoxHeader::parse(cursor)?;
+        let child_end = child
+            .data_offset
+            .checked_add(child.data_size())
+            .ok_or_else(|| {
+                BitvueError::InvalidData("MP4 child box end offset overflow".to_string())
+            })?;
+        if &child.box_type == b"traf" {
+            parse_traf(cursor, &child, info, trex, moof_start)?;
+        }
+        cursor.seek(SeekFrom::Start(child_end))?;
+    }
+    Ok(())
+}
+
+/// Parse traf (Track Fragment): `tfhd`, optional `tfdt`, then one or more `trun`
+fn parse_traf(
+    cursor: &mut Cursor<&[u8]>,
+    header: &BoxHeader,
+    info: &mut Mp4Info,
+    trex: &[Trex],
+    moof_start: u64,
+) -> Result<(), BitvueError> {
+    let box_end = header
+        .data_offset
+        .checked_add(header.data_size())
+        .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
+
+    let mut tfhd: Option<Tfhd> = None;
+    // Decode time continues from the previous sample unless a tfdt says otherwise.
+    let mut dts = match (info.timestamps.last(), info.sample_durations.last()) {
+        (Some(&t), Some(&d)) => t.saturating_add(d as u64),
+        _ => 0,
+    };
+    // Where the next trun without a data_offset starts: right after the previous trun's data.
+    let mut running: Option<u64> = None;
+
+    while cursor.position() < box_end {
+        let child = BoxHeader::parse(cursor)?;
+        let child_end = child
+            .data_offset
+            .checked_add(child.data_size())
+            .ok_or_else(|| {
+                BitvueError::InvalidData("MP4 child box end offset overflow".to_string())
+            })?;
+        match &child.box_type {
+            b"tfhd" => {
+                let v = read_u32(cursor)?;
+                let flags = v & 0x00FF_FFFF;
+                let track_id = read_u32(cursor)?;
+                // Fragments of other tracks (audio) are not ours.
+                if info.track_id.is_some_and(|id| id != track_id) {
+                    return Ok(());
+                }
+                let base_data_offset = if flags & 0x01 != 0 {
+                    Some(read_u64(cursor)?)
+                } else {
+                    None
+                };
+                if flags & 0x02 != 0 {
+                    let _sample_description_index = read_u32(cursor)?;
+                }
+                let defaults = trex.iter().find(|t| t.track_id == track_id);
+                let mut field =
+                    |bit: u32, fallback: Option<u32>| -> Result<Option<u32>, BitvueError> {
+                        if flags & bit != 0 {
+                            Ok(Some(read_u32(cursor)?))
+                        } else {
+                            Ok(fallback)
+                        }
+                    };
+                let duration = field(0x08, defaults.map(|t| t.duration))?;
+                let size = field(0x10, defaults.map(|t| t.size))?;
+                let sample_flags = field(0x20, defaults.map(|t| t.flags))?;
+                tfhd = Some(Tfhd {
+                    track_id,
+                    base_data_offset,
+                    duration,
+                    size,
+                    flags: sample_flags,
+                });
+            }
+            b"tfdt" => {
+                let version = read_u8(cursor)?;
+                cursor.seek(SeekFrom::Current(3))?;
+                dts = if version == 1 {
+                    read_u64(cursor)?
+                } else {
+                    read_u32(cursor)? as u64
+                };
+            }
+            b"trun" => {
+                let tfhd = tfhd.as_ref().ok_or_else(|| {
+                    BitvueError::InvalidData("trun before tfhd in traf".to_string())
+                })?;
+                // Without default-base-is-moof or a base_data_offset the base is the start of
+                // the moof (the first traf's rule; also what ffmpeg assumes for later ones).
+                let base = tfhd.base_data_offset.unwrap_or(moof_start);
+                parse_trun(cursor, info, tfhd, base, &mut running, &mut dts)?;
+            }
+            _ => {}
+        }
+        cursor.seek(SeekFrom::Start(child_end))?;
+    }
+    if info.track_id.is_none() {
+        if let Some(t) = &tfhd {
+            info.track_id = Some(t.track_id);
+        }
+    }
+    Ok(())
+}
+
+/// Parse trun (Track Run): append its samples to `info`
+fn parse_trun(
+    cursor: &mut Cursor<&[u8]>,
+    info: &mut Mp4Info,
+    tfhd: &Tfhd,
+    base: u64,
+    running: &mut Option<u64>,
+    dts: &mut u64,
+) -> Result<(), BitvueError> {
+    let v = read_u32(cursor)?;
+    let flags = v & 0x00FF_FFFF;
+    let count = read_u32(cursor)? as usize;
+    if info.sample_sizes.len().saturating_add(count) > MAX_TOTAL_SAMPLES {
+        return Err(BitvueError::InvalidData(format!(
+            "Sample count exceeds maximum allowed {}",
+            MAX_TOTAL_SAMPLES
+        )));
+    }
+    let data_offset = if flags & 0x001 != 0 {
+        Some(read_u32(cursor)? as i32)
+    } else {
+        None
+    };
+    let first_sample_flags = if flags & 0x004 != 0 {
+        Some(read_u32(cursor)?)
+    } else {
+        None
+    };
+
+    let overflow = || BitvueError::InvalidData("trun sample offset overflows".to_string());
+    let mut at = match data_offset {
+        Some(d) => u64::try_from(base as i128 + d as i128).map_err(|_| overflow())?,
+        None => running.unwrap_or(base),
+    };
+
+    // Earlier samples may have no composition offsets recorded; keep the vectors aligned.
+    info.composition_offsets.resize(info.sample_sizes.len(), 0);
+
+    for i in 0..count {
+        let duration = if flags & 0x100 != 0 {
+            read_u32(cursor)?
+        } else {
+            tfhd.duration.unwrap_or(0)
+        };
+        let size = if flags & 0x200 != 0 {
+            read_u32(cursor)?
+        } else {
+            tfhd.size.ok_or_else(|| {
+                BitvueError::InvalidData("trun sample has no size (no tfhd/trex default)".into())
+            })?
+        };
+        let sample_flags = if flags & 0x400 != 0 {
+            let f = read_u32(cursor)?;
+            if i == 0 {
+                first_sample_flags.unwrap_or(f)
+            } else {
+                f
+            }
+        } else if i == 0 && first_sample_flags.is_some() {
+            first_sample_flags.unwrap_or(0)
+        } else {
+            tfhd.flags.unwrap_or(0)
+        };
+        let composition = if flags & 0x800 != 0 {
+            read_u32(cursor)? as i32
+        } else {
+            0
+        };
+
+        info.sample_offsets.push(at);
+        info.sample_sizes.push(size);
+        info.sample_durations.push(duration);
+        info.timestamps.push(*dts);
+        info.composition_offsets.push(composition);
+        let pts = if composition < 0 {
+            dts.saturating_sub(composition.unsigned_abs() as u64)
+        } else {
+            dts.saturating_add(composition as u64)
+        };
+        info.presentation_timestamps.push(pts);
+        if sample_flags & SAMPLE_IS_NON_SYNC == 0 {
+            info.key_frames.push(info.sample_sizes.len() as u32); // 1-based
+        }
+        at = at.checked_add(size as u64).ok_or_else(overflow)?;
+        *dts = dts.saturating_add(duration as u64);
+    }
+    *running = Some(at);
+    info.sample_count = info.sample_sizes.len();
     Ok(())
 }
 
@@ -1753,14 +2041,25 @@ mod box_tests {
         let mut info = Mp4Info::default();
         let data = &boxed[..];
         for depth in [MAX_BOX_DEPTH, MAX_BOX_DEPTH + 1] {
-            invalid(parse_moov(&mut c, &h, &mut info, data, depth), "depth");
+            invalid(
+                parse_moov(&mut c, &h, &mut info, &mut Vec::new(), data, depth),
+                "depth",
+            );
             invalid(parse_trak(&mut c, &h, &mut info, data, depth), "depth");
             invalid(parse_mdia(&mut c, &h, &mut info, data, depth), "depth");
             invalid(parse_minf(&mut c, &h, &mut info, data, depth), "depth");
             invalid(parse_stbl(&mut c, &h, &mut info, depth), "depth");
         }
         // one below the limit is fine for an empty box
-        parse_moov(&mut c, &h, &mut info, data, MAX_BOX_DEPTH - 1).unwrap();
+        parse_moov(
+            &mut c,
+            &h,
+            &mut info,
+            &mut Vec::new(),
+            data,
+            MAX_BOX_DEPTH - 1,
+        )
+        .unwrap();
         parse_trak(&mut c, &h, &mut info, data, MAX_BOX_DEPTH - 1).unwrap();
         parse_mdia(&mut c, &h, &mut info, data, MAX_BOX_DEPTH - 1).unwrap();
         parse_minf(&mut c, &h, &mut info, data, MAX_BOX_DEPTH - 1).unwrap();
@@ -2046,5 +2345,347 @@ mod box_tests {
         f.extend(bx(b"free", &[]));
         let e = parse_mp4(&f).unwrap_err().to_string();
         assert!(e.contains("ftyp"), "{e}");
+    }
+
+    // ---- fragmented MP4 (moof/traf/trun) ----
+
+    fn tkhd(track_id: u32) -> Vec<u8> {
+        let mut p = be(&[0, 0, track_id]); // creation, modification, track_ID
+        p.extend_from_slice(&[0; 68]);
+        full(b"tkhd", 0, &p)
+    }
+
+    fn trex(track_id: u32, duration: u32, size: u32, flags: u32) -> Vec<u8> {
+        full(b"trex", 0, &be(&[track_id, 1, duration, size, flags]))
+    }
+
+    /// Track with empty sample tables and a `tkhd` track id, as in an `empty_moov` file.
+    fn empty_trak(track_id: u32, kind: &[u8; 4], codec: &[u8; 4]) -> Vec<u8> {
+        let mut stbl = stsd(codec);
+        stbl.extend(stsz(&[]));
+        stbl.extend(stsc(&[]));
+        stbl.extend(stco(&[]));
+        let mut mdia = mdhd_v0(1000);
+        mdia.extend(hdlr(kind));
+        mdia.extend(bx(b"minf", &bx(b"stbl", &stbl)));
+        let mut trak = tkhd(track_id);
+        trak.extend(bx(b"mdia", &mdia));
+        bx(b"trak", &trak)
+    }
+
+    fn fmoov(traks: &[Vec<u8>], trexes: &[Vec<u8>]) -> Vec<u8> {
+        let mut m = traks.concat();
+        m.extend(bx(b"mvex", &trexes.concat()));
+        bx(b"moov", &m)
+    }
+
+    /// `tfhd`: `flags` selects which of `extra` (in spec order) are present.
+    fn tfhd(track_id: u32, flags: u32, extra: &[u32]) -> Vec<u8> {
+        let mut body = vec![0];
+        body.extend_from_slice(&flags.to_be_bytes()[1..]);
+        body.extend(be(&[track_id]));
+        body.extend(be(extra));
+        bx(b"tfhd", &body)
+    }
+
+    fn tfdt(version: u8, time: u64) -> Vec<u8> {
+        let mut body = vec![version, 0, 0, 0];
+        if version == 1 {
+            body.extend(be64(&[time]));
+        } else {
+            body.extend(be(&[time as u32]));
+        }
+        bx(b"tfdt", &body)
+    }
+
+    fn trun(version: u8, flags: u32, count: u32, fields: &[u32]) -> Vec<u8> {
+        let mut body = vec![version];
+        body.extend_from_slice(&flags.to_be_bytes()[1..]);
+        body.extend(be(&[count]));
+        body.extend(be(fields));
+        bx(b"trun", &body)
+    }
+
+    fn traf(children: &[Vec<u8>]) -> Vec<u8> {
+        bx(b"traf", &children.concat())
+    }
+
+    fn moof(trafs: &[Vec<u8>]) -> Vec<u8> {
+        bx(b"moof", &trafs.concat())
+    }
+
+    /// A `moof` whose single `trun` data offset points at the `mdat` payload right after it.
+    /// `make` receives that offset (relative to the moof start) and builds the traf children.
+    fn moof_then_mdat(make: impl Fn(u32) -> Vec<Vec<u8>>, payload: &[u8]) -> Vec<u8> {
+        let size = moof(&[traf(&make(0))]).len() as u32;
+        let mut out = moof(&[traf(&make(size + 8))]);
+        out.extend(bx(b"mdat", payload));
+        out
+    }
+
+    const DEFAULT_BASE_IS_MOOF: u32 = 0x20000;
+    const NON_SYNC: u32 = SAMPLE_IS_NON_SYNC;
+
+    fn video_moov() -> Vec<u8> {
+        fmoov(
+            &[empty_trak(1, b"vide", b"avc1")],
+            &[trex(1, 100, 5, NON_SYNC)],
+        )
+    }
+
+    #[test]
+    fn fragments_use_trex_defaults_and_trun_data_offsets() {
+        let mut f = ftyp();
+        f.extend(video_moov());
+        // fragment 1: 3 samples from trex defaults; first_sample_flags makes sample 1 sync
+        let frag1_at = f.len();
+        f.extend(moof_then_mdat(
+            |off| {
+                vec![
+                    tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+                    tfdt(1, 1000),
+                    trun(0, 0x001 | 0x004, 3, &[off, 0]),
+                ]
+            },
+            &[1; 15],
+        ));
+        // fragment 2: no tfdt (continues from 1300), explicit per-sample duration and size
+        let frag2_at = f.len();
+        f.extend(moof_then_mdat(
+            |off| {
+                vec![
+                    tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+                    trun(0, 0x001 | 0x100 | 0x200, 2, &[off, 7, 2, 9, 3]),
+                ]
+            },
+            &[2; 5],
+        ));
+
+        let info = parse_mp4(&f).unwrap();
+        assert_eq!(info.codec.as_deref(), Some("avc1"));
+        assert_eq!(info.track_id, Some(1));
+        assert_eq!(info.sample_count, 5);
+        assert_eq!(info.sample_sizes, vec![5, 5, 5, 2, 3]);
+        assert_eq!(info.sample_durations, vec![100, 100, 100, 7, 9]);
+        assert_eq!(info.timestamps, vec![1000, 1100, 1200, 1300, 1307]);
+        assert_eq!(info.presentation_timestamps, info.timestamps);
+        assert_eq!(
+            info.key_frames,
+            vec![1],
+            "only the first_sample_flags sample is sync"
+        );
+        // each fragment's data starts right after its moof + 8-byte mdat header
+        let moof_len = moof(&[traf(&[
+            tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+            tfdt(1, 1000),
+            trun(0, 0x001 | 0x004, 3, &[0, 0]),
+        ])])
+        .len();
+        let first = (frag1_at + moof_len + 8) as u64;
+        let moof2_len = moof(&[traf(&[
+            tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+            trun(0, 0x001 | 0x100 | 0x200, 2, &[0, 7, 2, 9, 3]),
+        ])])
+        .len();
+        let second = (frag2_at + moof2_len + 8) as u64;
+        assert_eq!(
+            info.sample_offsets,
+            vec![first, first + 5, first + 10, second, second + 2]
+        );
+        let samples = extract_avc_samples(&f).unwrap();
+        assert_eq!(samples.len(), 5);
+        assert_eq!(&*samples[0], &[1; 5]);
+        assert_eq!(&*samples[3], &[2; 2]);
+        assert_eq!(&*samples[4], &[2; 3]);
+    }
+
+    #[test]
+    fn fragments_of_other_tracks_are_ignored() {
+        let mut f = ftyp();
+        f.extend(fmoov(
+            &[
+                empty_trak(1, b"soun", b"mp4a"),
+                empty_trak(2, b"vide", b"av01"),
+            ],
+            &[trex(1, 1, 1, 0), trex(2, 40, 4, 0)],
+        ));
+        let at = f.len();
+        // one moof with an audio traf (track 1) and a video traf (track 2), data back to back
+        let moof_len = moof(&[
+            traf(&[tfhd(1, DEFAULT_BASE_IS_MOOF, &[]), trun(0, 1, 2, &[0])]),
+            traf(&[tfhd(2, DEFAULT_BASE_IS_MOOF, &[]), trun(0, 1, 3, &[0])]),
+        ])
+        .len() as u32;
+        f.extend(moof(&[
+            traf(&[
+                tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+                trun(0, 1, 2, &[moof_len + 8]),
+            ]),
+            traf(&[
+                tfhd(2, DEFAULT_BASE_IS_MOOF, &[]),
+                trun(0, 1, 3, &[moof_len + 8 + 2]),
+            ]),
+        ]));
+        f.extend(bx(b"mdat", &[9, 9, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]));
+        let info = parse_mp4(&f).unwrap();
+        assert_eq!(info.codec.as_deref(), Some("av01"));
+        assert_eq!(info.track_id, Some(2));
+        assert_eq!(info.sample_sizes, vec![4, 4, 4]);
+        assert_eq!(info.sample_durations, vec![40, 40, 40]);
+        let first = (at + moof_len as usize + 8 + 2) as u64;
+        assert_eq!(info.sample_offsets, vec![first, first + 4, first + 8]);
+        assert!(extract_av1_samples(&f)
+            .unwrap()
+            .iter()
+            .all(|s| s.iter().all(|&b| b == 7)));
+    }
+
+    #[test]
+    fn trun_flags_composition_offsets_and_sync_bits() {
+        // per-sample duration/size/flags/cts (version 1: signed cts); tfhd carries a base offset
+        let mut f = ftyp();
+        f.extend(video_moov());
+        let base = f.len() as u32 + 200; // base_data_offset (absolute) = 200 bytes past the moof
+        let flags = 0x001 | 0x100 | 0x200 | 0x400 | 0x800;
+        f.extend(moof(&[traf(&[
+            tfhd(1, 0x01, &[0, base]), // base_data_offset is a u64: high word 0, then low word
+            tfdt(0, 500),
+            trun(
+                1,
+                flags,
+                3,
+                &[
+                    0, // data_offset relative to base_data_offset
+                    10,
+                    6,
+                    0x0200_0000,
+                    20, // sample 1: sync (bit 16 clear)
+                    10,
+                    4,
+                    NON_SYNC,
+                    (-10i32) as u32, // sample 2: non-sync, cts -10
+                    10,
+                    2,
+                    0,
+                    0, // sample 3: sync
+                ],
+            ),
+        ])]));
+        f.resize(base as usize + 12, 0);
+        let info = parse_mp4(&f).unwrap();
+        assert_eq!(info.sample_sizes, vec![6, 4, 2]);
+        assert_eq!(info.timestamps, vec![500, 510, 520]);
+        assert_eq!(info.composition_offsets, vec![20, -10, 0]);
+        assert_eq!(info.presentation_timestamps, vec![520, 500, 520]);
+        assert_eq!(info.key_frames, vec![1, 3]);
+        assert_eq!(
+            info.sample_offsets,
+            vec![base as u64, base as u64 + 6, base as u64 + 10]
+        );
+    }
+
+    #[test]
+    fn two_truns_in_one_traf_continue_where_the_first_ended() {
+        let mut f = ftyp();
+        f.extend(video_moov());
+        let moof_len = moof(&[traf(&[
+            tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+            trun(0, 1, 2, &[0]),
+            trun(0, 0, 1, &[]),
+        ])])
+        .len() as u32;
+        let at = f.len();
+        f.extend(moof(&[traf(&[
+            tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+            trun(0, 1, 2, &[moof_len + 8]),
+            trun(0, 0, 1, &[]), // no data_offset: right after the previous run
+        ])]));
+        f.extend(bx(b"mdat", &[0; 15]));
+        let info = parse_mp4(&f).unwrap();
+        let first = (at as u32 + moof_len + 8) as u64;
+        assert_eq!(info.sample_offsets, vec![first, first + 5, first + 10]);
+        assert_eq!(info.timestamps, vec![0, 100, 200]);
+    }
+
+    #[test]
+    fn malformed_fragments_are_errors() {
+        let prefix = || {
+            let mut f = ftyp();
+            f.extend(video_moov());
+            f
+        };
+        // trun before tfhd
+        let mut f = prefix();
+        f.extend(moof(&[traf(&[trun(0, 0, 1, &[])])]));
+        invalid(parse_mp4(&f).map(|_| ()), "trun before tfhd");
+        // no size anywhere (no trex default for track 7, none in the trun)
+        let mut f = ftyp();
+        f.extend(fmoov(&[empty_trak(7, b"vide", b"avc1")], &[]));
+        f.extend(moof(&[traf(&[
+            tfhd(7, DEFAULT_BASE_IS_MOOF, &[]),
+            trun(0, 0, 1, &[]),
+        ])]));
+        invalid(parse_mp4(&f).map(|_| ()), "no size");
+        // absurd sample count in a tiny box
+        let mut f = prefix();
+        f.extend(moof(&[traf(&[
+            tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+            trun(0, 0, u32::MAX, &[]),
+        ])]));
+        invalid(parse_mp4(&f).map(|_| ()), "Sample count");
+        // truncated per-sample fields
+        let mut f = prefix();
+        f.extend(moof(&[traf(&[
+            tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+            trun(0, 0x200, 3, &[1]),
+        ])]));
+        assert!(parse_mp4(&f).is_err());
+        // samples that point outside the file are caught when extracting
+        let mut f = prefix();
+        f.extend(moof(&[traf(&[
+            tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+            trun(0, 0x001, 1, &[100_000]),
+        ])]));
+        assert!(parse_mp4(&f).is_ok());
+        assert!(extract_avc_samples(&f).is_err());
+        // negative data_offset below zero
+        let mut f = prefix();
+        f.extend(moof(&[traf(&[
+            tfhd(1, 0x01, &[0, 0]),
+            trun(0, 0x001, 1, &[(-5i32) as u32]),
+        ])]));
+        invalid(parse_mp4(&f).map(|_| ()), "overflow");
+    }
+
+    #[test]
+    fn fragment_parsing_survives_random_byte_flips() {
+        let mut f = ftyp();
+        f.extend(video_moov());
+        f.extend(moof_then_mdat(
+            |off| {
+                vec![
+                    tfhd(1, DEFAULT_BASE_IS_MOOF, &[]),
+                    tfdt(1, 1000),
+                    trun(
+                        0,
+                        0x001 | 0x100 | 0x200 | 0x800,
+                        4,
+                        &[off, 3, 2, 0, 3, 2, 1, 3, 2, 2, 3, 2, 3],
+                    ),
+                ]
+            },
+            &[1; 8],
+        ));
+        let mut seed = 0x1234_5678u32;
+        for _ in 0..3000 {
+            let mut g = f.clone();
+            for _ in 0..3 {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                let at = (seed >> 8) as usize % g.len();
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                g[at] = (seed >> 16) as u8;
+            }
+            let _ = parse_mp4(&g).and_then(|_| extract_avc_samples(&g).map(|_| ()));
+        }
     }
 }
