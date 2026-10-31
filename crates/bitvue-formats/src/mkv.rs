@@ -555,7 +555,16 @@ fn parse_simple_block(
 
     // Calculate frame data size
     let header_size = cursor.position() - start_pos;
-    let frame_size = size as u64 - header_size;
+    let frame_size = (size as u64).checked_sub(header_size).ok_or_else(|| {
+        BitvueError::InvalidData(format!(
+            "MKV block declares {size} bytes, less than its {header_size}-byte header"
+        ))
+    })?;
+    // Do not allocate what the file cannot hold: `size` can be up to 2^28 - 1 (#269)
+    let remaining = (cursor.get_ref().len() as u64).saturating_sub(cursor.position());
+    if frame_size > remaining {
+        return Err(BitvueError::UnexpectedEof(cursor.position()));
+    }
 
     // Read frame data
     let mut frame_data = vec![0u8; frame_size as usize];
@@ -1010,12 +1019,29 @@ mod element_tests {
     }
 
     #[test]
-    #[ignore = "#269: declared size smaller than the block header underflows"]
     fn simple_block_with_a_declared_size_below_its_header_is_an_error_not_a_panic() {
+        // #269: size 2 for a 4-byte header (track vint + 2 timecode bytes + flags) underflowed
         let b = block(1, 0, 0x80, &[1, 2, 3]);
-        let r =
-            std::panic::catch_unwind(|| parse_simple_block(&mut cur(&b), 2, 0, &mut video_info()));
-        assert!(r.is_ok(), "panicked");
+        for size in [0, 1, 2, 3] {
+            let mut info = video_info();
+            let e = parse_simple_block(&mut cur(&b), size, 0, &mut info)
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("less than its"), "{size}: {e}");
+            assert_eq!(info.sample_count, 0);
+        }
+        // exactly the header: an empty frame, not an error
+        let mut info = video_info();
+        parse_simple_block(&mut cur(&b), 4, 0, &mut info).unwrap();
+        assert_eq!(info.samples, vec![Vec::<u8>::new()]);
+    }
+
+    #[test]
+    fn simple_block_declaring_more_than_the_file_holds_fails_before_allocating() {
+        // 2^28 - 1 is the largest size a 4-byte vint can declare
+        let b = block(1, 0, 0x80, &[1, 2, 3]);
+        let e = parse_simple_block(&mut cur(&b), (1 << 28) - 1, 0, &mut video_info());
+        assert!(matches!(e, Err(BitvueError::UnexpectedEof(_))), "{e:?}");
     }
 
     // ---- top-level errors that hold regardless of ID decoding ----

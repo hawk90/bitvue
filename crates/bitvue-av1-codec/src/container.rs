@@ -191,7 +191,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "#248: bitvue-formats rejects every real MKV"]
     fn mkv_samples_are_concatenated_in_order() {
         let mut track = el(&[0xD7], &[1]);
         track.extend(el(&[0x83], &[1]));
@@ -250,7 +249,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "#261: bitvue-formats' parse_pmt does not skip PCR_PID"]
     fn ts_samples_are_concatenated_in_order() {
         let f = ts(&[&S1, &S2, &S3]);
         assert_eq!(
