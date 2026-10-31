@@ -172,7 +172,7 @@ pub fn extract_cdef_data(frame_header: &FrameHeader) -> Option<CdefData> {
         height,
         block_strengths,
         damping: frame_header.cdef_damping.damping,
-        cdef_bits: 3,
+        cdef_bits: frame_header.cdef_damping.bits,
         y_primary_strength: frame_header.cdef_y_primary_strength,
         y_secondary_strength: frame_header.cdef_y_secondary_strength,
         uv_primary_strength: frame_header.cdef_uv_primary_strength,
@@ -189,6 +189,11 @@ pub fn extract_loop_restoration_data(frame_header: &FrameHeader) -> Option<LoopR
     let width = frame_header.width;
     let height = frame_header.height;
     let unit_size = frame_header.loop_restoration.unit_size;
+    // The parser only produces 64/128/256; a hand-built header with 0 has no units to lay out
+    // (div_ceil by zero panicked, #230).
+    if unit_size == 0 {
+        return None;
+    }
 
     let grid_w = width.div_ceil(unit_size);
     let grid_h = height.div_ceil(unit_size);
@@ -320,6 +325,15 @@ mod tests {
     }
 
     #[test]
+    fn cdef_bits_comes_from_the_header_not_a_constant() {
+        // #230: it was always 3
+        for bits in 0..=3 {
+            let data = extract_cdef_data(&cdef_header(64, 64, bits)).unwrap();
+            assert_eq!(data.cdef_bits, bits);
+        }
+    }
+
+    #[test]
     fn cdef_blocks_tile_the_frame_in_8x8_raster_order() {
         let data = extract_cdef_data(&cdef_header(24, 16, 0)).unwrap();
         let positions: Vec<(u32, u32)> = data.block_strengths.iter().map(|b| (b.x, b.y)).collect();
@@ -400,6 +414,13 @@ mod tests {
         };
         assert!(extract_loop_restoration_data(&header).is_none());
         assert!(extract_loop_restoration_data(&base()).is_none());
+    }
+
+    #[test]
+    fn loop_restoration_with_a_zero_unit_size_is_absent_not_a_panic() {
+        // #230: width.div_ceil(0)
+        assert!(extract_loop_restoration_data(&lr_header(64, 64, 0)).is_none());
+        assert!(extract_loop_restoration_data(&lr_header(64, 64, 1)).is_some());
     }
 
     #[test]
