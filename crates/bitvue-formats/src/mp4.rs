@@ -153,7 +153,14 @@ pub struct Mp4Info {
     pub timescale: u32,
     /// Total number of samples
     pub sample_count: usize,
-    /// Sample offsets
+    /// Handler type of the track these samples come from (`hdlr`, e.g. "vide", "soun")
+    pub handler_type: Option<String>,
+    /// Chunk offsets (`stco`/`co64`)
+    pub chunk_offsets: Vec<u64>,
+    /// Sample-to-chunk runs (`stsc`): `(first_chunk, samples_per_chunk)`, `first_chunk` 1-based
+    pub sample_to_chunk: Vec<(u32, u32)>,
+    /// File offset of each sample, in sample (decode) order; derived from the chunk offsets,
+    /// `stsc` and the sample sizes once the sample table is complete
     pub sample_offsets: Vec<u64>,
     /// Sample sizes
     pub sample_sizes: Vec<u32>,
@@ -216,53 +223,33 @@ fn extract_samples_with_validator<'a>(
         )));
     }
 
-    // Pre-allocate with exact capacity since we know the sample count
-    let mut samples = Vec::with_capacity(info.sample_sizes.len());
-
-    // CRITICAL: sample_offsets from stco are CHUNK offsets, not sample offsets!
-    // We need to calculate actual sample offsets from chunk offsets + sample sizes.
-    // For simplicity, assume all samples are in chunk order (sample i is in chunk floor(i/samples_per_chunk))
-    // Most MP4 files have samples in sequential order within chunks.
-
-    let actual_sample_offsets: Vec<u64> = if info.sample_offsets.len() == info.sample_sizes.len() {
-        // One sample per chunk - use offsets directly
-        info.sample_offsets.clone()
-    } else if !info.sample_offsets.is_empty() {
-        // Multiple samples per chunk - calculate offsets
-        let mut offsets = Vec::with_capacity(info.sample_sizes.len());
-        let mut current_offset = info.sample_offsets[0];
-
-        for &size in &info.sample_sizes {
-            offsets.push(current_offset);
-            current_offset += size as u64;
-        }
-        offsets
-    } else {
+    if info.sample_offsets.is_empty() {
         return Err(BitvueError::InvalidData(
             "No chunk offsets found in MP4".to_string(),
         ));
-    };
+    }
+    if info.sample_offsets.len() != info.sample_sizes.len() {
+        return Err(BitvueError::InvalidData(format!(
+            "{} sample offsets for {} sample sizes",
+            info.sample_offsets.len(),
+            info.sample_sizes.len()
+        )));
+    }
 
-    // Sort samples by offset to detect overlaps
-    let mut sorted_samples: Vec<_> = actual_sample_offsets
-        .iter()
-        .zip(info.sample_sizes.iter())
-        .enumerate()
-        .collect();
-    sorted_samples.sort_by_key(|(_, (offset, _))| *offset);
-
-    for (i, (offset_ptr, size_ptr)) in sorted_samples.iter() {
+    // Validate every sample, remembering its byte range; returned in sample (decode) order.
+    let mut ranges: Vec<(usize, usize)> = Vec::with_capacity(info.sample_sizes.len());
+    for (&offset, &size) in info.sample_offsets.iter().zip(info.sample_sizes.iter()) {
         // Validate u64 to usize conversion to prevent truncation on 32-bit
-        let offset = usize::try_from(**offset_ptr).map_err(|_| {
+        let offset = usize::try_from(offset).map_err(|_| {
             BitvueError::InvalidData(format!(
                 "Sample offset {} exceeds platform address space",
-                **offset_ptr
+                offset
             ))
         })?;
-        let size = usize::try_from(**size_ptr).map_err(|_| {
+        let size = usize::try_from(size).map_err(|_| {
             BitvueError::InvalidData(format!(
                 "Sample size {} exceeds platform address space",
-                **size_ptr
+                size
             ))
         })?;
 
@@ -275,14 +262,9 @@ fn extract_samples_with_validator<'a>(
         }
 
         // Check for overflow in offset + size
-        let end = match offset.checked_add(size) {
-            Some(e) => e,
-            None => {
-                return Err(BitvueError::InvalidData(
-                    "Sample offset + size would overflow".to_string(),
-                ));
-            }
-        };
+        let end = offset.checked_add(size).ok_or_else(|| {
+            BitvueError::InvalidData("Sample offset + size would overflow".to_string())
+        })?;
 
         // Check against file size
         if end > data.len() {
@@ -293,29 +275,26 @@ fn extract_samples_with_validator<'a>(
                 data.len()
             )));
         }
-
-        // Check for overlap with next sample
-        if i + 1 < sorted_samples.len() {
-            let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
-            let next_offset = usize::try_from(*next_offset_ptr).map_err(|_| {
-                BitvueError::InvalidData(format!(
-                    "Next sample offset {} exceeds platform address space",
-                    *next_offset_ptr
-                ))
-            })?;
-            if end > next_offset {
-                return Err(BitvueError::InvalidData(format!(
-                    "Samples overlap: current sample ends at {} but next starts at {}",
-                    end, next_offset
-                )));
-            }
-        }
-
-        // Zero-copy: return borrowed slice instead of cloning
-        samples.push(Cow::Borrowed(&data[offset..end]));
+        ranges.push((offset, end));
     }
 
-    Ok(samples)
+    // Overlap check: neighbours in file order, whatever the sample order is.
+    let mut by_offset: Vec<(usize, usize)> = ranges.clone();
+    by_offset.sort_unstable();
+    for pair in by_offset.windows(2) {
+        if pair[0].1 > pair[1].0 {
+            return Err(BitvueError::InvalidData(format!(
+                "Samples overlap: current sample ends at {} but next starts at {}",
+                pair[0].1, pair[1].0
+            )));
+        }
+    }
+
+    // Zero-copy: borrowed slices of the input
+    Ok(ranges
+        .into_iter()
+        .map(|(start, end)| Cow::Borrowed(&data[start..end]))
+        .collect())
 }
 
 /// Parse MP4 file and extract AV1 samples
@@ -464,6 +443,8 @@ fn parse_moov(
         .checked_add(header.data_size())
         .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
+    let mut tracks: Vec<Mp4Info> = Vec::new();
+
     // Parse child boxes
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
@@ -476,8 +457,10 @@ fn parse_moov(
 
         match &child_header.box_type {
             b"trak" => {
-                // Track box
-                parse_trak(cursor, &child_header, info, data, child_depth)?;
+                // Track box: parsed on its own so that one track's tables never mix with another's
+                let mut track = Mp4Info::default();
+                parse_trak(cursor, &child_header, &mut track, data, child_depth)?;
+                tracks.push(track);
             }
             _ => {
                 // Skip other boxes
@@ -485,6 +468,24 @@ fn parse_moov(
         }
 
         cursor.seek(SeekFrom::Start(child_end))?;
+    }
+
+    // Keep one track: the first video track; failing that a track without a handler box (minimal
+    // files), then the first track of any kind so that the codec check can name what was found.
+    let chosen = tracks
+        .iter()
+        .position(|t| t.handler_type.as_deref() == Some("vide"))
+        .or_else(|| tracks.iter().position(|t| t.handler_type.is_none()))
+        .or(if tracks.is_empty() { None } else { Some(0) });
+    if let Some(index) = chosen {
+        let track = tracks.swap_remove(index);
+        let (brand, compatible_brands) = (
+            info.brand.take(),
+            std::mem::take(&mut info.compatible_brands),
+        );
+        *info = track;
+        info.brand = brand;
+        info.compatible_brands = compatible_brands;
     }
 
     Ok(())
@@ -565,6 +566,12 @@ fn parse_mdia(
             b"mdhd" => {
                 // Media header - contains timescale
                 parse_mdhd(cursor, &child_header, info)?;
+            }
+            b"hdlr" => {
+                // Handler: version/flags (4), pre_defined (4), handler_type (4)
+                cursor.seek(SeekFrom::Current(8))?;
+                let handler = read_box_type(cursor)?;
+                info.handler_type = Some(String::from_utf8_lossy(&handler).into_owned());
             }
             b"minf" => {
                 // Media information box
@@ -678,11 +685,18 @@ fn parse_stbl(
                 // Sync sample table (key frames) - leaf parser
                 parse_stss(cursor, &child_header, info)?;
             }
+            b"stsc" => {
+                // Sample-to-chunk runs - leaf parser
+                parse_stsc(cursor, &child_header, info)?;
+            }
             _ => {}
         }
 
         cursor.seek(SeekFrom::Start(child_end))?;
     }
+
+    // Per-sample file offsets from chunk offsets + stsc + sizes
+    resolve_sample_offsets(info)?;
 
     // Calculate timestamps from durations
     calculate_timestamps(info);
@@ -726,6 +740,96 @@ fn parse_stsd(
     Ok(())
 }
 
+/// Parse stsc (Sample To Chunk) box
+fn parse_stsc(
+    cursor: &mut Cursor<&[u8]>,
+    _header: &BoxHeader,
+    info: &mut Mp4Info,
+) -> Result<(), BitvueError> {
+    cursor.seek(SeekFrom::Current(4))?; // version + flags
+
+    let entry_count = read_u32(cursor)?;
+    if entry_count > MAX_ENTRY_COUNT {
+        return Err(BitvueError::InvalidData(format!(
+            "Entry count {} exceeds maximum allowed {}",
+            entry_count, MAX_ENTRY_COUNT
+        )));
+    }
+
+    for _ in 0..entry_count {
+        let first_chunk = read_u32(cursor)?;
+        let samples_per_chunk = read_u32(cursor)?;
+        let _sample_description_index = read_u32(cursor)?;
+        info.sample_to_chunk.push((first_chunk, samples_per_chunk));
+    }
+
+    Ok(())
+}
+
+/// Fill `sample_offsets` (one file offset per sample, sample order) from the chunk offsets, the
+/// `stsc` runs and the sample sizes. Samples of one chunk follow each other from the chunk offset;
+/// a track interleaved with others (audio + video) has many chunks.
+///
+/// Without an `stsc` box (not valid in a real file) the older reading is kept: one sample per chunk
+/// when the counts match, otherwise all samples back to back from the first chunk.
+fn resolve_sample_offsets(info: &mut Mp4Info) -> Result<(), BitvueError> {
+    info.sample_offsets.clear();
+    if info.chunk_offsets.is_empty() || info.sample_sizes.is_empty() {
+        return Ok(());
+    }
+    let overflow = || BitvueError::InvalidData("Sample offset overflows".to_string());
+
+    if info.sample_to_chunk.is_empty() {
+        if info.chunk_offsets.len() == info.sample_sizes.len() {
+            info.sample_offsets = info.chunk_offsets.clone();
+        } else {
+            let mut at = info.chunk_offsets[0];
+            for &size in &info.sample_sizes {
+                info.sample_offsets.push(at);
+                at = at.checked_add(size as u64).ok_or_else(overflow)?;
+            }
+        }
+        return Ok(());
+    }
+
+    let runs = &info.sample_to_chunk;
+    if runs[0].0 != 1 || runs.windows(2).any(|w| w[1].0 <= w[0].0) {
+        return Err(BitvueError::InvalidData(
+            "stsc first_chunk values must start at 1 and increase".to_string(),
+        ));
+    }
+
+    let total = info.sample_sizes.len();
+    let mut sample = 0usize;
+    for (chunk_index, &chunk_offset) in info.chunk_offsets.iter().enumerate() {
+        if sample == total {
+            break;
+        }
+        let chunk_number = chunk_index as u64 + 1;
+        // The run in force for this chunk is the last one starting at or before it.
+        let run = runs.partition_point(|&(first, _)| first as u64 <= chunk_number) - 1;
+        let mut at = chunk_offset;
+        for _ in 0..runs[run].1 {
+            if sample == total {
+                break;
+            }
+            info.sample_offsets.push(at);
+            at = at
+                .checked_add(info.sample_sizes[sample] as u64)
+                .ok_or_else(overflow)?;
+            sample += 1;
+        }
+    }
+
+    if sample != total {
+        return Err(BitvueError::InvalidData(format!(
+            "stsc and the chunk offsets describe {} samples but stsz has {}",
+            sample, total
+        )));
+    }
+    Ok(())
+}
+
 /// Parse stco (Chunk Offset) box
 fn parse_stco(
     cursor: &mut Cursor<&[u8]>,
@@ -747,7 +851,7 @@ fn parse_stco(
 
     for _ in 0..entry_count {
         let offset = read_u32(cursor)? as u64;
-        info.sample_offsets.push(offset);
+        info.chunk_offsets.push(offset);
     }
 
     Ok(())
@@ -773,7 +877,7 @@ fn parse_co64(
 
     for _ in 0..entry_count {
         let offset = read_u64(cursor)?;
-        info.sample_offsets.push(offset);
+        info.chunk_offsets.push(offset);
     }
 
     Ok(())
@@ -1485,12 +1589,12 @@ mod box_tests {
     fn stco_and_co64_read_offsets() {
         let (r, i) = run(&stco(&[10, 0xFFFF_FFFF]), parse_stco);
         r.unwrap();
-        assert_eq!(i.sample_offsets, vec![10, 0xFFFF_FFFF]);
+        assert_eq!(i.chunk_offsets, vec![10, 0xFFFF_FFFF]);
         let mut p = be(&[2]);
         p.extend(be64(&[5, 1 << 40]));
         let (r, i) = run(&full(b"co64", 0, &p), parse_co64);
         r.unwrap();
-        assert_eq!(i.sample_offsets, vec![5, 1 << 40]);
+        assert_eq!(i.chunk_offsets, vec![5, 1 << 40]);
         for (name, parse) in [
             (
                 "stco",
@@ -1724,10 +1828,171 @@ mod box_tests {
         );
     }
 
-    // ---- known bugs: fail until fixed ----
+    // ---- multi-track files, stsc and sample order (#263, #265) ----
+
+    fn stsc(runs: &[(u32, u32)]) -> Vec<u8> {
+        let mut p = be(&[runs.len() as u32]);
+        for &(first_chunk, per_chunk) in runs {
+            p.extend(be(&[first_chunk, per_chunk, 1]));
+        }
+        full(b"stsc", 0, &p)
+    }
+
+    fn hdlr(kind: &[u8; 4]) -> Vec<u8> {
+        let mut p = be(&[0]); // pre_defined
+        p.extend_from_slice(kind);
+        p.extend_from_slice(&[0; 12]); // reserved
+        p.push(0); // empty name
+        full(b"hdlr", 0, &p)
+    }
+
+    /// `trak` with a handler, a codec, sizes, stsc runs and chunk offsets.
+    fn trak(
+        kind: &[u8; 4],
+        codec: &[u8; 4],
+        sizes: &[u32],
+        runs: &[(u32, u32)],
+        chunks: &[u32],
+    ) -> Vec<u8> {
+        let mut stbl = stsd(codec);
+        stbl.extend(stsz(sizes));
+        stbl.extend(stsc(runs));
+        stbl.extend(stco(chunks));
+        let mut mdia = mdhd_v0(90000);
+        mdia.extend(hdlr(kind));
+        mdia.extend(bx(b"minf", &bx(b"stbl", &stbl)));
+        bx(b"trak", &bx(b"mdia", &mdia))
+    }
+
+    /// ftyp + moov, then zero padding to 4000 bytes; media data lives at offsets from 2000 on
+    /// (past any moov these tests build).
+    fn mp4_with(traks: &[Vec<u8>]) -> Vec<u8> {
+        let mut f = ftyp();
+        f.extend(bx(b"moov", &traks.concat()));
+        assert!(f.len() < 2000);
+        f.resize(4000, 0);
+        f
+    }
 
     #[test]
-    #[ignore = "#265: the overlap check indexes the sorted list with the original index"]
+    fn interleaved_audio_and_video_give_the_video_samples() {
+        // audio track listed first; video: 3 samples in 2 chunks (2 + 1), audio chunks in between
+        let mut f = mp4_with(&[
+            trak(b"soun", b"mp4a", &[4, 4, 4], &[(1, 1)], &[2300, 2400, 2500]),
+            trak(
+                b"vide",
+                b"avc1",
+                &[2, 3, 1],
+                &[(1, 2), (2, 1)],
+                &[2200, 2350],
+            ),
+        ]);
+        f[2200..2202].copy_from_slice(&[1, 1]);
+        f[2202..2205].copy_from_slice(&[2, 2, 2]);
+        f[2350] = 3;
+        // audio bytes at 300.. must not be picked up
+        f[2300..2304].copy_from_slice(&[9, 9, 9, 9]);
+        let info = parse_mp4(&f).unwrap();
+        assert_eq!(info.codec.as_deref(), Some("avc1"));
+        assert_eq!(info.handler_type.as_deref(), Some("vide"));
+        assert_eq!(info.sample_sizes, vec![2, 3, 1]);
+        assert_eq!(info.sample_offsets, vec![2200, 2202, 2350]);
+        assert_eq!(info.brand.as_deref(), Some("isom"));
+        let samples = extract_avc_samples(&f).unwrap();
+        assert_eq!(
+            samples.iter().map(|s| s.to_vec()).collect::<Vec<_>>(),
+            vec![vec![1, 1], vec![2, 2, 2], vec![3]]
+        );
+    }
+
+    #[test]
+    fn video_track_is_chosen_whichever_position_it_has() {
+        for video_first in [true, false] {
+            let v = trak(b"vide", b"av01", &[1], &[(1, 1)], &[100]);
+            let a = trak(b"soun", b"mp4a", &[1], &[(1, 1)], &[200]);
+            let f = mp4_with(&if video_first { [v, a] } else { [a, v] });
+            assert_eq!(parse_mp4(&f).unwrap().codec.as_deref(), Some("av01"));
+        }
+    }
+
+    #[test]
+    fn a_file_with_only_an_audio_track_names_it_in_the_error() {
+        let f = mp4_with(&[trak(b"soun", b"mp4a", &[1], &[(1, 1)], &[100])]);
+        let e = extract_avc_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("mp4a"), "{e}");
+    }
+
+    #[test]
+    fn stsc_runs_place_samples_in_each_chunk() {
+        // chunks: #1 holds 2 samples, #2..#3 hold 3 each (run starting at chunk 2)
+        let f = mp4_with(&[trak(
+            b"vide",
+            b"av01",
+            &[1, 2, 3, 1, 1, 1, 2, 2],
+            &[(1, 2), (2, 3)],
+            &[100, 200, 300],
+        )]);
+        assert_eq!(
+            parse_mp4(&f).unwrap().sample_offsets,
+            vec![100, 101, 200, 203, 204, 300, 301, 303]
+        );
+    }
+
+    #[test]
+    fn stsc_that_does_not_cover_every_sample_is_an_error() {
+        // 5 samples declared, the chunks only hold 2 + 2
+        let f = mp4_with(&[trak(b"vide", b"av01", &[1; 5], &[(1, 2)], &[100, 200])]);
+        invalid_parse(&f, "describe 4 samples but stsz has 5");
+    }
+
+    #[test]
+    fn stsc_with_unordered_or_zero_based_runs_is_an_error() {
+        for runs in [
+            vec![(2, 1)],
+            vec![(1, 1), (1, 2)],
+            vec![(1, 1), (3, 1), (2, 1)],
+        ] {
+            let f = mp4_with(&[trak(b"vide", b"av01", &[1], &runs, &[100])]);
+            invalid_parse(&f, "first_chunk");
+        }
+    }
+
+    fn invalid_parse(f: &[u8], needle: &str) {
+        let e = parse_mp4(f).unwrap_err().to_string();
+        assert!(e.contains(needle), "{e}");
+    }
+
+    #[test]
+    fn samples_come_back_in_sample_order_not_file_order() {
+        // sample 0 sits later in the file than sample 1 (#265)
+        let mut f = mp4_with(&[trak(b"vide", b"av01", &[2, 3], &[(1, 1)], &[2500, 2100])]);
+        f[2500..2502].copy_from_slice(&[7, 7]);
+        f[2100..2103].copy_from_slice(&[8, 8, 8]);
+        let got: Vec<Vec<u8>> = extract_av1_samples(&f)
+            .unwrap()
+            .iter()
+            .map(|s| s.to_vec())
+            .collect();
+        assert_eq!(got, vec![vec![7, 7], vec![8, 8, 8]]);
+    }
+
+    #[test]
+    fn overlap_is_detected_between_file_neighbours_whatever_their_sample_order() {
+        // sample 0 at 100..110, sample 1 at 50..60, sample 2 at 105..110 overlaps sample 0
+        let f = mp4_with(&[trak(
+            b"vide",
+            b"av01",
+            &[10, 10, 5],
+            &[(1, 1)],
+            &[100, 50, 105],
+        )]);
+        let e = extract_av1_samples(&f).unwrap_err().to_string();
+        assert!(e.contains("overlap"), "{e}");
+    }
+
+    // ---- known bugs: fail until fixed (#264) ----
+
+    #[test]
     fn chunk_offsets_out_of_file_order_are_not_an_overlap() {
         let mut stbl = stsd(b"av01");
         stbl.extend(stsz(&[2, 3]));
