@@ -1321,12 +1321,8 @@ fn parse_trun(
             })?
         };
         let sample_flags = if flags & 0x400 != 0 {
-            let f = read_u32(cursor)?;
-            if i == 0 {
-                first_sample_flags.unwrap_or(f)
-            } else {
-                f
-            }
+            // (the spec forbids combining this with first_sample_flags; per-sample wins)
+            read_u32(cursor)?
         } else if i == 0 && first_sample_flags.is_some() {
             first_sample_flags.unwrap_or(0)
         } else {
