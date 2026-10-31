@@ -43,11 +43,17 @@ mod element_id {
 /// - 0x40 = marker at bit 6, data = 0x00 → 2-byte VINT
 /// - 0x01 = marker at bit 0, data = 0x00 → 8-byte VINT (valid per EBML spec)
 ///
-/// Security: Most MKV elements use 1-4 byte VINTs; we limit to 4 bytes to prevent DoS
+/// Element sizes may be 1-8 bytes (muxers write the Segment size, and unknown sizes, as 8-byte
+/// VINTs). Element IDs are at most 4 bytes and keep their marker bit; see `read_element_id`.
 fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
-    // Most MKV elements use 1-4 byte VINTs; limit to prevent DoS attacks
-    const MAX_VINT_LENGTH: usize = 4;
+    read_vint_with_len(cursor, 8).map(|(value, _)| value)
+}
 
+/// `read_vint` with a caller-chosen maximum length; also returns the VINT's length in bytes.
+fn read_vint_with_len(
+    cursor: &mut Cursor<&[u8]>,
+    max_length: usize,
+) -> Result<(u64, usize), BitvueError> {
     let mut first_byte = [0u8; 1];
     cursor
         .read_exact(&mut first_byte)
@@ -73,11 +79,10 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
         ));
     }
 
-    // Enforce reasonable maximum to prevent DoS via malicious 8-byte VINTs
-    if length > MAX_VINT_LENGTH {
+    if length > max_length {
         return Err(BitvueError::InvalidData(format!(
             "VINT length {} exceeds maximum allowed {}",
-            length, MAX_VINT_LENGTH
+            length, max_length
         )));
     }
 
@@ -99,12 +104,15 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
         value = (value << 8) | byte[0] as u64;
     }
 
-    Ok(value)
+    Ok((value, length))
 }
 
-/// Read EBML element ID (variable-length)
+/// Read an EBML element ID (1-4 bytes). Unlike a size, an ID keeps its length-marker bit:
+/// `0x1A45DFA3` is the four bytes `1A 45 DF A3`, so the marker bit that `read_vint` strips is put
+/// back (`0xAE` is the one-byte ID `0xAE`, not `0x2E`).
 fn read_element_id(cursor: &mut Cursor<&[u8]>) -> Result<u32, BitvueError> {
-    read_vint(cursor).map(|v| v as u32)
+    let (value, length) = read_vint_with_len(cursor, 4)?;
+    Ok((value | (1u64 << (7 * length))) as u32)
 }
 
 /// Read EBML element size
@@ -669,28 +677,24 @@ mod tests {
         assert_eq!(read_vint(&mut cursor).unwrap(), 1);
 
         // 5-byte VINT: 0x08 0x00 0x00 0x00 0x01 = marker + value 1
-        // SECURITY: VINTs longer than 4 bytes are rejected (DoS prevention)
         let data = [0x08, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
-        assert!(read_vint(&mut cursor).is_err());
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
 
         // 6-byte VINT: 0x04 0x00 0x00 0x00 0x00 0x01 = marker + value 1
-        // SECURITY: VINTs longer than 4 bytes are rejected (DoS prevention)
         let data = [0x04, 0x00, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
-        assert!(read_vint(&mut cursor).is_err());
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
 
         // 7-byte VINT: 0x02 0x00 0x00 0x00 0x00 0x00 0x01 = marker + value 1
-        // SECURITY: VINTs longer than 4 bytes are rejected (DoS prevention)
         let data = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
-        assert!(read_vint(&mut cursor).is_err());
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
 
         // 8-byte VINT: 0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x01 = marker + value 1
-        // SECURITY: VINTs longer than 4 bytes are rejected (DoS prevention)
         let data = [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
-        assert!(read_vint(&mut cursor).is_err());
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
     }
 
     #[test]
@@ -774,7 +778,6 @@ mod element_tests {
     }
 
     #[test]
-    #[ignore = "#248: read_vint refuses lengths above 4, but EBML sizes are 1-8 bytes"]
     fn vint_seven_byte_form_keeps_its_data_bit() {
         // marker at bit 1 of the first byte, bit 0 is the top data bit
         assert_eq!(
@@ -785,7 +788,6 @@ mod element_tests {
     }
 
     #[test]
-    #[ignore = "#248: read_vint refuses lengths above 4, but EBML sizes are 1-8 bytes"]
     fn vint_eight_byte_sizes_are_valid() {
         assert_eq!(vint(&[0x01, 0, 0, 0, 0, 0, 0, 0x2A]).unwrap(), 0x2A);
         assert_eq!(vint(&[0x08, 0, 0, 0, 0x2A]).unwrap(), 0x2A);
@@ -1045,8 +1047,29 @@ mod element_tests {
         el(&[0xA0], &g)
     }
 
+    /// #248: ffmpeg/libwebm write the Segment size as an 8-byte VINT (`01 00 00 00 ..`), which the
+    /// parser used to refuse; a muxer-style file must parse the same as the small-size form.
     #[test]
-    #[ignore = "#248: element IDs lose their marker bits"]
+    fn segment_size_written_as_an_eight_byte_vint_parses() {
+        let small = mkv_file("V_AV1", &[cluster(0, &[simple(1, 0, 0x80, &[7, 7])])]);
+        // Re-encode the Segment size field (id at `pos`, 1-byte size) as 8 bytes.
+        let pos = small
+            .windows(4)
+            .position(|w| w == [0x18, 0x53, 0x80, 0x67])
+            .unwrap();
+        assert!(small[pos + 4] & 0x80 != 0, "fixture uses a 1-byte size");
+        let len = (small[pos + 4] & 0x7F) as u64;
+        let mut wide = small[..pos + 4].to_vec();
+        wide.push(0x01);
+        wide.extend_from_slice(&len.to_be_bytes()[1..]);
+        wide.extend_from_slice(&small[pos + 5..]);
+
+        let info = parse_mkv(&wide).unwrap();
+        assert_eq!(info.samples, vec![vec![7, 7]]);
+        assert_eq!(info.codec_id.as_deref(), Some("V_AV1"));
+    }
+
+    #[test]
     fn whole_file_tracks_clusters_and_blocks() {
         let f = mkv_file(
             "V_AV1",
@@ -1081,7 +1104,6 @@ mod element_tests {
     }
 
     #[test]
-    #[ignore = "#248: element IDs lose their marker bits"]
     fn whole_file_codec_ids_select_the_extractor() {
         let c = cluster(0, &[simple(1, 0, 0x80, &[5])]);
         let avc = mkv_file("V_MPEG4/ISO/AVC", std::slice::from_ref(&c));
@@ -1095,7 +1117,6 @@ mod element_tests {
     }
 
     #[test]
-    #[ignore = "#248: element IDs lose their marker bits"]
     fn whole_file_without_a_video_track_has_no_codec() {
         let mut f = el(&[0x1A, 0x45, 0xDF, 0xA3], &[]);
         let tracks = el(&[0x16, 0x54, 0xAE, 0x6B], &track(1, 2, "A_OPUS"));
@@ -1114,7 +1135,6 @@ mod element_tests {
     }
 
     #[test]
-    #[ignore = "#248: element IDs lose their marker bits"]
     fn whole_file_bytes_after_the_segment_are_not_parsed() {
         let mut f = mkv_file("V_AV1", &[cluster(0, &[simple(1, 0, 0x80, &[1])])]);
         let ok = parse_mkv(&f).unwrap();
@@ -1124,7 +1144,6 @@ mod element_tests {
     }
 
     #[test]
-    #[ignore = "#248: element IDs lose their marker bits"]
     fn whole_file_element_count_limit_is_10000_per_level() {
         let voids = |n: usize| [0xECu8, 0x80].repeat(n);
         type Wrap = fn(&[u8]) -> Vec<u8>;
@@ -1155,7 +1174,6 @@ mod element_tests {
     }
 
     #[test]
-    #[ignore = "#248: element IDs lose their marker bits"]
     fn whole_file_wrong_top_level_elements() {
         // EBML header ok, but the next element is not a Segment
         let mut f = el(&[0x1A, 0x45, 0xDF, 0xA3], &[]);

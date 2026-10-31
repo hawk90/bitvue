@@ -1529,11 +1529,10 @@ fn parse_av1_sends_mp4_and_mov_boxes_to_the_mp4_reader() {
 
 #[test]
 fn parse_av1_sends_the_ebml_magic_to_the_mkv_reader_and_everything_else_to_the_obu_reader() {
-    let err = parse_av1(&[0x1A, 0x45, 0xDF, 0xA3, 0x80]).unwrap_err();
-    assert!(
-        err.to_string().contains("EBML") || err.to_string().contains("MKV"),
-        "{err}"
-    );
+    // An empty EBML header followed by a Void element where the Segment must be: only the MKV
+    // reader can say "Expected Segment element".
+    let err = parse_av1(&[0x1A, 0x45, 0xDF, 0xA3, 0x80, 0xEC, 0x80]).unwrap_err();
+    assert!(err.to_string().contains("Segment"), "{err}");
     // Not a container: read as raw OBUs (a temporal delimiter).
     let info = parse_av1(&[0x12, 0x00]).unwrap();
     assert_eq!((info.obu_count, info.frame_count), (1, 0));
