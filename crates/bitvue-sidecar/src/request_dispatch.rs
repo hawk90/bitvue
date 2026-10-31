@@ -16,9 +16,10 @@ use bitvue_protocol::{
 };
 use std::collections::HashMap;
 use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
+use std::time::Duration;
 
 /// `correlation_id` → cancellation flag, for requests currently being computed on a worker
 /// thread. Entries are removed once that thread finishes (success, failure, or cancellation).
@@ -155,13 +156,28 @@ pub fn spawn_request(
             if cancel_flag.load(Ordering::SeqCst) {
                 cancelled_response()
             } else {
-                compute_frames_with_panic_guard(
-                    &core,
-                    &debug_yuv_state,
-                    &compare_state,
-                    &decode_sessions,
-                    &request,
+                let (core, debug_yuv_state, compare_state, decode_sessions) = (
+                    Arc::clone(&core),
+                    Arc::clone(&debug_yuv_state),
+                    Arc::clone(&compare_state),
+                    Arc::clone(&decode_sessions),
+                );
+                let (job_request, job_flag) = (request.clone(), Arc::clone(&cancel_flag));
+                run_with_deadline(
+                    REQUEST_DEADLINE,
+                    request.id,
+                    &request.method,
                     &cancel_flag,
+                    move || {
+                        compute_frames_with_panic_guard(
+                            &core,
+                            &debug_yuv_state,
+                            &compare_state,
+                            &decode_sessions,
+                            &job_request,
+                            &job_flag,
+                        )
+                    },
                 )
             }
         };
@@ -179,6 +195,64 @@ pub fn spawn_request(
             }
         }
     })
+}
+
+/// Longest a single request may run before the sidecar answers it with an error (#345).
+/// `cancel_request` needs the client to notice a problem first, and the panic guard only catches
+/// panics -- neither helps when a C library (dav1d, vvdec) stops responding. Generous on purpose:
+/// indexing or thumbnailing a very large file is legitimately slow, and a false timeout is worse
+/// than a late one.
+pub const REQUEST_DEADLINE: Duration = Duration::from_secs(10 * 60);
+
+/// Number of worker threads abandoned because they outlived `REQUEST_DEADLINE`. Rust cannot kill a
+/// thread, so a stuck one is leaked; this makes the leak visible in the stderr log.
+static ABANDONED_WORKERS: AtomicUsize = AtomicUsize::new(0);
+
+/// Runs `job` on its own thread and waits at most `deadline` for it. On timeout the request's
+/// cancel flag is set (so a cooperative handler still stops), the stuck thread is abandoned, and
+/// a failure response is returned -- the caller then drops its semaphore permit and cleans up as
+/// usual, so one hung request cannot hold a slot, the registry entry or the client's Promise.
+///
+/// The abandoned thread keeps whatever it holds (a decode-session lock, say), so later requests on
+/// the same stream may time out too; each is still answered, none hangs the sidecar.
+fn run_with_deadline<F>(
+    deadline: Duration,
+    request_id: u32,
+    method: &str,
+    cancel_flag: &AtomicBool,
+    job: F,
+) -> Vec<(FrameKind, Vec<u8>)>
+where
+    F: FnOnce() -> Vec<(FrameKind, Vec<u8>)> + Send + 'static,
+{
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        // The receiver is gone if the deadline already passed; the result is then discarded.
+        let _ = tx.send(job());
+    });
+    match rx.recv_timeout(deadline) {
+        Ok(frames) => frames,
+        Err(err) => {
+            let message = if err == mpsc::RecvTimeoutError::Timeout {
+                cancel_flag.store(true, Ordering::SeqCst);
+                let abandoned = ABANDONED_WORKERS.fetch_add(1, Ordering::SeqCst) + 1;
+                eprintln!(
+                    "bitvue-sidecar: '{method}' exceeded its {deadline:?} deadline; abandoning its worker thread ({abandoned} abandoned so far)"
+                );
+                format!("request '{method}' exceeded its {deadline:?} deadline and was abandoned")
+            } else {
+                format!("request '{method}' worker ended without a result")
+            };
+            single_control_frame(Response::failure(
+                request_id,
+                WireError {
+                    code: WireErrorCode::Internal,
+                    message,
+                    offset: None,
+                },
+            ))
+        }
+    }
 }
 
 /// Runs `compute_frames` behind a panic guard (CONC-022): without this, a handler that panics
@@ -489,6 +563,37 @@ fn index_stream(core: &Core, request: &Request, cancel_flag: &AtomicBool) -> Res
 
 #[cfg(test)]
 mod tests {
+    fn first_response(frames: &[(FrameKind, Vec<u8>)]) -> Response {
+        serde_json::from_slice(&frames[0].1).unwrap()
+    }
+
+    /// #345: a job that never returns (stand-in for a C library stuck in `cond_wait`) is answered
+    /// with an error once the deadline passes, and its cancel flag is set.
+    #[test]
+    fn run_with_deadline_answers_a_hung_job_with_an_error() {
+        let flag = AtomicBool::new(false);
+        let started = std::time::Instant::now();
+        let frames = run_with_deadline(Duration::from_millis(100), 7, "hang", &flag, || loop {
+            thread::park();
+        });
+        assert!(started.elapsed() < Duration::from_secs(5));
+        let response = first_response(&frames);
+        assert!(!response.ok);
+        assert_eq!(response.id, 7);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::Internal);
+        assert!(flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn run_with_deadline_passes_a_fast_job_through_untouched() {
+        let flag = AtomicBool::new(false);
+        let frames = run_with_deadline(Duration::from_secs(30), 1, "fast", &flag, || {
+            vec![(FrameKind::Control, b"ok".to_vec())]
+        });
+        assert_eq!(frames, vec![(FrameKind::Control, b"ok".to_vec())]);
+        assert!(!flag.load(Ordering::SeqCst));
+    }
+
     use super::*;
     use crate::test_support::open_real_fixture;
     use bitvue_protocol::CancelParams;

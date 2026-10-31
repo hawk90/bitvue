@@ -46,6 +46,11 @@
 //! matters is that first before-handler check — adding mid-loop checkpoints to those would be
 //! checking on effectively every instruction for no benefit.
 //!
+//! A request that never returns (a C library such as dav1d stuck in `cond_wait`, #345) is bounded
+//! by `request_dispatch::REQUEST_DEADLINE`: the handler runs on its own thread, and past the
+//! deadline the worker sets the cancel flag, answers with `WireErrorCode::Internal`, frees its
+//! semaphore permit and registry entry, and abandons the stuck thread (Rust cannot kill one).
+//!
 //! A worker thread panicking mid-request (malformed frame, decoder bug, etc.) is also handled:
 //! `spawn_request` runs the handler inside `std::panic::catch_unwind`, so a panic can't skip the
 //! registry cleanup or leave the client's request hanging forever with no response — it's turned
