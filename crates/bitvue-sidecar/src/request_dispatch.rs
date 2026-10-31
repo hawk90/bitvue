@@ -164,7 +164,7 @@ pub fn spawn_request(
                 );
                 let (job_request, job_flag) = (request.clone(), Arc::clone(&cancel_flag));
                 run_with_deadline(
-                    REQUEST_DEADLINE,
+                    request_deadline(),
                     request.id,
                     &request.method,
                     &cancel_flag,
@@ -203,6 +203,22 @@ pub fn spawn_request(
 /// indexing or thumbnailing a very large file is legitimately slow, and a false timeout is worse
 /// than a late one.
 pub const REQUEST_DEADLINE: Duration = Duration::from_secs(10 * 60);
+
+/// Environment variable that overrides `REQUEST_DEADLINE` (whole milliseconds), so a test can
+/// drive the real sidecar process into the deadline path without a 10-minute wait.
+pub const REQUEST_DEADLINE_ENV: &str = "BITVUE_REQUEST_DEADLINE_MS";
+
+/// `REQUEST_DEADLINE`, or the `REQUEST_DEADLINE_ENV` override when it parses as milliseconds.
+/// Read once per process.
+fn request_deadline() -> Duration {
+    static DEADLINE: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
+    *DEADLINE.get_or_init(|| {
+        std::env::var(REQUEST_DEADLINE_ENV)
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map_or(REQUEST_DEADLINE, Duration::from_millis)
+    })
+}
 
 /// Number of worker threads abandoned because they outlived `REQUEST_DEADLINE`. Rust cannot kill a
 /// thread, so a stuck one is leaked; this makes the leak visible in the stderr log.
