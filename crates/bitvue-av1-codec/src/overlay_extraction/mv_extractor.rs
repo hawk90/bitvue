@@ -15,7 +15,8 @@ use super::OVERLAY_BLOCK_SIZE;
 /// Converts a decoded 1/8-sample `MotionVector` to the overlay grid's quarter-sample units
 /// (rounding half away from zero).
 fn overlay_mv(mv: crate::tile::MotionVector) -> CoreMV {
-    let to_qpel = |v: i32| (v + v.signum()) / 2;
+    // i64 so that i32::MAX does not overflow when the rounding half is added (#235)
+    let to_qpel = |v: i32| ((v as i64 + v.signum() as i64) / 2) as i32;
     CoreMV::new(to_qpel(mv.x), to_qpel(mv.y))
 }
 
@@ -209,6 +210,15 @@ mod tests {
     }
 
     // ---- overlay_mv: 1/8-sample decoded vectors to quarter-sample grid units ----
+
+    #[test]
+    fn overlay_mv_handles_the_extreme_values_of_a_hand_built_vector() {
+        // #235: v + signum overflowed at i32::MAX
+        let mv = overlay_mv(crate::tile::MotionVector::new(i32::MAX, i32::MIN));
+        assert_eq!((mv.dx_qpel, mv.dy_qpel), (1 << 30, -(1 << 30)));
+        let mv = overlay_mv(crate::tile::MotionVector::new(i32::MAX - 1, i32::MIN + 1));
+        assert_eq!((mv.dx_qpel, mv.dy_qpel), ((1 << 30) - 1, -(1 << 30)));
+    }
 
     #[test]
     fn overlay_mv_halves_and_rounds_half_away_from_zero_for_each_axis_separately() {

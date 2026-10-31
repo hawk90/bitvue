@@ -32,7 +32,15 @@ impl CuSpatialIndex {
         block_w: u32,
         block_h: u32,
     ) -> Self {
-        let total_cells = (grid_w * grid_h) as usize;
+        // A grid without cells has nothing to index (grid_w - 1 below would underflow, #235), and
+        // a zero block size would divide by zero; callers bound grid_w * grid_h themselves.
+        if grid_w == 0 || grid_h == 0 || block_w == 0 || block_h == 0 {
+            return Self {
+                grid: Vec::new(),
+                grid_w,
+            };
+        }
+        let total_cells = grid_w as usize * grid_h as usize;
         let mut grid = vec![None; total_cells];
 
         for (cu_idx, cu) in coding_units.iter().enumerate() {
@@ -52,7 +60,7 @@ impl CuSpatialIndex {
             // Mark all grid cells overlapped by this CU
             for grid_y in clamped_y_start..=clamped_y_end {
                 for grid_x in clamped_x_start..=clamped_x_end {
-                    let cell_idx = (grid_y * grid_w + grid_x) as usize;
+                    let cell_idx = grid_y as usize * grid_w as usize + grid_x as usize;
                     // First CU wins (earlier CUs take precedence)
                     if grid[cell_idx].is_none() {
                         grid[cell_idx] = Some(cu_idx);
@@ -67,7 +75,11 @@ impl CuSpatialIndex {
     /// Get coding unit index for a grid cell (O(1) lookup)
     #[inline]
     pub fn get_cu_index(&self, grid_x: u32, grid_y: u32) -> Option<usize> {
-        let cell_idx = (grid_y * self.grid_w + grid_x) as usize;
+        // A column past the row end must not read the next row's first cells
+        if grid_x >= self.grid_w {
+            return None;
+        }
+        let cell_idx = grid_y as usize * self.grid_w as usize + grid_x as usize;
         self.grid.get(cell_idx).copied().flatten()
     }
 }
@@ -91,5 +103,30 @@ mod tests {
         assert_eq!(index.get_cu_index(0, 0), Some(0)); // First CU
         assert_eq!(index.get_cu_index(1, 0), Some(1)); // Second CU
         assert_eq!(index.get_cu_index(0, 1), None); // No CU here
+    }
+
+    #[test]
+    fn a_grid_without_cells_indexes_nothing_instead_of_underflowing() {
+        // #235: grid_w - 1 underflowed for a 0-cell grid as soon as there was one coding unit
+        let cus = vec![crate::tile::CodingUnit::new(0, 0, 64, 64)];
+        for (w, h) in [(0, 0), (0, 4), (4, 0)] {
+            let index = CuSpatialIndex::new(&cus, w, h, 64, 64);
+            assert_eq!(index.get_cu_index(0, 0), None, "{w}x{h}");
+        }
+        // a zero block size would divide by zero
+        let index = CuSpatialIndex::new(&cus, 4, 4, 0, 64);
+        assert_eq!(index.get_cu_index(0, 0), None);
+    }
+
+    #[test]
+    fn lookups_outside_the_grid_are_none_and_do_not_wrap_into_the_next_row() {
+        // 2x2 grid; CU 0 covers the first cell of row 1 only
+        let cus = vec![crate::tile::CodingUnit::new(0, 64, 64, 64)];
+        let index = CuSpatialIndex::new(&cus, 2, 2, 64, 64);
+        assert_eq!(index.get_cu_index(0, 1), Some(0));
+        // column 2 of row 0 is cell (0, 1) in a flat array: it must not report CU 0
+        assert_eq!(index.get_cu_index(2, 0), None);
+        assert_eq!(index.get_cu_index(u32::MAX, u32::MAX), None);
+        assert_eq!(index.get_cu_index(0, u32::MAX), None);
     }
 }
