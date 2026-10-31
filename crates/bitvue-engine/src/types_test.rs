@@ -111,6 +111,20 @@ mod bit_range_tests {
     }
 
     #[test]
+    fn an_inverted_bit_range_is_empty_not_a_panic_or_a_huge_size() {
+        // #289: end < start used to panic in debug and wrap to ~2^64 in release
+        for (start, end) in [(9, 2), (u64::MAX, 0), (1, 0)] {
+            let range = BitRange::new(start, end);
+            assert_eq!(range.size_bits(), 0, "{start}..{end}");
+            assert!(!range.contains(start) && !range.contains(end));
+        }
+        // the same through the evidence that derives its byte size from it
+        let ev = crate::BitOffsetEvidence::new("ev".to_string(), BitRange::new(9, 2), "t".into());
+        assert_eq!(ev.size_bytes, 0);
+        assert_eq!(ev.byte_offset, 1);
+    }
+
+    #[test]
     fn test_bit_range_copy() {
         // Arrange
         let range1 = BitRange::new(1000, 1100);

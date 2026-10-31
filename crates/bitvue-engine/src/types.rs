@@ -490,9 +490,10 @@ impl BitRange {
         self.start_bit <= other.start_bit && other.end_bit <= self.end_bit
     }
 
-    /// Returns the size in bits
+    /// Returns the size in bits; an inverted range (`end_bit < start_bit`, possible through the
+    /// public fields or deserialisation) is empty, so 0
     pub fn size_bits(&self) -> u64 {
-        self.end_bit - self.start_bit
+        self.end_bit.saturating_sub(self.start_bit)
     }
 
     /// Returns the byte offset (start_bit / 8)
