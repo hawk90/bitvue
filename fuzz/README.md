@@ -20,6 +20,7 @@ cargo +nightly fuzz run frame_analysis -- -max_total_time=60
 | `frame_analysis` | `ParsedFrame::parse` + QP/MV/partition/prediction/transform extractors | sequence/frame header, symbol decoder, coding-unit parser panics (deepest path) |
 | `stream_analysis` | `StreamAnalyzer` over a whole IVF: frame headers with reference-slot state, tile decode with saved CDFs / motion fields, checkpoint rewind | cross-frame state panics (slots, projected motion field, film grain, scaled references), multi-tile and superres paths |
 | `protocol_frames` | `bitvue_protocol::read_frame`/`write_frame` over a byte stream, then the JSON shapes (`Request`, `Response`, params) of every accepted payload | allocation sized by the declared length, frame round-trip mismatches, JSON shape panics |
+| `tile_group_split` | `tile::layout::split_tile_group` with a `TileLayout` (columns, rows, log2 bit counts, `TileSizeBytes`) chosen by the first 4 input bytes | panics in the tile-range / size-field arithmetic; also asserts consecutive tile numbers, in-frame tiles, ordered non-overlapping in-payload ranges |
 | `av1_decode` | `Av1Decoder` (dav1d) | decoder wrapper robustness |
 
 ## CI
