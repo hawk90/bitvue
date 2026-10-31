@@ -7,6 +7,17 @@ use bitvue_engine::{StreamId, UnitModel, UnitNode};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
+/// A unit spans its IVF frame header plus the frame data (that is the byte range it covers in the
+/// file). Tools report the frame itself, like `bitvue decode`: the data after the 12-byte header.
+fn payload_size(unit: &UnitNode) -> usize {
+    unit.size
+        .saturating_sub(bitvue_av1_codec::ivf::IVF_FRAME_HEADER_SIZE)
+}
+
+fn payload_offset(unit: &UnitNode) -> u64 {
+    unit.offset + bitvue_av1_codec::ivf::IVF_FRAME_HEADER_SIZE as u64
+}
+
 /// Parse stream ID from string
 pub(crate) fn parse_stream_id(stream: Option<&str>) -> StreamId {
     match stream.unwrap_or("A") {
@@ -57,7 +68,11 @@ pub(crate) fn load_file(args: Value, state: &AppState) -> Result<String> {
     let units_result: Result<Vec<UnitNode>, String> = match ext {
         "ivf" | "av1" => {
             tracing::info!("Parsing IVF file: {}", validated_path.display());
-            parse_ivf_file(&validated_path, stream_id)
+            let core = state
+                .core
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            parse_ivf_file(&core, &validated_path, stream_id)
         }
         _ => {
             // For now, only IVF is supported
@@ -168,8 +183,8 @@ pub(crate) fn analyze_frame(args: Value, state: &AppState) -> Result<String> {
         "file": path.to_string_lossy(),
         "unit_type": frame.unit_type.to_string(),
         "frame_type": frame.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
-        "offset": frame.offset,
-        "size": frame.size,
+        "offset": payload_offset(frame),
+        "size": payload_size(frame),
         "pts": frame.pts,
         "dts": frame.dts,
         "qp_avg": frame.qp_avg,
@@ -291,8 +306,8 @@ pub(crate) fn compare_streams(args: Value, state: &AppState) -> Result<String> {
 
     match (frame_a, frame_b) {
         (Some(fa), Some(fb)) => {
-            let size_diff = if fa.size > 0 && fb.size > 0 {
-                (fa.size as f64 - fb.size as f64) / fb.size as f64 * 100.0
+            let size_diff = if payload_size(fa) > 0 && payload_size(fb) > 0 {
+                (payload_size(fa) as f64 - payload_size(fb) as f64) / payload_size(fb) as f64 * 100.0
             } else {
                 0.0
             };
@@ -305,16 +320,16 @@ pub(crate) fn compare_streams(args: Value, state: &AppState) -> Result<String> {
                 "stream_a": {
                     "file": path_a.to_string_lossy(),
                     "type": fa.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
-                    "size": fa.size,
+                    "size": payload_size(fa),
                     "qp": qp_a,
-                    "offset": fa.offset
+                    "offset": payload_offset(fa)
                 },
                 "stream_b": {
                     "file": path_b.to_string_lossy(),
                     "type": fb.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
-                    "size": fb.size,
+                    "size": payload_size(fb),
                     "qp": qp_b,
-                    "offset": fb.offset
+                    "offset": payload_offset(fb)
                 },
                 "comparison": {
                     "size_diff_percent": size_diff,
@@ -334,7 +349,7 @@ pub(crate) fn compare_streams(args: Value, state: &AppState) -> Result<String> {
             "message": format!("Frame {} exists in Stream A but not in Stream B", frame_index),
             "stream_a": {
                 "type": fa.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
-                "size": fa.size
+                "size": payload_size(fa)
             }
         })
         .to_string()),
@@ -342,7 +357,7 @@ pub(crate) fn compare_streams(args: Value, state: &AppState) -> Result<String> {
             "message": format!("Frame {} exists in Stream B but not in Stream A", frame_index),
             "stream_b": {
                 "type": fb.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
-                "size": fb.size
+                "size": payload_size(fb)
             }
         })
         .to_string()),
@@ -370,7 +385,7 @@ pub(crate) fn get_gop_structure(args: Value, state: &AppState) -> Result<String>
             json!({
                 "frame_index": u.frame_index,
                 "type": u.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
-                "size": u.size,
+                "size": payload_size(u),
                 "qp": u.qp_avg,
                 "pts": u.pts,
                 "ref_frames": u.ref_frames.clone()
@@ -407,7 +422,7 @@ pub(crate) fn find_decoding_issues(args: Value, state: &AppState) -> Result<Stri
     let mut warnings = Vec::new();
 
     // Check for unusually large or small frames
-    let sizes: Vec<usize> = units.units.iter().map(|u| u.size).collect();
+    let sizes: Vec<usize> = units.units.iter().map(payload_size).collect();
     if !sizes.is_empty() {
         let avg_size = sizes.iter().copied().sum::<usize>() / sizes.len();
         let max_size = *sizes.iter().max().unwrap();
@@ -535,9 +550,9 @@ pub(crate) fn search_syntax(args: Value, state: &AppState) -> Result<String> {
         results.push(json!({
             "frame_index": frame_idx,
             "type": ftype,
-            "size": unit.size,
+            "size": payload_size(unit),
             "qp": unit.qp_avg,
-            "offset": unit.offset
+            "offset": payload_offset(unit)
         }));
     }
 
