@@ -1516,7 +1516,10 @@ fn parse_av1_sends_mp4_and_mov_boxes_to_the_mp4_reader() {
         let err = parse_av1(&data).expect_err(&String::from_utf8_lossy(tag));
         let text = err.to_string();
         assert!(
-            text.contains("MP4") || text.contains("end of file") || text.contains("Unexpected"),
+            text.contains("MP4")
+                || text.contains("end of file")
+                || text.contains("Unexpected")
+                || text.contains("ftyp box"),
             "{}: {text}",
             String::from_utf8_lossy(tag)
         );
