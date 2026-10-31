@@ -189,8 +189,14 @@ pub struct FrameHeader {
     pub base_q_idx: Option<u8>,
     /// Y DC delta Q
     pub y_dc_delta_q: Option<i8>,
-    /// UV DC delta Q
+    /// UV DC delta Q (`DeltaQUDc`)
     pub uv_dc_delta_q: Option<i8>,
+    /// `DeltaQUAc`; with the V terms below, the rest of what spec `CodedLossless` requires to be 0
+    pub uv_ac_delta_q: Option<i8>,
+    /// `DeltaQVDc` (equal to the U term unless `separate_uv_delta_q` codes it)
+    pub v_dc_delta_q: Option<i8>,
+    /// `DeltaQVAc`
+    pub v_ac_delta_q: Option<i8>,
     /// Delta Q params (whether delta Q is enabled for this frame)
     /// Per AV1 Spec Section 5.9.17 (Delta Q Params Syntax)
     pub delta_q_present: bool,

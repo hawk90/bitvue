@@ -131,6 +131,11 @@ fn pack(bits: &[u8]) -> Vec<u8> {
 /// header from `minimal_seq_header_bytes` (order_hint_bits=7, enable_cdef/restoration=1,
 /// enable_superres=0, 4:2:0, no film grain).
 fn minimal_key_frame_bytes(base_q_idx: u32) -> Vec<u8> {
+    minimal_key_frame_with_uv_ac(base_q_idx, 0)
+}
+
+/// `minimal_key_frame_bytes` with a chosen `DeltaQUAc` (0 = not coded; 1..=63 coded as su(7)).
+fn minimal_key_frame_with_uv_ac(base_q_idx: u32, uv_ac: u32) -> Vec<u8> {
     let (mut bits, mut push) = bits_writer();
     push(&mut bits, 0, 1); // show_existing_frame
     push(&mut bits, 0, 2); // frame_type = KEY_FRAME
@@ -179,7 +184,12 @@ fn minimal_key_frame_bytes(base_q_idx: u32) -> Vec<u8> {
     push(&mut bits, 0, 1); // DeltaQYDc delta_coded=0
                            // separate_uv_delta_q=0 => DeltaQUDc, DeltaQUAc
     push(&mut bits, 0, 1); // DeltaQUDc delta_coded=0
-    push(&mut bits, 0, 1); // DeltaQUAc delta_coded=0
+    if uv_ac == 0 {
+        push(&mut bits, 0, 1); // DeltaQUAc delta_coded=0
+    } else {
+        push(&mut bits, 1, 1); // DeltaQUAc delta_coded=1
+        push(&mut bits, uv_ac, 7); // su(7), positive
+    }
     push(&mut bits, 0, 1); // using_qmatrix=0
                            // segmentation_params: segmentation_enabled
     push(&mut bits, 0, 1); // segmentation_enabled = 0
@@ -196,7 +206,7 @@ fn minimal_key_frame_bytes(base_q_idx: u32) -> Vec<u8> {
         push(&mut bits, 0, 1); // delta_lf_present = 0
     }
     // loop_filter_params: coded_lossless = (base_q_idx==0 && no deltas)
-    let coded_lossless = base_q_idx == 0;
+    let coded_lossless = base_q_idx == 0 && uv_ac == 0;
     if !coded_lossless {
         push(&mut bits, 0, 6); // loop_filter_level[0]
         push(&mut bits, 0, 6); // loop_filter_level[1]
@@ -272,6 +282,31 @@ fn parses_a_synthetic_lossless_key_frame_and_skips_cdef() {
         !header.cdef_damping.enabled,
         "CodedLossless frames skip cdef_params entirely"
     );
+}
+
+#[test]
+fn a_nonzero_uv_ac_delta_keeps_a_zero_base_index_frame_from_being_lossless() {
+    // #245: the header parser treats the frame as not lossless (it reads the cdef bits) and
+    // ParsedFrame must agree, since coded_lossless steers the tile decode.
+    let seq = parse_sequence_header(&minimal_seq_header_bytes()).unwrap();
+    for (uv_ac, lossless) in [(0, true), (5, false), (63, false)] {
+        let payload = minimal_key_frame_with_uv_ac(0, uv_ac);
+        let header = parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
+        assert_eq!(header.base_q_idx, Some(0));
+        assert_eq!(header.uv_ac_delta_q, Some(uv_ac as i8));
+        assert_eq!(header.cdef_damping.enabled, !lossless, "uv_ac {uv_ac}");
+        // the same header through ParsedFrame::parse (sequence header OBU + frame OBU)
+        let obu = |kind: u8, body: &[u8]| {
+            assert!(body.len() < 128, "single-byte obu_size");
+            let mut out = vec![(kind << 3) | 0x02, body.len() as u8];
+            out.extend_from_slice(body);
+            out
+        };
+        let mut unit = obu(1, &minimal_seq_header_bytes());
+        unit.extend(obu(6, &payload));
+        let frame = crate::overlay_extraction::ParsedFrame::parse(&unit).unwrap();
+        assert_eq!(frame.coded_lossless, lossless, "uv_ac {uv_ac}");
+    }
 }
 
 #[test]
@@ -612,39 +647,41 @@ fn header_summary(clip: &[u8]) -> HeaderSummary {
 /// agreement with dav1d, in `cu_parser/oracle_test.rs`, is what vouches for correctness). Re-recorded
 /// when `FilmGrainInfo` gained the scaling points, the Cr coefficients and the chroma multipliers:
 /// with those fields' text (all empty or zero in these clips) cut out of the `Debug` output the old
-/// numbers came out again.
+/// numbers came out again. Re-recorded once more when `FrameHeader` gained `uv_ac_delta_q`,
+/// `v_dc_delta_q` and `v_ac_delta_q` (#245): same check, the old numbers came out with those three
+/// fields' text cut out.
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
     const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
-            (274, 1, 0, 588199865380866743),
+            (274, 1, 0, 9072236015749208179),
         ),
         (
             "aomenc_testsrc2",
             include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
-            (16, 4, 3, 4729721367337169264),
+            (16, 4, 3, 2574182100946965769),
         ),
         (
             "aomenc_tilegroups",
             include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf"),
-            (12, 1, 0, 11656466471076927050),
+            (12, 1, 0, 5404345889240383186),
         ),
         (
             "aomenc_tiles5",
             include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf"),
-            (12, 1, 0, 7465563672542036348),
+            (12, 1, 0, 4406273658431375066),
         ),
         (
             "rav1e_testsrc2",
             include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
-            (17, 6, 5, 13681353827795637648),
+            (17, 6, 5, 13609153085757198297),
         ),
         (
             "svtav1_testsrc2",
             include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
-            (17, 6, 5, 13221103126010935209),
+            (17, 6, 5, 4901141376858294291),
         ),
     ];
     let mismatches: Vec<String> = CLIPS
