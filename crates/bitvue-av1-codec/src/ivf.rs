@@ -6,6 +6,7 @@
 //! - Frame entries: 4-byte size + 8-byte timestamp + frame data
 
 use crate::bitreader::BitReader;
+use crate::leb128::decode_uleb128;
 use crate::obu::parse_obu_header;
 use bitvue_engine::BitvueError;
 
@@ -250,33 +251,34 @@ pub fn parse_ivf_frames(data: &[u8]) -> Result<(IvfHeader, Vec<IvfFrame>), Bitvu
     Ok((header, frames))
 }
 
-/// Extract temporal_id from frame data (finds frame header OBU)
+/// Extract temporal_id from frame data: the id in the extension of the first Frame or Frame Header
+/// OBU, walking the OBUs of the temporal unit (a real one starts with a temporal delimiter, and
+/// often a sequence header, before the frame). `None` when there is no such OBU or the walk cannot
+/// continue (malformed header, missing or oversized size field).
 fn extract_temporal_id_from_frame(frame_data: &[u8]) -> Option<u8> {
     use crate::obu::ObuType;
 
-    let mut pos = 0;
+    let mut pos = 0usize;
 
-    while pos + 4 <= frame_data.len() {
-        let obu_header = parse_obu_header(&mut BitReader::new(frame_data)).ok()?;
+    while pos < frame_data.len() {
+        let rest = &frame_data[pos..];
+        let obu_header = parse_obu_header(&mut BitReader::new(rest)).ok()?;
 
         // Look for frame header OBU (type 3) or frame OBU (type 6)
         if obu_header.obu_type == ObuType::FrameHeader || obu_header.obu_type == ObuType::Frame {
             return Some(obu_header.temporal_id);
         }
 
-        pos += obu_header.header_size;
-
-        // Skip size field if present
-        if obu_header.has_size {
-            if pos + 2 > frame_data.len() {
-                break;
-            }
-            let obu_size = u16::from_le_bytes([frame_data[pos], frame_data[pos + 1]]) as usize;
-            pos += 2 + obu_size;
-        } else {
-            // No size field, skip to end or find next OBU
+        // Without a size field the OBU runs to the end of the unit, so nothing follows it.
+        if !obu_header.has_size {
             break;
         }
+        // obu_size is LEB128 and counts the bytes after itself.
+        let (obu_size, size_len) = decode_uleb128(rest.get(obu_header.header_size..)?).ok()?;
+        pos = pos
+            .checked_add(obu_header.header_size)?
+            .checked_add(size_len)?
+            .checked_add(usize::try_from(obu_size).ok()?)?;
     }
 
     None
@@ -686,6 +688,83 @@ mod tests {
         push_frame(&mut data, payload.len() as u32, 0, &payload);
         let (_, frames) = parse_ivf_frames(&data).unwrap();
         assert_eq!(frames[0].temporal_id, 0);
+    }
+
+    /// Temporal id of one frame whose bytes are `payload`.
+    fn temporal_id_of(payload: &[u8]) -> u8 {
+        let mut data = header_bytes(32);
+        push_frame(&mut data, payload.len() as u32, 0, payload);
+        parse_ivf_frames(&data).unwrap().1[0].temporal_id
+    }
+
+    /// #225: real temporal units start with a temporal delimiter (and often a sequence header);
+    /// the id must be read from the Frame OBU behind them.
+    #[test]
+    fn the_temporal_id_is_found_behind_a_delimiter_and_a_sequence_header() {
+        // temporal delimiter, then a Frame OBU with extension (temporal_id 2)
+        assert_eq!(temporal_id_of(&[0x12, 0x00, 0x36, 0x40, 0x01, 0x00]), 2);
+        // sequence header (1 byte payload), then the Frame OBU
+        assert_eq!(
+            temporal_id_of(&[0x0A, 0x01, 0xAA, 0x36, 0x40, 0x01, 0x00]),
+            2
+        );
+        // all three
+        assert_eq!(
+            temporal_id_of(&[0x12, 0x00, 0x0A, 0x01, 0xAA, 0x36, 0x40, 0x01, 0x00]),
+            2
+        );
+        // a frame header OBU instead of a frame OBU
+        assert_eq!(temporal_id_of(&[0x12, 0x00, 0x1E, 0x60, 0x00]), 3);
+    }
+
+    #[test]
+    fn obu_sizes_are_leb128_not_u16() {
+        // Sequence header whose size 200 is the two LEB128 bytes C8 01 (read as a u16 that is
+        // 0x01C8 = 456), then a Frame OBU with temporal_id 5.
+        let mut payload = vec![0x0A, 0xC8, 0x01];
+        payload.extend(vec![0u8; 200]);
+        payload.extend([0x36, 5 << 5, 0x01, 0x00]);
+        assert_eq!(temporal_id_of(&payload), 5);
+        // a zero-length padding OBU (type 15) between delimiter and frame
+        assert_eq!(
+            temporal_id_of(&[0x12, 0x00, 0x7A, 0x00, 0x36, 0x20, 0x01, 0x00]),
+            1
+        );
+    }
+
+    #[test]
+    fn a_malformed_obu_walk_gives_temporal_id_0_instead_of_panicking() {
+        // size field runs past the end
+        assert_eq!(temporal_id_of(&[0x12, 0x00, 0x0A, 0x64, 0x01]), 0);
+        // truncated LEB128 size (continuation bit set on the last byte)
+        assert_eq!(temporal_id_of(&[0x12, 0x00, 0x0A, 0x80]), 0);
+        // size so large that adding it to the position would overflow
+        assert_eq!(
+            temporal_id_of(&[0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0x36, 0x40]),
+            0
+        );
+        // an OBU without a size field runs to the end: nothing can follow it
+        assert_eq!(temporal_id_of(&[0x08, 0x36, 0x40, 0x01, 0x00]), 0);
+        // forbidden bit set
+        assert_eq!(temporal_id_of(&[0x80, 0x00]), 0);
+        // header byte only, extension byte missing
+        assert_eq!(temporal_id_of(&[0x12]), 0);
+    }
+
+    /// Every frame of a real clip is found by the walk (it used to give `None` behind the leading
+    /// temporal delimiter); the clip has no extensions, so the id is 0.
+    #[test]
+    fn the_walk_finds_the_frame_obu_of_every_frame_of_a_real_clip() {
+        const CLIP: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
+        let (_, frames) = parse_ivf_frames(CLIP).unwrap();
+        assert_eq!(frames.len(), 250);
+        for (i, frame) in frames.iter().enumerate() {
+            assert_eq!(
+                extract_temporal_id_from_frame(&frame.data),
+                Some(0),
+                "frame {i} has no Frame OBU found"
+            );
+        }
     }
 
     #[test]
