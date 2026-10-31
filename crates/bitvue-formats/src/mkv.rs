@@ -115,9 +115,37 @@ fn read_element_id(cursor: &mut Cursor<&[u8]>) -> Result<u32, BitvueError> {
     Ok((value | (1u64 << (7 * length))) as u32)
 }
 
-/// Read EBML element size
+/// Read an EBML element size; `None` is the reserved "unknown size" (every data bit set), which
+/// live/streaming muxers write for the Segment and for Clusters.
+fn read_element_size_or_unknown(cursor: &mut Cursor<&[u8]>) -> Result<Option<u64>, BitvueError> {
+    let (value, length) = read_vint_with_len(cursor, 8)?;
+    let all_ones = (1u64 << (7 * length)) - 1;
+    Ok((value != all_ones).then_some(value))
+}
+
+/// Read an EBML element size for an element that must have a known one.
 fn read_element_size(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
-    read_vint(cursor)
+    read_element_size_or_unknown(cursor)?.ok_or_else(|| {
+        BitvueError::InvalidData(
+            "element has an unknown size, which is only allowed for Segment and Cluster"
+                .to_string(),
+        )
+    })
+}
+
+/// Level-1 elements of a Segment. An unknown-size Cluster ends where the next one of these starts.
+fn is_segment_child(id: u32) -> bool {
+    matches!(
+        id,
+        element_id::CLUSTER
+            | element_id::INFO
+            | element_id::TRACKS
+            | 0x114D_9B74 // SeekHead
+            | 0x1C53_BB6B // Cues
+            | 0x1043_A770 // Chapters
+            | 0x1254_C367 // Tags
+            | 0x1941_A469 // Attachments
+    )
 }
 
 /// Read a string element
@@ -312,8 +340,11 @@ pub fn parse_mkv(data: &[u8]) -> Result<MkvInfo, BitvueError> {
         ));
     }
 
-    let segment_size = read_element_size(&mut cursor)?;
-    let segment_end = cursor.position() + segment_size;
+    // An unknown Segment size means "to the end of the file".
+    let segment_end = match read_element_size_or_unknown(&mut cursor)? {
+        Some(size) => cursor.position().saturating_add(size),
+        None => data.len() as u64,
+    };
 
     // SECURITY: Limit number of elements to prevent DoS via crafted files
     // with many small elements. Maximum 10K elements per level for defense in depth.
@@ -329,18 +360,30 @@ pub fn parse_mkv(data: &[u8]) -> Result<MkvInfo, BitvueError> {
         }
         element_count += 1;
         let element_id = read_element_id(&mut cursor)?;
-        let element_size = read_element_size(&mut cursor)?;
-        let element_end = cursor.position() + element_size;
+        let element_size = read_element_size_or_unknown(&mut cursor)?;
 
-        match element_id {
-            element_id::TRACKS => {
+        match (element_id, element_size) {
+            // An unknown-size Cluster runs until the next Segment child.
+            (element_id::CLUSTER, None) => {
+                parse_cluster(&mut cursor, data.len() as u64, true, &mut info)?;
+            }
+            (_, None) => {
+                return Err(BitvueError::InvalidData(
+                    "element has an unknown size, which is only allowed for Segment and Cluster"
+                        .to_string(),
+                ));
+            }
+            (element_id::TRACKS, Some(size)) => {
+                let element_end = cursor.position() + size;
                 parse_tracks(&mut cursor, element_end, &mut info)?;
             }
-            element_id::CLUSTER => {
-                parse_cluster(&mut cursor, element_end, &mut info)?;
+            (element_id::CLUSTER, Some(size)) => {
+                let element_end = cursor.position() + size;
+                parse_cluster(&mut cursor, element_end, false, &mut info)?;
             }
-            _ => {
-                // Skip unknown elements
+            (_, Some(size)) => {
+                // Skip elements we do not read
+                let element_end = cursor.position() + size;
                 cursor.seek(SeekFrom::Start(element_end))?;
             }
         }
@@ -428,10 +471,12 @@ fn parse_track_entry(
     Ok(())
 }
 
-/// Parse Cluster element
+/// Parse Cluster element. With `unknown_size` the cluster has no end offset: it stops (leaving the
+/// cursor on it) at the next Segment child such as the following Cluster or the Cues.
 fn parse_cluster(
     cursor: &mut Cursor<&[u8]>,
     cluster_end: u64,
+    unknown_size: bool,
     info: &mut MkvInfo,
 ) -> Result<(), BitvueError> {
     let mut cluster_timecode = 0u64;
@@ -446,7 +491,12 @@ fn parse_cluster(
             ));
         }
         element_count += 1;
+        let id_start = cursor.position();
         let id = read_element_id(cursor)?;
+        if unknown_size && is_segment_child(id) {
+            cursor.seek(SeekFrom::Start(id_start))?;
+            return Ok(());
+        }
         let size = read_element_size(cursor)?;
         let element_end = cursor.position() + size;
 
@@ -1067,6 +1117,67 @@ mod element_tests {
         let info = parse_mkv(&wide).unwrap();
         assert_eq!(info.samples, vec![vec![7, 7]]);
         assert_eq!(info.codec_id.as_deref(), Some("V_AV1"));
+    }
+
+    /// A Cluster written with the reserved "unknown size" (live muxers): `1F43B675 FF <children>`.
+    fn unknown_size_cluster(timecode: u8, blocks: &[Vec<u8>]) -> Vec<u8> {
+        let mut c = vec![0x1F, 0x43, 0xB6, 0x75, 0xFF];
+        c.extend(uint_el(&[0xE7], timecode));
+        for b in blocks {
+            c.extend(b);
+        }
+        c
+    }
+
+    /// #352: an unknown-size Cluster ends at the next Segment child; before, it swallowed the rest
+    /// of the file and every following Cluster's blocks were silently dropped.
+    #[test]
+    fn unknown_size_clusters_end_at_the_next_segment_child() {
+        let f = mkv_file(
+            "V_AV1",
+            &[
+                unknown_size_cluster(10, &[simple(1, 0, 0x80, &[1]), simple(1, 1, 0x00, &[2])]),
+                unknown_size_cluster(20, &[simple(1, 0, 0x00, &[3])]),
+                // known-size cluster after them, then a Cues element
+                cluster(30, &[simple(1, 0, 0x00, &[4])]),
+                el(&[0x1C, 0x53, 0xBB, 0x6B], &[0xEC, 0x80]),
+            ],
+        );
+        let i = parse_mkv(&f).unwrap();
+        assert_eq!(i.samples, vec![vec![1], vec![2], vec![3], vec![4]]);
+        assert_eq!(i.timestamps, vec![10, 11, 20, 30]);
+        assert_eq!(i.key_frames, vec![1]); // 1-based, like the other tests
+    }
+
+    #[test]
+    fn unknown_size_cluster_followed_by_cues_stops_at_the_cues() {
+        let cues = el(&[0x1C, 0x53, 0xBB, 0x6B], &[0xEC, 0x80]);
+        let f = mkv_file(
+            "V_AV1",
+            &[unknown_size_cluster(5, &[simple(1, 0, 0x80, &[9])]), cues],
+        );
+        assert_eq!(parse_mkv(&f).unwrap().samples, vec![vec![9]]);
+    }
+
+    #[test]
+    fn unknown_size_on_any_other_element_is_an_error_not_a_guess() {
+        // A Tracks element with an unknown size.
+        let mut f = el(&[0x1A, 0x45, 0xDF, 0xA3], &el(&[0x42, 0x82], b"matroska"));
+        let mut seg = vec![0x16, 0x54, 0xAE, 0x6B, 0xFF];
+        seg.extend(track(1, 1, "V_AV1"));
+        f.extend(el(&[0x18, 0x53, 0x80, 0x67], &seg));
+        invalid(parse_mkv(&f), "unknown size");
+    }
+
+    #[test]
+    fn unknown_size_segment_runs_to_the_end_of_the_file() {
+        let mut f = mkv_file("V_AV1", &[cluster(0, &[simple(1, 0, 0x80, &[7])])]);
+        let pos = f
+            .windows(4)
+            .position(|w| w == [0x18, 0x53, 0x80, 0x67])
+            .unwrap();
+        f[pos + 4] = 0xFF; // 1-byte size field -> unknown
+        assert_eq!(parse_mkv(&f).unwrap().samples, vec![vec![7]]);
     }
 
     #[test]
