@@ -844,7 +844,7 @@ mod tests {
         let mut data = vec![((ObuType::Padding as u8) << 3) | 0x04 | 0x02, 0x00];
         data.extend(crate::encode_uleb128(200));
         assert_eq!(data.len(), 4);
-        data.extend(std::iter::repeat(0x55).take(200));
+        data.extend(std::iter::repeat_n(0x55, 200));
         data.extend(td());
         data.extend(obu(ObuType::Padding, &[7, 8, 9]));
         let frame = ParsedFrame::parse(&data).unwrap();
