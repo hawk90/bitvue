@@ -362,7 +362,8 @@ mod tests {
             Av1Profile::Professional,
             &[(0, 1), (0, 1), (0, 1), (0, 1), (0, 1)],
         );
-        // (`ten.bit_depth` is deliberately not asserted: the spec says 8 here, see #227.)
+        // high_bitdepth = 0 in profile 2 is 8-bit (aomenc --profile=2 --bit-depth=8, #227)
+        assert_eq!(ten.bit_depth, 8);
         assert_eq!(ten.chroma_subsampling_str(), "4:2:2");
         let ten_high = color_config(
             Av1Profile::Professional,
