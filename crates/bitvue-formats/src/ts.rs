@@ -222,16 +222,21 @@ fn parse_pat(payload: &[u8], pusi: bool) -> Result<Vec<PatEntry>> {
         return Ok(Vec::new());
     }
 
-    let section_length = (((payload[offset] & 0x0F) as u16) << 8) | (payload[offset + 1] as u16);
+    let section_length =
+        (((payload[offset] & 0x0F) as usize) << 8) | (payload[offset + 1] as usize);
     offset += 2;
+    // section_length counts the bytes after its own field, CRC_32 included.
+    let section_end = offset
+        .saturating_add(section_length)
+        .saturating_sub(4) // CRC_32
+        .min(payload.len());
 
     // Skip transport_stream_id (2), version (1), section_number (1), last_section_number (1)
     offset += 5;
 
     let mut entries = Vec::new();
-    let end = offset + (section_length as usize) - 9; // -9 for header and CRC
 
-    while offset + 4 <= end {
+    while offset + 4 <= section_end {
         let program_number = ((payload[offset] as u16) << 8) | (payload[offset + 1] as u16);
         let pmt_pid = (((payload[offset + 2] & 0x1F) as u16) << 8) | (payload[offset + 3] as u16);
 
@@ -278,11 +283,18 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
         return Ok(Vec::new());
     }
 
-    let section_length = (((payload[offset] & 0x0F) as u16) << 8) | (payload[offset + 1] as u16);
+    let section_length =
+        (((payload[offset] & 0x0F) as usize) << 8) | (payload[offset + 1] as usize);
     offset += 2;
+    // section_length counts the bytes after its own field, CRC_32 included.
+    let section_end = offset
+        .saturating_add(section_length)
+        .saturating_sub(4) // CRC_32
+        .min(payload.len());
 
-    // Skip program_number (2), version (1), section_number (1), last_section_number (1)
-    offset = match offset.checked_add(5) {
+    // Skip program_number (2), version (1), section_number (1), last_section_number (1), then
+    // PCR_PID (2) -- ISO/IEC 13818-1 puts it before program_info_length (#261).
+    offset = match offset.checked_add(5 + 2) {
         Some(v) => v,
         None => return Ok(Vec::new()),
     };
@@ -303,7 +315,7 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
     };
 
     let mut streams = Vec::new();
-    let end = offset + (section_length as usize) - 9 - 4 - (program_info_length as usize);
+    let end = section_end;
 
     while offset + 5 <= end && offset < payload.len() {
         if offset + 5 > payload.len() {
@@ -1084,10 +1096,8 @@ mod stream_tests {
     /// `(stream_type, pid, es_info bytes)`
     type Es<'a> = (u8, u16, &'a [u8]);
 
-    /// PMT section (PUSI form). `with_pcr` selects the layout: ISO/IEC 13818-1 puts a 2-byte PCR_PID before
-    /// program_info_length; `parse_pmt` currently does not skip it (#261), so the downstream tests use the
-    /// layout it reads today (`with_pcr = false`) and the spec layout is covered by `#[ignore]`d tests.
-    fn pmt(program_info: &[u8], streams: &[Es], with_pcr: bool) -> Vec<u8> {
+    /// PMT section (PUSI form) in the ISO/IEC 13818-1 layout: a 2-byte PCR_PID precedes program_info_length.
+    fn pmt(program_info: &[u8], streams: &[Es]) -> Vec<u8> {
         let mut body = Vec::new();
         for &(stream_type, pid, es_info) in streams {
             body.push(stream_type);
@@ -1107,9 +1117,7 @@ mod stream_tests {
             0x00,
             0x00,
         ];
-        if with_pcr {
-            s.extend_from_slice(&[0xE0 | (VIDEO_PID >> 8) as u8, VIDEO_PID as u8]);
-        }
+        s.extend_from_slice(&[0xE0 | (VIDEO_PID >> 8) as u8, VIDEO_PID as u8]);
         s.extend_from_slice(&[
             0xF0 | (program_info.len() >> 8) as u8,
             program_info.len() as u8,
@@ -1159,9 +1167,9 @@ mod stream_tests {
             .collect()
     }
 
-    fn psi_packets(streams: &[Es], with_pcr: bool) -> Vec<u8> {
+    fn psi_packets(streams: &[Es]) -> Vec<u8> {
         let mut d = packet(PAT_PID, true, &pat(&[(1, PMT_PID)]));
-        d.extend(packet(PMT_PID, true, &pmt(&[], streams, with_pcr)));
+        d.extend(packet(PMT_PID, true, &pmt(&[], streams)));
         d
     }
 
@@ -1302,7 +1310,6 @@ mod stream_tests {
                 (STREAM_TYPE_HEVC, 0x101, &[]),
                 (0x0F, 0x102, &[0x0A, 0x04, b'e', b'n', b'g', 0]),
             ],
-            false,
         );
         let s = parse_pmt(&p, true).unwrap();
         let got: Vec<(u8, u16)> = s
@@ -1314,7 +1321,7 @@ mod stream_tests {
 
     #[test]
     fn pmt_pointer_field_is_honoured_only_with_pusi() {
-        let body = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])], false);
+        let body = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])]);
         let mut with_pointer = vec![2, 0xAA, 0xBB];
         with_pointer.extend(&body[1..]);
         assert_eq!(parse_pmt(&with_pointer, true).unwrap().len(), 1);
@@ -1325,7 +1332,7 @@ mod stream_tests {
     fn pmt_rejects_or_ignores_malformed_sections() {
         assert!(parse_pmt(&[], false).unwrap().is_empty());
         assert!(parse_pmt(&[9, 0, 0], true).unwrap().is_empty());
-        let mut wrong = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])], false);
+        let mut wrong = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])]);
         wrong[1] = 0x00; // table_id 0 = PAT
         assert!(parse_pmt(&wrong, true).unwrap().is_empty());
         // truncated after table_id, and after the fixed header
@@ -1343,7 +1350,6 @@ mod stream_tests {
                 (STREAM_TYPE_AVC, 0x100, &[]),
                 (STREAM_TYPE_HEVC, 0x101, &[]),
             ],
-            false,
         );
         // keep the 1st entry whole and 3 bytes of the 2nd; section_length still claims both
         let cut = 1 + 3 + 5 + 2 + 5 + 3;
@@ -1355,7 +1361,7 @@ mod stream_tests {
 
     #[test]
     fn pmt_stops_at_the_end_given_by_section_length() {
-        let mut p = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])], false);
+        let mut p = pmt(&[], &[(STREAM_TYPE_AVC, 0x100, &[])]);
         // append a second, well-formed entry after the section end (before the CRC would be)
         p.extend_from_slice(&[STREAM_TYPE_HEVC, 0xE1, 0x01, 0xF0, 0x00]);
         assert_eq!(parse_pmt(&p, true).unwrap().len(), 1);
@@ -1643,13 +1649,9 @@ mod stream_tests {
         let pmt_pkt = packet(
             PMT_PID,
             true,
-            &pmt(&[], &[(STREAM_TYPE_AVC, VIDEO_PID, &[])], false),
+            &pmt(&[], &[(STREAM_TYPE_AVC, VIDEO_PID, &[])]),
         );
-        let other_pmt = packet(
-            0x1FFE,
-            true,
-            &pmt(&[], &[(STREAM_TYPE_HEVC, 0x300, &[])], false),
-        );
+        let other_pmt = packet(0x1FFE, true, &pmt(&[], &[(STREAM_TYPE_HEVC, 0x300, &[])]));
         let empty_pat = packet(PAT_PID, false, &[]);
 
         // PMT before any PAT is not recognised
@@ -1671,7 +1673,7 @@ mod stream_tests {
     }
 
     fn full_stream(stream_type: u8, es: &[u8]) -> Vec<u8> {
-        let mut d = psi_packets(&[(stream_type, VIDEO_PID, &[])], false);
+        let mut d = psi_packets(&[(stream_type, VIDEO_PID, &[])]);
         d.extend(pes_packets(
             VIDEO_PID,
             &pes(0xE0, Some(4500), Some(3000), es),
@@ -1761,15 +1763,37 @@ mod stream_tests {
         assert_eq!(find_video_pid(&[]), None);
     }
 
-    // ---- spec-correct input: these fail until #261 is fixed ----
+    // ---- spec layout and malformed section lengths (#261) ----
+
+    /// The PAT and PMT sections ffmpeg writes for one H.264 stream (PCR_PID 0x100, PMT PID 0x1000),
+    /// byte for byte, as quoted in #261. CRC_32 is not checked, so it is left as zeros.
+    #[test]
+    fn real_muxer_pat_and_pmt_bytes_are_parsed() {
+        let pat = [
+            0x00, 0x00, 0xB0, 0x0D, 0x00, 0x01, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xF0, 0x00, 0, 0, 0,
+            0,
+        ];
+        let entries = parse_pat(&pat, true).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].pmt_pid, 0x1000);
+
+        let pmt = [
+            0x00, 0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE1, 0x00, 0xF0, 0x00, 0x1B,
+            0xE1, 0x00, 0xF0, 0x00, 0, 0, 0, 0,
+        ];
+        let streams = parse_pmt(&pmt, true).unwrap();
+        assert_eq!(streams.len(), 1);
+        assert_eq!(
+            (streams[0].stream_type, streams[0].elementary_pid),
+            (STREAM_TYPE_AVC, 0x100)
+        );
+    }
 
     #[test]
-    #[ignore = "#261: parse_pmt does not skip PCR_PID"]
     fn spec_layout_pmt_is_parsed() {
         let p = pmt(
             &[0x05, 0x04, 0x48, 0x45, 0x56, 0x43],
             &[(STREAM_TYPE_AVC, 0x100, &[0x28, 0x01])],
-            true,
         );
         let s = parse_pmt(&p, true).unwrap();
         assert_eq!(s.len(), 1);
@@ -1780,9 +1804,8 @@ mod stream_tests {
     }
 
     #[test]
-    #[ignore = "#261: parse_pmt does not skip PCR_PID"]
     fn spec_layout_stream_yields_samples() {
-        let mut d = psi_packets(&[(STREAM_TYPE_AVC, VIDEO_PID, &[])], true);
+        let mut d = psi_packets(&[(STREAM_TYPE_AVC, VIDEO_PID, &[])]);
         d.extend(pes_packets(
             VIDEO_PID,
             &pes(0xE0, Some(1), None, &annex_b(&[(&[0, 0, 1], &IDR)])),
@@ -1792,7 +1815,6 @@ mod stream_tests {
     }
 
     #[test]
-    #[ignore = "#261: unchecked section_length arithmetic"]
     fn malformed_section_lengths_do_not_panic() {
         // section_length smaller than the fixed header, and larger than the payload
         assert!(parse_pat(
