@@ -50,15 +50,12 @@ impl DependencyGraph {
 
     /// Find the nearest prior key frame
     pub fn find_nearest_key_frame(&self, frame_index: usize) -> Option<usize> {
-        // Search backwards from frame_index
-        for i in (0..=frame_index).rev() {
-            if let Some(frame) = self.frames.get(i) {
-                if frame.frame_type.is_key() {
-                    return Some(i);
-                }
-            }
-        }
-        None
+        // Search backwards from frame_index. An index past the last frame starts at the last
+        // frame: walking the empty indices in between took ~2^64 steps for usize::MAX (#223).
+        let last = self.frames.len().checked_sub(1)?;
+        (0..=frame_index.min(last))
+            .rev()
+            .find(|&i| self.frames[i].frame_type.is_key())
     }
 
     /// Get total number of frames
@@ -397,6 +394,39 @@ mod tests {
         assert_eq!(DependencyGraph::build(&[]).find_nearest_key_frame(0), None);
         let graph = DependencyGraph::build(&[inter(1), inter(1)]);
         assert_eq!(graph.find_nearest_key_frame(1), None);
+    }
+
+    #[test]
+    fn nearest_key_frame_for_an_index_past_the_end_returns_promptly() {
+        // #223: usize::MAX used to walk ~2^64 empty indices before reaching a real frame
+        let graph = DependencyGraph::build(&[key(1), inter(1)]);
+        let started = std::time::Instant::now();
+        assert_eq!(graph.find_nearest_key_frame(usize::MAX), Some(0));
+        assert_eq!(graph.find_nearest_key_frame(2), Some(0));
+        let all_inter = DependencyGraph::build(&[inter(1), inter(1)]);
+        assert_eq!(all_inter.find_nearest_key_frame(usize::MAX), None);
+        assert_eq!(
+            DependencyGraph::build(&[]).find_nearest_key_frame(usize::MAX),
+            None
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn extract_required_obus_survives_huge_context_values() {
+        // part 1 of #223 (fixed earlier in #294): the sum used to overflow
+        let obus = [key(1), inter(1)];
+        let graph = DependencyGraph::build(&obus);
+        let request = ExtractionRequest {
+            target_frame: 1,
+            context_before: usize::MAX,
+            context_after: usize::MAX,
+            include_sequence_header: false,
+        };
+        assert_eq!(
+            extract_required_obus(&request, &graph, &obus).frame_count,
+            2
+        );
     }
 
     #[test]
