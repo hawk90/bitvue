@@ -507,6 +507,7 @@ dependencies = [
  "async-trait",
  "bitvue-av1-codec",
  "bitvue-engine",
+ "bitvue-indexer",
  "bitvue-test-alloc",
  "serde",
  "serde_json",
