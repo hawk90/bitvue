@@ -267,7 +267,8 @@ fn read_bit_depth(reader: &mut BitReader, profile: &Av1Profile) -> Result<u8> {
             } else {
                 10
             }
-        } else if matches!(profile, Av1Profile::Professional) || high_bitdepth {
+        } else if high_bitdepth {
+            // (profile 2 with high_bitdepth = 0 is 8-bit 4:2:2, spec 5.5.2; it was read as 10, #227)
             10
         } else {
             8
