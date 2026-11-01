@@ -430,31 +430,28 @@ mod tests {
             );
 
             // Reference-derived values are defined against the slots as they were before the
-            // frame's own header. For the later frames of a multi-frame packet the parser uses the
-            // slots from the start of the packet instead (#233), so only single-frame packets are
-            // checked here.
-            if packet.frames.len() == 1 {
-                assert_eq!(
-                    parsed.ref_frame_sign_bias,
-                    crate::frame_header_full::ref_frame_sign_bias(
-                        &before,
-                        header.ref_frame_idx.as_ref(),
-                        header.order_hint,
-                        &seq
-                    ),
-                    "packet {i} sign bias"
-                );
-                assert_eq!(
-                    parsed.ref_order_distance,
-                    crate::frame_header_full::ref_order_distance(
-                        &before,
-                        header.ref_frame_idx.as_ref(),
-                        header.order_hint,
-                        &seq
-                    ),
-                    "packet {i} order distance"
-                );
-            }
+            // frame's own header, for the later frames of a multi-frame packet too (#233: they
+            // used to come from the slots at the start of the packet).
+            assert_eq!(
+                parsed.ref_frame_sign_bias,
+                crate::frame_header_full::ref_frame_sign_bias(
+                    &before,
+                    header.ref_frame_idx.as_ref(),
+                    header.order_hint,
+                    &seq
+                ),
+                "packet {i} sign bias"
+            );
+            assert_eq!(
+                parsed.ref_order_distance,
+                crate::frame_header_full::ref_order_distance(
+                    &before,
+                    header.ref_frame_idx.as_ref(),
+                    header.order_hint,
+                    &seq
+                ),
+                "packet {i} order distance"
+            );
         }
         assert!(
             multi_frame_packets > 0,
