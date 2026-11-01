@@ -109,6 +109,19 @@ ffmpeg -y -f lavfi -i "testsrc2=size=114x136:rate=30:duration=1" -pix_fmt yuv420
 aomenc src.y4m --ivf -o av1_aomenc_114x136_palette.ivf --limit=2 --cpu-used=6 --end-usage=q --cq-level=30 --tune-content=screen --enable-restoration=0 --enable-cdef=0 --enable-cfl-intra=0 --enable-filter-intra=0 --enable-intrabc=0 --enable-tx64=0 --enable-angle-delta=0 --enable-smooth-intra=0 --enable-paeth-intra=0 --enable-intra-edge-filter=0 --enable-rect-tx=0 --enable-rect-partitions=0 --enable-ab-partitions=0 --enable-1to4-partitions=0 --enable-palette=1
 ```
 
+`av1_aomenc_segmentation_palette.ivf`, `av1_aomenc_skipmode_palette.ivf`, `av1_svtav1_intrabc_allowed.ivf` (aomenc 3.15.2 / SVT-AV1 4.2.0; the frames that `tests/tool_fixtures.rs` expects to decode as `Verified` are listed there):
+
+```bash
+ffmpeg -y -f lavfi -i "testsrc2=size=128x128:rate=10:duration=1.2" -pix_fmt yuv420p -f yuv4mpegpipe src.y4m
+aomenc src.y4m --ivf -o av1_aomenc_segmentation_palette.ivf --limit=8 --cpu-used=2 --sb-size=64 --threads=1 --end-usage=q --cq-level=30 --min-q=0 --max-q=63 --aq-mode=1 --lag-in-frames=0
+
+ffmpeg -y -f lavfi -i "testsrc2=size=32x32:rate=10:duration=1.2" -vf "tile=4x4:nb_frames=1,fps=10,loop=loop=11:size=1" -frames:v 8 -pix_fmt yuv420p -f yuv4mpegpipe tiled8.y4m
+aomenc tiled8.y4m --ivf -o av1_aomenc_skipmode_palette.ivf --limit=8 --cpu-used=1 --sb-size=64 --threads=1 --end-usage=q --cq-level=20 --min-q=0 --max-q=63 --tune-content=screen --enable-intrabc=1 --enable-palette=1 --lag-in-frames=0
+SvtAv1EncApp -i tiled8.y4m -b av1_svtav1_intrabc_allowed.ivf --scm 1 --enable-intrabc 1 --preset 4 --lp 1 --keyint 0 -n 3
+```
+
+No encoder tried produced a block that actually uses intra block copy from these sources (the flag is set, no block uses it).
+
 The dav1d digests in `oracle_test.rs` come from a dav1d build whose `ctx_norm` in `src/msac.c` prints
 `rng cnt dif` after every symbol (C path, `-Denable_asm=false`), reduced per frame to the symbol count
 and the FNV-1a digest of the `"{rng} {cnt} {dif}\n"` lines. The film grain digests come from the same build
