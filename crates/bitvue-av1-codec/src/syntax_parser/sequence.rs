@@ -3,10 +3,11 @@
 //! This module provides syntax tree generation for AV1 Sequence Headers,
 //! tracking exact bit ranges for Tri-sync functionality.
 //!
-//! **Phase 0 Scope**: Parses essential fields only (~25-30 syntax nodes)
-//! - Core fields: profile, dimensions, level, key feature flags
-//! - Simplified sub-structures: color_config basics, operating points
-//! - Deferred: Inter flags, screen content tools, advanced color config
+//! Shows the essential fields as syntax nodes (~25-30): profile, dimensions, level, the key
+//! feature flags, operating points and the colour config. Fields without a node (the inter tool
+//! switches, screen content tools, decoder model details, ...) are read or skipped so that every
+//! later field sits at its spec bit position; `random_headers_read_like_the_oracle_checked_parser`
+//! checks that against `sequence::parse_sequence_header` on 30,000 random headers (#218).
 //!
 //! # AV1 Specification Reference
 //! - Section 5.5: Sequence Header OBU
@@ -84,7 +85,11 @@ pub fn parse_sequence_header_syntax(
         let (level, range) = reader.read_bits_tracked(5)?;
         builder.add_field("seq_level_idx", range, format!("{}", level));
 
-        // In reduced mode, skip to color_config (no dimensions, no feature flags)
+        // The reduced header has no timing info or further operating points, but everything after
+        // them is still coded: frame size, the intra tool switches, superres/cdef/restoration and
+        // the colour config (spec 5.5.1). Jumping straight to the colour config desynchronised it.
+        parse_frame_dimensions(reader, builder)?;
+        parse_feature_flags(reader, builder, true)?;
         parse_color_config_simplified(reader, builder, profile_val as u8)?;
     } else {
         // Full sequence header - AV1 Spec 5.5.5+
@@ -92,7 +97,7 @@ pub fn parse_sequence_header_syntax(
 
         // Parse remaining common fields
         parse_frame_dimensions(reader, builder)?;
-        parse_feature_flags(reader, builder)?;
+        parse_feature_flags(reader, builder, false)?;
         parse_color_config_simplified(reader, builder, profile_val as u8)?;
     }
 
@@ -119,7 +124,8 @@ fn parse_non_reduced_path(
         format!("{}", timing_present as u8),
     );
 
-    let decoder_model_present = if timing_present {
+    // buffer_delay_length_minus_1 of the decoder model info, when there is one
+    let decoder_model_delay_bits = if timing_present {
         parse_timing_info_simplified(reader, builder)?;
 
         // decoder_model_info_present_flag (1 bit) - AV1 Spec 5.5.7
@@ -131,13 +137,14 @@ fn parse_non_reduced_path(
         );
 
         if decoder_present {
-            // Phase 0: Skip decoder_model_info details
-            // Placeholder for future expansion
-            skip_decoder_model_info(reader)?;
+            // decoder_model_info details are not shown as nodes; its first field is needed to
+            // size the operating parameters below
+            Some(read_decoder_model_info(reader)?)
+        } else {
+            None
         }
-        decoder_present
     } else {
-        false
+        None
     };
 
     // initial_display_delay_present_flag (1 bit) - AV1 Spec 5.5.8
@@ -149,13 +156,7 @@ fn parse_non_reduced_path(
     );
 
     // Parse operating points array
-    parse_operating_points_simplified(
-        reader,
-        builder,
-        timing_present,
-        decoder_model_present,
-        display_delay,
-    )?;
+    parse_operating_points_simplified(reader, builder, decoder_model_delay_bits, display_delay)?;
 
     Ok(())
 }
@@ -193,17 +194,16 @@ fn parse_timing_info_simplified(
     Ok(())
 }
 
-/// Skip decoder_model_info structure
-///
-/// Phase 0: Deferred to future implementation
-/// Skips 5 + 32 + 5 + 5 = 47 bits
-fn skip_decoder_model_info(reader: &mut TrackedBitReader) -> Result<()> {
+/// Read decoder_model_info (5 + 32 + 5 + 5 = 47 bits) without adding nodes and return
+/// `buffer_delay_length_minus_1`, which sizes every operating point's `operating_parameters_info`.
+fn read_decoder_model_info(reader: &mut TrackedBitReader) -> Result<u8> {
     // buffer_delay_length_minus_1 (5 bits)
+    let (buffer_delay_length_minus_1, _) = reader.read_bits_tracked(5)?;
     // num_units_in_decoding_tick (32 bits)
     // buffer_removal_time_length_minus_1 (5 bits)
     // frame_presentation_time_length_minus_1 (5 bits)
-    reader.skip_bits(47)?;
-    Ok(())
+    reader.skip_bits(42)?;
+    Ok(buffer_delay_length_minus_1 as u8)
 }
 
 /// Parse operating points array (simplified)
@@ -213,8 +213,7 @@ fn skip_decoder_model_info(reader: &mut TrackedBitReader) -> Result<()> {
 fn parse_operating_points_simplified(
     reader: &mut TrackedBitReader,
     builder: &mut SyntaxBuilder,
-    timing_info_present: bool,
-    decoder_model_present: bool,
+    decoder_model_delay_bits: Option<u8>,
     initial_display_delay_present: bool,
 ) -> Result<()> {
     // operating_points_cnt_minus_1 (5 bits) - AV1 Spec 5.5.9
@@ -245,15 +244,13 @@ fn parse_operating_points_simplified(
             builder.add_field("seq_tier", range, format!("{}", tier as u8));
         }
 
-        // decoder_model_present_for_this_op (conditional)
-        if timing_info_present && decoder_model_present {
+        // decoder_model_present_for_this_op (only when decoder_model_info is present)
+        if let Some(buffer_delay_length_minus_1) = decoder_model_delay_bits {
             let (decoder_model_for_op, _) = reader.read_bit_tracked()?;
             if decoder_model_for_op {
-                // Phase 0: Skip operating_parameters_info()
-                // decoder_buffer_delay (n bits), encoder_buffer_delay (n bits), low_delay_mode_flag (1 bit)
-                // n = buffer_delay_length_minus_1 + 1 (from decoder_model_info)
-                // For simplicity, skip 60 bits (approximate, actual depends on buffer_delay_length)
-                reader.skip_bits(60)?;
+                // operating_parameters_info(): decoder_buffer_delay and encoder_buffer_delay
+                // (n bits each, n = buffer_delay_length_minus_1 + 1), low_delay_mode_flag (1 bit)
+                reader.skip_bits(2 * (u64::from(buffer_delay_length_minus_1) + 1) + 1)?;
             }
         }
 
@@ -303,20 +300,28 @@ fn parse_frame_dimensions(
     Ok(())
 }
 
-/// Parse feature enable flags (non-reduced path only)
-fn parse_feature_flags(reader: &mut TrackedBitReader, builder: &mut SyntaxBuilder) -> Result<()> {
-    // Frame ID fields (conditional) - AV1 Spec 5.5.19-21
-    let (frame_ids, range) = reader.read_bit_tracked()?;
-    builder.add_field(
-        "frame_id_numbers_present_flag",
-        range,
-        format!("{}", frame_ids as u8),
-    );
+/// Parse the feature enable flags. A reduced still picture header has no frame ids, no inter
+/// tools, no order hint and no screen content switches (spec 5.5.1): only the intra tool
+/// switches and superres/cdef/restoration remain.
+fn parse_feature_flags(
+    reader: &mut TrackedBitReader,
+    builder: &mut SyntaxBuilder,
+    reduced: bool,
+) -> Result<()> {
+    if !reduced {
+        // Frame ID fields (conditional) - AV1 Spec 5.5.19-21
+        let (frame_ids, range) = reader.read_bit_tracked()?;
+        builder.add_field(
+            "frame_id_numbers_present_flag",
+            range,
+            format!("{}", frame_ids as u8),
+        );
 
-    if frame_ids {
-        // Phase 0: Skip delta_frame_id_length_minus_2 (4 bits)
-        // and additional_frame_id_length_minus_1 (3 bits)
-        reader.skip_bits(7)?;
+        if frame_ids {
+            // Phase 0: Skip delta_frame_id_length_minus_2 (4 bits)
+            // and additional_frame_id_length_minus_1 (3 bits)
+            reader.skip_bits(7)?;
+        }
     }
 
     // use_128x128_superblock (1 bit) - AV1 Spec 5.5.22
@@ -331,36 +336,41 @@ fn parse_feature_flags(reader: &mut TrackedBitReader, builder: &mut SyntaxBuilde
     let (val, range) = reader.read_bit_tracked()?;
     builder.add_field("enable_intra_edge_filter", range, format!("{}", val as u8));
 
-    // Phase 0: Parse inter/compound flags to properly track bit positions
-    // enable_interintra_compound (1 bit)
-    reader.skip_bits(1)?;
-    // enable_masked_compound (1 bit)
-    reader.skip_bits(1)?;
-    // enable_warped_motion (1 bit)
-    reader.skip_bits(1)?;
-    // enable_dual_filter (1 bit)
-    reader.skip_bits(1)?;
-
-    // enable_order_hint (1 bit) - Parse this since it affects skip logic
-    let (enable_order_hint, range) = reader.read_bit_tracked()?;
-    builder.add_field(
-        "enable_order_hint",
-        range,
-        format!("{}", enable_order_hint as u8),
-    );
-
-    if enable_order_hint {
-        // enable_jnt_comp (1 bit)
+    if !reduced {
+        // Phase 0: Parse inter/compound flags to properly track bit positions
+        // enable_interintra_compound (1 bit)
         reader.skip_bits(1)?;
-        // enable_ref_frame_mvs (1 bit)
+        // enable_masked_compound (1 bit)
         reader.skip_bits(1)?;
-    }
+        // enable_warped_motion (1 bit)
+        reader.skip_bits(1)?;
+        // enable_dual_filter (1 bit)
+        reader.skip_bits(1)?;
 
-    // seq_choose_screen_content_tools (1 bit)
-    let (choose_sct, _) = reader.read_bit_tracked()?;
-    if !choose_sct {
-        // seq_force_screen_content_tools (1 bit)
-        let (force_sct, _) = reader.read_bits_tracked(1)?;
+        // enable_order_hint (1 bit) - Parse this since it affects skip logic
+        let (enable_order_hint, range) = reader.read_bit_tracked()?;
+        builder.add_field(
+            "enable_order_hint",
+            range,
+            format!("{}", enable_order_hint as u8),
+        );
+
+        if enable_order_hint {
+            // enable_jnt_comp (1 bit)
+            reader.skip_bits(1)?;
+            // enable_ref_frame_mvs (1 bit)
+            reader.skip_bits(1)?;
+        }
+
+        // seq_choose_screen_content_tools (1 bit): when set, seq_force_screen_content_tools is
+        // SELECT_SCREEN_CONTENT_TOOLS (2) and is not coded; otherwise it is one bit. Anything
+        // above 0 (SELECT included) is followed by seq_choose_integer_mv.
+        let (choose_sct, _) = reader.read_bit_tracked()?;
+        let force_sct = if choose_sct {
+            2
+        } else {
+            reader.read_bits_tracked(1)?.0
+        };
         if force_sct > 0 {
             // seq_choose_integer_mv (1 bit)
             let (choose_imv, _) = reader.read_bit_tracked()?;
@@ -369,11 +379,11 @@ fn parse_feature_flags(reader: &mut TrackedBitReader, builder: &mut SyntaxBuilde
                 reader.skip_bits(1)?;
             }
         }
-    }
 
-    if enable_order_hint {
-        // order_hint_bits_minus_1 (3 bits)
-        reader.skip_bits(3)?;
+        if enable_order_hint {
+            // order_hint_bits_minus_1 (3 bits)
+            reader.skip_bits(3)?;
+        }
     }
 
     // enable_superres (1 bit) - AV1 Spec 5.5.25
@@ -391,17 +401,11 @@ fn parse_feature_flags(reader: &mut TrackedBitReader, builder: &mut SyntaxBuilde
     Ok(())
 }
 
-/// Parse color_config structure (simplified for Phase 0)
+/// Parse color_config (spec 5.5.2 / 6.4.2), field for field.
 ///
-/// Phase 0 scope:
-/// - high_bitdepth, twelve_bit (conditional), mono_chrome (conditional)
-/// - color_description_present_flag and 3 color fields (if present)
-/// - color_range
-///
-/// Deferred:
-/// - subsampling_x, subsampling_y (profile-dependent logic)
-/// - chroma_sample_position (conditional on subsampling)
-/// - separate_uv_delta_q
+/// What is shown as a node: `high_bitdepth`, `twelve_bit`, `mono_chrome`,
+/// `color_description_present_flag`, the three descriptors, `color_range`, `subsampling_x` /
+/// `subsampling_y` (only when coded), `chroma_sample_position`, `separate_uv_delta_q`.
 fn parse_color_config_simplified(
     reader: &mut TrackedBitReader,
     builder: &mut SyntaxBuilder,
@@ -410,18 +414,20 @@ fn parse_color_config_simplified(
     let start = reader.position();
     builder.push_container("color_config", start);
 
-    // high_bitdepth (1 bit) - AV1 Spec 6.4.1
+    // high_bitdepth (1 bit)
     let (high_bd, range) = reader.read_bit_tracked()?;
     builder.add_field("high_bitdepth", range, format!("{}", high_bd as u8));
 
-    // twelve_bit (1 bit) - Conditional on Professional profile + high_bd - AV1 Spec 6.4.2
+    // twelve_bit (1 bit): profile 2 with high_bitdepth only
+    let mut twelve_bit = false;
     if profile == 2 && high_bd {
         let (twelve, range) = reader.read_bit_tracked()?;
         builder.add_field("twelve_bit", range, format!("{}", twelve as u8));
+        twelve_bit = twelve;
     }
 
-    // mono_chrome (1 bit) - Conditional on !High profile - AV1 Spec 6.4.3
-    let _mono = if profile != 1 {
+    // mono_chrome (1 bit): not coded in profile 1 (always 0)
+    let mono = if profile != 1 {
         let (mono, range) = reader.read_bit_tracked()?;
         builder.add_field("mono_chrome", range, format!("{}", mono as u8));
         mono
@@ -429,61 +435,63 @@ fn parse_color_config_simplified(
         false
     };
 
-    // color_description_present_flag (1 bit) - AV1 Spec 6.4.4
+    // color_description_present_flag (1 bit); the descriptors default to 2 (unspecified)
     let (desc_present, range) = reader.read_bit_tracked()?;
     builder.add_field(
         "color_description_present_flag",
         range,
         format!("{}", desc_present as u8),
     );
-
+    let (mut primaries, mut transfer, mut matrix) = (2, 2, 2);
     if desc_present {
-        // color_primaries (8 bits) - AV1 Spec 6.4.5
         let (val, range) = reader.read_bits_tracked(8)?;
         builder.add_field("color_primaries", range, format!("{}", val));
-
-        // transfer_characteristics (8 bits) - AV1 Spec 6.4.6
+        primaries = val;
         let (val, range) = reader.read_bits_tracked(8)?;
         builder.add_field("transfer_characteristics", range, format!("{}", val));
-
-        // matrix_coefficients (8 bits) - AV1 Spec 6.4.7
+        transfer = val;
         let (val, range) = reader.read_bits_tracked(8)?;
         builder.add_field("matrix_coefficients", range, format!("{}", val));
+        matrix = val;
     }
 
-    // color_range (1 bit) - AV1 Spec 6.4.8
-    let (val, range) = reader.read_bit_tracked()?;
-    builder.add_field("color_range", range, format!("{}", val as u8));
-
-    // Subsampling (conditional on profile and mono_chrome)
-    if profile == 1 {
-        // High Profile: 4:4:4 (no subsampling)
-        // subsampling_x = 0, subsampling_y = 0 (implicit)
-    } else if profile == 2 {
-        // Professional Profile: bit_depth determines subsampling
-        // For simplicity, skip detailed logic - just parse the bits
-        // subsampling_x (1 bit)
-        let (sub_x, range) = reader.read_bit_tracked()?;
-        builder.add_field("subsampling_x", range, format!("{}", sub_x as u8));
-
-        if sub_x {
-            // subsampling_y (1 bit)
-            let (sub_y, range) = reader.read_bit_tracked()?;
-            builder.add_field("subsampling_y", range, format!("{}", sub_y as u8));
-        }
-        // chroma_sample_position is conditional - skip for Phase 0
+    if mono {
+        // color_range only; subsampling is fixed, separate_uv_delta_q is 0 and not coded
+        let (val, range) = reader.read_bit_tracked()?;
+        builder.add_field("color_range", range, format!("{}", val as u8));
     } else {
-        // Main Profile (profile == 0): typically 4:2:0
-        if !_mono {
-            // subsampling_x = 1, subsampling_y = 1 (implicit for 4:2:0)
-            // chroma_sample_position (2 bits)
-            let (val, range) = reader.read_bits_tracked(2)?;
-            builder.add_field("chroma_sample_position", range, format!("{}", val));
-        }
-    }
+        // BT.709 primaries (1), sRGB transfer (13) and identity matrix (0): full range 4:4:4,
+        // neither color_range nor the subsampling bits are coded
+        let srgb_identity = primaries == 1 && transfer == 13 && matrix == 0;
+        if !srgb_identity {
+            let (val, range) = reader.read_bit_tracked()?;
+            builder.add_field("color_range", range, format!("{}", val as u8));
 
-    // separate_uv_delta_q (1 bit) - AV1 Spec 6.4.11
-    if !_mono {
+            let (sub_x, sub_y) = match profile {
+                0 => (true, true),
+                1 => (false, false),
+                _ if twelve_bit => {
+                    // profile 2 at 12 bit: subsampling_x, and subsampling_y only if x is set
+                    let (sub_x, range) = reader.read_bit_tracked()?;
+                    builder.add_field("subsampling_x", range, format!("{}", sub_x as u8));
+                    let mut sub_y = false;
+                    if sub_x {
+                        let (y, range) = reader.read_bit_tracked()?;
+                        builder.add_field("subsampling_y", range, format!("{}", y as u8));
+                        sub_y = y;
+                    }
+                    (sub_x, sub_y)
+                }
+                // profile 2 below 12 bit is 4:2:2 without any coded bits
+                _ => (true, false),
+            };
+            if sub_x && sub_y {
+                // chroma_sample_position (2 bits)
+                let (val, range) = reader.read_bits_tracked(2)?;
+                builder.add_field("chroma_sample_position", range, format!("{}", val));
+            }
+        }
+        // separate_uv_delta_q (1 bit)
         let (val, range) = reader.read_bit_tracked()?;
         builder.add_field("separate_uv_delta_q", range, format!("{}", val as u8));
     }
@@ -988,5 +996,293 @@ mod tests {
         let (_, m) = parse(&w.bytes());
         assert_eq!(value(&m, "color_config.twelve_bit").unwrap(), "1");
         assert_eq!(value(&m, "seq_profile").unwrap(), "2 (Professional)");
+    }
+
+    // --- differential test against the oracle-checked `sequence::parse_sequence_header` ------
+
+    /// Xorshift64: a seeded, dependency-free source of choices.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0 >> 11
+        }
+        fn below(&mut self, n: u64) -> u64 {
+            self.next() % n
+        }
+        fn bit(&mut self) -> u64 {
+            self.below(2)
+        }
+    }
+
+    /// A random sequence header written field by field as spec 5.5 codes it, exercising every
+    /// branch: reduced still picture, timing info (+ uvlc), decoder model with its operating
+    /// parameters, initial display delay, frame ids, order hint, screen content tools and every
+    /// colour config path (all profiles, 12 bit, mono, sRGB/identity).
+    fn random_header(rng: &mut Rng) -> Bits {
+        let mut w = Bits::new();
+        let profile = rng.below(3);
+        let reduced = rng.below(4) == 0;
+        w.put(profile, 3).put(reduced as u64 | rng.bit(), 1); // still_picture (1 if reduced)
+        w.put(reduced as u64, 1);
+        // still_picture must be 1 for a reduced header; the line above ORs it in
+        if reduced {
+            w.put(rng.below(32), 5); // seq_level_idx[0]
+        } else {
+            let timing = rng.bit();
+            w.put(timing, 1);
+            let mut decoder_model = None;
+            if timing == 1 {
+                w.put(rng.below(1 << 32), 32).put(rng.below(1 << 32), 32);
+                let equal = rng.bit();
+                w.put(equal, 1);
+                if equal == 1 {
+                    // uvlc(v): lz zeros, a one, then lz bits of v + 1 - 2^lz
+                    let v = rng.below(1000) + 1;
+                    let lz = 63 - v.leading_zeros() as u64;
+                    w.put(0, lz as u32).put(1, 1).put(v - (1 << lz), lz as u32);
+                }
+                let present = rng.bit();
+                w.put(present, 1);
+                if present == 1 {
+                    let bdl = rng.below(32);
+                    w.put(bdl, 5)
+                        .put(rng.below(1 << 32), 32)
+                        .put(rng.below(32), 5)
+                        .put(rng.below(32), 5);
+                    decoder_model = Some(bdl + 1);
+                }
+            }
+            let display_delay = rng.bit();
+            w.put(display_delay, 1);
+            let count = rng.below(32);
+            w.put(count, 5);
+            for _ in 0..=count {
+                w.put(rng.below(1 << 12), 12);
+                let level = rng.below(32);
+                w.put(level, 5);
+                if level > 7 {
+                    w.put(rng.bit(), 1);
+                }
+                if let Some(n) = decoder_model {
+                    let for_op = rng.bit();
+                    w.put(for_op, 1);
+                    if for_op == 1 {
+                        w.put(rng.below(1 << n), n as u32)
+                            .put(rng.below(1 << n), n as u32)
+                            .put(rng.bit(), 1);
+                    }
+                }
+                if display_delay == 1 {
+                    let for_op = rng.bit();
+                    w.put(for_op, 1);
+                    if for_op == 1 {
+                        w.put(rng.below(16), 4);
+                    }
+                }
+            }
+        }
+        let (wb, hb) = (rng.below(16), rng.below(16));
+        w.put(wb, 4).put(hb, 4);
+        w.put(rng.below(1 << (wb + 1)), wb as u32 + 1);
+        w.put(rng.below(1 << (hb + 1)), hb as u32 + 1);
+        if !reduced {
+            let ids = rng.bit();
+            w.put(ids, 1);
+            if ids == 1 {
+                w.put(rng.below(1 << 7), 7);
+            }
+        }
+        w.put(rng.below(8), 3); // 128x128, filter_intra, intra_edge
+        if !reduced {
+            w.put(rng.below(16), 4); // interintra, masked, warped, dual
+            let order_hint = rng.bit();
+            w.put(order_hint, 1);
+            if order_hint == 1 {
+                w.put(rng.below(4), 2); // jnt_comp, ref_frame_mvs
+            }
+            let choose = rng.bit();
+            w.put(choose, 1);
+            let force = if choose == 1 { 2 } else { rng.bit() };
+            if choose == 0 {
+                w.put(force, 1);
+            }
+            if force > 0 {
+                let choose_mv = rng.bit();
+                w.put(choose_mv, 1);
+                if choose_mv == 0 {
+                    w.put(rng.bit(), 1);
+                }
+            }
+            if order_hint == 1 {
+                w.put(rng.below(8), 3);
+            }
+        }
+        w.put(rng.below(8), 3); // superres, cdef, restoration
+
+        // colour config
+        let high = rng.bit();
+        w.put(high, 1);
+        let twelve = profile == 2 && high == 1 && rng.bit() == 1;
+        if profile == 2 && high == 1 {
+            w.put(twelve as u64, 1);
+        }
+        let mono = profile != 1 && rng.below(4) == 0;
+        if profile != 1 {
+            w.put(mono as u64, 1);
+        }
+        let described = rng.bit();
+        w.put(described, 1);
+        let mut srgb = false;
+        if described == 1 {
+            srgb = rng.below(3) == 0;
+            let (p, t, m) = if srgb {
+                (1, 13, 0)
+            } else {
+                (rng.below(256), rng.below(256), rng.below(256))
+            };
+            srgb = (p, t, m) == (1, 13, 0);
+            w.put(p, 8).put(t, 8).put(m, 8);
+        }
+        if mono {
+            w.put(rng.bit(), 1); // color_range
+        } else {
+            if !srgb {
+                w.put(rng.bit(), 1); // color_range
+                let (sx, sy) = match profile {
+                    0 => (1, 1),
+                    1 => (0, 0),
+                    _ if twelve => {
+                        let sx = rng.bit();
+                        w.put(sx, 1);
+                        let mut sy = 0;
+                        if sx == 1 {
+                            sy = rng.bit();
+                            w.put(sy, 1);
+                        }
+                        (sx, sy)
+                    }
+                    _ => (1, 0),
+                };
+                if sx == 1 && sy == 1 {
+                    w.put(rng.below(4), 2); // chroma_sample_position
+                }
+            }
+            w.put(rng.bit(), 1); // separate_uv_delta_q
+        }
+        w.put(rng.bit(), 1); // film_grain_params_present
+        w
+    }
+
+    #[test]
+    fn random_headers_read_like_the_oracle_checked_parser() {
+        let mut rng = Rng(0x2545_F491_4F6C_DD1D);
+        let mut by_path = std::collections::BTreeMap::<&str, u32>::new();
+        for case in 0..30_000 {
+            let w = random_header(&mut rng);
+            let bytes = w.bytes();
+            let real = crate::parse_sequence_header(&bytes)
+                .unwrap_or_else(|e| panic!("case {case}: the oracle parser failed: {e:?}"));
+            let (result, m) = parse(&bytes);
+            result.unwrap_or_else(|e| panic!("case {case}: {e:?}"));
+
+            let flag = |path: &str| value(&m, path).map(|v| v == "1");
+            let tag = format!("case {case}");
+            // Bit sync: the last field ends exactly where the header's bits end.
+            assert_eq!(
+                range(&m, "film_grain_params_present").end_bit,
+                w.len() as u64,
+                "{tag}"
+            );
+            assert_eq!(
+                flag("film_grain_params_present"),
+                Some(real.film_grain_params_present),
+                "{tag}"
+            );
+            assert_eq!(
+                value(&m, "max_frame_width_minus_1").unwrap(),
+                (real.max_frame_width - 1).to_string(),
+                "{tag}"
+            );
+            assert_eq!(
+                value(&m, "max_frame_height_minus_1").unwrap(),
+                (real.max_frame_height - 1).to_string(),
+                "{tag}"
+            );
+            for (path, expected) in [
+                ("use_128x128_superblock", real.use_128x128_superblock),
+                ("enable_filter_intra", real.enable_filter_intra),
+                ("enable_intra_edge_filter", real.enable_intra_edge_filter),
+                ("enable_superres", real.enable_superres),
+                ("enable_cdef", real.enable_cdef),
+                ("enable_restoration", real.enable_restoration),
+            ] {
+                assert_eq!(flag(path), Some(expected), "{tag} {path}");
+            }
+            let cc = &real.color_config;
+            assert_eq!(
+                flag("color_config.mono_chrome").unwrap_or(false),
+                cc.mono_chrome,
+                "{tag}"
+            );
+            // not coded for sRGB/identity, where the spec fixes it at full range
+            assert_eq!(
+                flag("color_config.color_range").unwrap_or(true),
+                cc.color_range,
+                "{tag}"
+            );
+            assert_eq!(
+                flag("color_config.separate_uv_delta_q").unwrap_or(false),
+                cc.separate_uv_delta_q,
+                "{tag}"
+            );
+            if let Some(v) = value(&m, "color_config.chroma_sample_position") {
+                assert_eq!(v, (cc.chroma_sample_position as u8).to_string(), "{tag}");
+            }
+            // bit depth: the nodes say whether 12 bit was coded
+            let hbd = flag("color_config.high_bitdepth").unwrap();
+            let twelve = flag("color_config.twelve_bit").unwrap_or(false);
+            let depth = match (real.profile, hbd, twelve) {
+                (crate::sequence::Av1Profile::Professional, true, true) => 12,
+                (_, true, _) => 10,
+                _ => 8,
+            };
+            assert_eq!(cc.bit_depth, depth, "{tag}");
+
+            *by_path
+                .entry(if real.reduced_still_picture_header {
+                    "reduced"
+                } else {
+                    "full"
+                })
+                .or_default() += 1;
+            *by_path
+                .entry(if cc.mono_chrome { "mono" } else { "colour" })
+                .or_default() += 1;
+            *by_path
+                .entry(if real.decoder_model_info.is_some() {
+                    "decoder_model"
+                } else {
+                    "no_decoder_model"
+                })
+                .or_default() += 1;
+        }
+        // every branch family was actually generated
+        for key in [
+            "reduced",
+            "full",
+            "mono",
+            "colour",
+            "decoder_model",
+            "no_decoder_model",
+        ] {
+            assert!(
+                by_path.get(key).copied().unwrap_or(0) > 500,
+                "{key}: {by_path:?}"
+            );
+        }
     }
 }
