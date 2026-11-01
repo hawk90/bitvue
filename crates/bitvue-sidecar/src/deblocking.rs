@@ -148,16 +148,7 @@ pub fn get_deblocking_analysis_command(
     let full_len = byte_cache.len() as usize;
     let data = match byte_cache.read_range(0, full_len) {
         Ok(bytes) => bytes,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: crate::command_support::wire_error_code_for(&err),
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(err) => return crate::command_support::engine_error_response(request.id, &err),
     };
 
     match get_deblocking_analysis(data, params.frame_index) {

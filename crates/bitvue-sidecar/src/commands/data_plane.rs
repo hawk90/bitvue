@@ -3,7 +3,7 @@
 //! (no base64-in-JSON for potentially multi-megabyte payloads). Split out of `main.rs` (2026-08-19)
 //! as part of an SRP pass.
 
-use crate::command_support::{parse_stream_id, single_control_frame, wire_error_code_for};
+use crate::command_support::{engine_error_response, parse_stream_id, single_control_frame};
 use bitvue_engine::Core;
 use bitvue_protocol::{FrameKind, Request, Response, WireError, WireErrorCode};
 
@@ -67,14 +67,7 @@ pub fn get_hex_range(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<u8>)
                 (FrameKind::Data, bytes.to_vec()),
             ]
         }
-        Err(err) => single_control_frame(Response::failure(
-            request.id,
-            WireError {
-                code: wire_error_code_for(&err),
-                message: err.to_string(),
-                offset: None,
-            },
-        )),
+        Err(err) => single_control_frame(engine_error_response(request.id, &err)),
     }
 }
 
@@ -138,16 +131,7 @@ pub fn get_decoded_frame_yuv(
     let full_len = byte_cache.len() as usize;
     let data = match byte_cache.read_range(0, full_len) {
         Ok(bytes) => bytes,
-        Err(err) => {
-            return single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: wire_error_code_for(&err),
-                    message: err.to_string(),
-                    offset: None,
-                },
-            ))
-        }
+        Err(err) => return single_control_frame(engine_error_response(request.id, &err)),
     };
 
     match decode_sessions.get_decoded_frame_yuv(

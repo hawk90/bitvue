@@ -46,6 +46,19 @@ pub fn single_control_frame(response: Response) -> Vec<(FrameKind, Vec<u8>)> {
     )]
 }
 
+/// Failure reply for an engine error: wire code from [`wire_error_code_for`], message from
+/// `Display`, no byte offset.
+pub fn engine_error_response(request_id: u32, err: &BitvueError) -> Response {
+    Response::failure(
+        request_id,
+        WireError {
+            code: wire_error_code_for(err),
+            message: err.to_string(),
+            offset: None,
+        },
+    )
+}
+
 /// Mirror of `bitvue_engine::BitvueError` variants onto `WireErrorCode` — see the "not a direct
 /// `Serialize` derive" note on `WireErrorCode` in `bitvue-protocol` for why this mapping lives
 /// here instead of on the engine's error type.
@@ -130,5 +143,24 @@ pub fn event_to_json(event: &Event) -> serde_json::Value {
         Event::ExportFailed { error } => {
             serde_json::json!({"type": "ExportFailed", "error": error})
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn engine_error_response_carries_id_code_message_and_no_offset() {
+        let err = BitvueError::FrameNotFound(7);
+        let resp = engine_error_response(42, &err);
+        assert_eq!(resp.id, 42);
+        assert!(!resp.ok);
+        assert!(resp.result.is_none());
+        let wire = resp.error.expect("failure carries an error");
+        assert_eq!(wire.code, wire_error_code_for(&err));
+        assert!(matches!(wire.code, WireErrorCode::FrameNotFound));
+        assert_eq!(wire.message, err.to_string());
+        assert_eq!(wire.offset, None);
     }
 }
