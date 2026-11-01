@@ -236,9 +236,9 @@ fn every_available_strategy_agrees_with_scalar() {
     let mut seed = 0x9E37_79B9_7F4A_7C15u64;
     // sizes that are not a multiple of the SIMD width, plus a wide one
     for (w, h) in [(2usize, 2usize), (18, 6), (34, 4), (66, 8), (130, 2)] {
-        for depth in [8u8, 10] {
+        for depth in [8u8, 10, 12] {
             let bps = if depth > 8 { 2 } else { 1 };
-            let mask = if depth > 8 { 0x03FFu16 } else { 0x00FF };
+            let mask = (1u16 << depth) - 1;
             let sample = |seed: &mut u64, n: usize| -> Vec<u8> {
                 if depth > 8 {
                     bytes(seed, n * 2)
@@ -305,6 +305,25 @@ fn rgb_data_becomes_an_image_only_if_it_fits() {
         err.contains("width=2") && err.contains("data_len=5"),
         "{err}"
     );
+}
+
+#[test]
+fn the_scalar_strategy_scales_twelve_bit_white_and_grey() {
+    let le = |vals: &[u16]| -> Vec<u8> { vals.iter().flat_map(|v| v.to_le_bytes()).collect() };
+    let mut rgb = vec![0u8; 6];
+    ScalarStrategy::new()
+        .convert_yuv444_to_rgb(
+            &le(&[4095, 2048]),
+            &le(&[2048, 2048]),
+            &le(&[2048, 2048]),
+            2,
+            1,
+            &mut rgb,
+            12,
+        )
+        .unwrap();
+    assert_close(&rgb[0..3], [255, 255, 255], 1, "12-bit white");
+    assert_close(&rgb[3..6], [128, 128, 128], 1, "12-bit grey");
 }
 
 bitvue_test_alloc::install!();
