@@ -17,6 +17,8 @@ struct Scripted<'a> {
     quick: Result<QuickIndex, &'static str>,
     full: Box<Extract>,
     cancel_seen_by_extractor: Cell<Option<bool>>,
+    /// Progress reports the extractor makes before it returns its frames
+    reports: Vec<(f64, &'static str)>,
 }
 
 impl IndexExtractor for Scripted<'_> {
@@ -36,10 +38,10 @@ impl IndexExtractor for Scripted<'_> {
         progress: crate::ProgressCallback<'_>,
         should_cancel: crate::CancelCallback<'_>,
     ) -> Result<Vec<FrameMetadata>, BitvueError> {
-        assert!(
-            progress.is_none(),
-            "the session passes no progress callback"
-        );
+        let progress = progress.expect("the session passes a progress callback");
+        for &(fraction, message) in &self.reports {
+            progress(fraction, message);
+        }
         self.cancel_seen_by_extractor
             .set(should_cancel.map(|f| f()));
         (self.full)(self.session)
@@ -89,6 +91,7 @@ fn scripted<'a>(
         quick: Ok(quick(9999)),
         full: Box::new(full),
         cancel_seen_by_extractor: Cell::new(None),
+        reports: Vec::new(),
     }
 }
 
@@ -398,8 +401,8 @@ fn estimated_progress_follows_the_state_through_a_full_workflow() {
         .unwrap();
     assert_eq!(session.estimated_progress(), 0.0, "QuickComplete");
 
-    // While the full index runs (seen from the start report) the counter is never advanced,
-    // so the estimate is 0.5 without an expected frame count and 0.0 with one.
+    // While the full index runs, seen from the start report, an extractor that has not reported
+    // yet gives 0.0.
     let during = Cell::new(f64::NAN);
     session
         .execute_full_index(
@@ -413,7 +416,7 @@ fn estimated_progress_follows_the_state_through_a_full_workflow() {
             }),
         )
         .unwrap();
-    assert_eq!(during.get(), 0.5);
+    assert_eq!(during.get(), 0.0);
     assert_eq!(session.estimated_progress(), 1.0, "FullComplete");
 
     let session = IndexSession::new();
@@ -438,4 +441,61 @@ fn estimated_progress_follows_the_state_through_a_full_workflow() {
         )
         .unwrap();
     assert_eq!(during.get(), 0.0);
+}
+
+#[test]
+fn full_index_progress_is_the_extractors_fraction_and_reaches_the_callback() {
+    // #280: the session used to hand the extractor no progress callback, so the estimate sat at a
+    // fixed 0.5 (or 0.0) for the whole full index.
+    let session = IndexSession::new();
+    let ex = Scripted {
+        reports: vec![
+            (0.25, "a"),
+            (0.5, "b"),
+            (2.0, "past the end"),
+            (f64::NAN, "not a number"),
+            (-1.0, "negative"),
+        ],
+        ..scripted(&session, three_frames)
+    };
+    session
+        .execute_quick_index(&ex, &mut reader(), None::<fn(IndexingProgress)>)
+        .unwrap();
+
+    // (reported progress, estimate at that moment, frames indexed, message) per callback call
+    let seen = std::cell::RefCell::new(Vec::new());
+    session
+        .execute_full_index(
+            &ex,
+            &mut reader(),
+            Some(|p: IndexingProgress| {
+                seen.borrow_mut().push((
+                    p.progress,
+                    session.estimated_progress(),
+                    p.frames_indexed,
+                    p.message,
+                ));
+            }),
+        )
+        .unwrap();
+    let seen = seen.into_inner();
+    let summary: Vec<(f64, f64, usize)> = seen.iter().map(|s| (s.0, s.1, s.2)).collect();
+    assert_eq!(
+        summary,
+        vec![
+            (0.0, 0.0, 0),   // the session's own start report
+            (0.25, 0.25, 1), // the extractor's reports, in order
+            (0.5, 0.5, 2),
+            (1.0, 0.99, 3), // clamped to 1.0, but the estimate stays below done
+            (0.0, 0.0, 4),  // NaN is treated as no progress
+            (0.0, 0.0, 5),  // so is a negative fraction
+            (1.0, 1.0, 3),  // completion: 3 frames stored, state FullComplete
+        ]
+    );
+    assert_eq!(seen[1].3, "a");
+    assert_eq!(session.estimated_progress(), 1.0);
+
+    // reset puts the estimate back to zero
+    session.reset();
+    assert_eq!(session.estimated_progress(), 0.0);
 }
