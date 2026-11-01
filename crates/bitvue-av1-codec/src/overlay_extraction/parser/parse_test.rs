@@ -1,6 +1,8 @@
 //! `ParsedFrame::parse_with_ref_state` pinned over whole fixture clips: every packet is parsed
 //! with the reference state threaded from the packets before it, and the complete `Debug` of the
 //! result (every header value, OBU range, tile range and the tile bytes) goes into one hash.
+//! Re-recorded when the OBU payload ranges were fixed (#232): with every range zeroed, the old and
+//! the new code give identical hashes for all six clips, so only the ranges changed.
 
 use super::ParsedFrame;
 use crate::frame_header_full::RefFrameState;
@@ -52,15 +54,15 @@ macro_rules! clip_case {
     };
 }
 
-clip_case!(fixture_clip, "av1_test.ivf", 9220940587400675183);
-clip_case!(aomenc_clip, "av1_aomenc_testsrc2.ivf", 7840399681042082134);
-clip_case!(rav1e_clip, "av1_rav1e_testsrc2.ivf", 15272015285328483914);
-clip_case!(svtav1_clip, "av1_svtav1_testsrc2.ivf", 7906735805087128740);
-clip_case!(tiles5_clip, "av1_aomenc_tiles5.ivf", 15462724478405930073);
+clip_case!(fixture_clip, "av1_test.ivf", 13928233801027534612);
+clip_case!(aomenc_clip, "av1_aomenc_testsrc2.ivf", 14307620967268340761);
+clip_case!(rav1e_clip, "av1_rav1e_testsrc2.ivf", 10418656483842950697);
+clip_case!(svtav1_clip, "av1_svtav1_testsrc2.ivf", 6659916870780134820);
+clip_case!(tiles5_clip, "av1_aomenc_tiles5.ivf", 3666683931192427481);
 clip_case!(
     tile_groups_clip,
     "av1_aomenc_tilegroups.ivf",
-    4027734206924608326
+    430644100655725615
 );
 
 fn grid_of(width: u32, height: u32, sb_size: u32) -> (u32, u32) {

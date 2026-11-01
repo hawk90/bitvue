@@ -818,6 +818,53 @@ mod tests {
     }
 
     #[test]
+    fn obu_ranges_cover_exactly_each_obus_payload() {
+        // #232: the obu_size field was not skipped, so ranges started early and the error grew
+        // with every OBU. Every OBU of every packet of the clip, against the iterator's payloads.
+        for packet in packets() {
+            let frame = ParsedFrame::parse(&packet.data).unwrap();
+            let obus = parse_all_obus(&packet.data).unwrap();
+            assert_eq!(frame.obus.len(), obus.len());
+            for (reference, obu) in frame.obus.iter().zip(&obus) {
+                assert_eq!(reference.obu_type, obu.header.obu_type);
+                assert_eq!(
+                    &frame.obu_data[reference.payload_start..reference.payload_end],
+                    &obu.payload[..],
+                    "{:?}",
+                    obu.header.obu_type
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn obu_ranges_account_for_extension_bytes_and_multi_byte_sizes() {
+        // OBU 1: padding with an extension byte (2-byte header) and a 2-byte obu_size (200);
+        // OBU 2: an empty temporal delimiter; OBU 3: padding with a 1-byte size.
+        let mut data = vec![((ObuType::Padding as u8) << 3) | 0x04 | 0x02, 0x00];
+        data.extend(crate::encode_uleb128(200));
+        assert_eq!(data.len(), 4);
+        data.extend(std::iter::repeat_n(0x55, 200));
+        data.extend(td());
+        data.extend(obu(ObuType::Padding, &[7, 8, 9]));
+        let frame = ParsedFrame::parse(&data).unwrap();
+        let ranges: Vec<_> = frame
+            .obus
+            .iter()
+            .map(|o| (o.obu_type, o.payload_start, o.payload_end))
+            .collect();
+        assert_eq!(
+            ranges,
+            vec![
+                (ObuType::Padding, 4, 204),
+                (ObuType::TemporalDelimiter, 206, 206),
+                (ObuType::Padding, 208, 211),
+            ]
+        );
+        assert_eq!(&data[208..211], &[7, 8, 9]);
+    }
+
+    #[test]
     fn the_scaffold_holds_the_spec_fallbacks_for_values_no_header_supplied() {
         let frame = ParsedFrame::parse(&[]).unwrap();
         assert!(frame.disable_frame_end_update_cdf);
