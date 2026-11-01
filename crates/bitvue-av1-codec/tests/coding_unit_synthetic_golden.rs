@@ -7,6 +7,9 @@
 //! recorded from the unmodified code before `parse_coding_unit` was split into stages.
 //!
 //! To re-record after an intentional parsing change, run with `GOLDEN_PRINT=1`.
+//! The `lossless` entries were re-recorded for #388 (chroma is cut into 4x4 transform blocks in a
+//! lossless frame): they were the only two digests that changed, every other configuration's
+//! digest is the one recorded before.
 
 use bitvue_av1_codec::frame_header::TxfmMode;
 use bitvue_av1_codec::frame_header_full::SegmentationInfo;
@@ -331,7 +334,7 @@ const GOLDEN: &[(&str, u64)] = &[
     ("seg-skip-feature", 0x813d5986d9f95af5),
     ("seg-globalmv", 0x1f9df5fad2923276),
     ("seg-everything", 0x552ed577772d3985),
-    ("lossless", 0x7cb8264a96ecabfa),
+    ("lossless", 0x610da55f2d7ac1df),
     ("txfm-only4x4", 0xaeac1a834a310285),
     ("txfm-switchable", 0xbc21d40192f1d614),
     ("gm-translation-compound", 0x4e78c514653fa978),
@@ -422,7 +425,7 @@ const DEEP_GOLDEN: &[(&str, u64)] = &[
     ("seg-skip-feature", 0xe2de2448fa2d762a),
     ("seg-globalmv", 0x40a3763f0ab76467),
     ("seg-everything", 0xfe8dcfb397d741da),
-    ("lossless", 0x569aa68c6957f751),
+    ("lossless", 0x14f145565e7e3c89),
     ("txfm-only4x4", 0x3b9d070b9944e444),
     ("txfm-switchable", 0x5c93aedfe50411d0),
     ("gm-translation-compound", 0x777c6db968b8e7bb),

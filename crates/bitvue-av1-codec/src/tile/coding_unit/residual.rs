@@ -921,8 +921,8 @@ mod tests {
             chunk_tiles(1, 1, 1).is_empty(),
             "a chunk the block does not reach"
         );
-        // a tile wider than the chunk's share still counts as one
-        assert_eq!(chunk_tiles(0, (32 / 16u32).max(1), 1), 0..1);
+        // a block whose single tile is smaller than a chunk's share still gets that tile
+        assert_eq!(chunk_tiles(0, 2, 1), 0..1);
         // lossless 128x128 luma: 16 tiles per axis, 8 per chunk
         assert_eq!(chunk_tiles(0, 8, 16), 0..8);
         assert_eq!(chunk_tiles(1, 8, 16), 8..16);
