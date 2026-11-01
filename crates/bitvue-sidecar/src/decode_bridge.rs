@@ -17,6 +17,7 @@ use bitvue_av1_codec::ivf::parse_ivf_frames;
 use bitvue_decode::decoder::ChromaFormat;
 use bitvue_decode::{Av1Decoder, DecodedFrame};
 use bitvue_engine::{CachedFrame, Thumbnail, ThumbnailCache};
+use bitvue_protocol::{FrameKind, Response};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -60,6 +61,35 @@ pub struct FrameDescriptor {
 pub struct DecodedYuvFrame {
     pub descriptor: FrameDescriptor,
     pub bytes: Vec<u8>,
+}
+
+impl DecodedYuvFrame {
+    /// The data-plane reply: a `Control` frame with the descriptor, then a `Data` frame with the
+    /// planes.
+    pub fn into_reply(self, request_id: u32) -> Vec<(FrameKind, Vec<u8>)> {
+        let meta = Response::success(
+            request_id,
+            serde_json::json!({
+                "width": self.descriptor.width,
+                "height": self.descriptor.height,
+                "bit_depth": self.descriptor.bit_depth,
+                "chroma_subsampling": self.descriptor.chroma_subsampling,
+                "y_stride": self.descriptor.y_stride,
+                "u_stride": self.descriptor.u_stride,
+                "v_stride": self.descriptor.v_stride,
+                "y_len": self.descriptor.y_len,
+                "u_len": self.descriptor.u_len,
+                "v_len": self.descriptor.v_len,
+            }),
+        );
+        vec![
+            (
+                FrameKind::Control,
+                serde_json::to_vec(&meta).expect("Response always serializes"),
+            ),
+            (FrameKind::Data, self.bytes),
+        ]
+    }
 }
 
 pub fn get_decoded_frame_yuv(data: &[u8], frame_index: usize) -> Result<DecodedYuvFrame, String> {
@@ -381,6 +411,38 @@ mod tests {
     use bitvue_protocol::{Request, WireErrorCode};
 
     const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
+
+    #[test]
+    fn into_reply_is_a_control_frame_with_every_descriptor_field_then_the_data_frame() {
+        let frame = DecodedYuvFrame {
+            descriptor: FrameDescriptor {
+                width: 1,
+                height: 2,
+                bit_depth: 3,
+                chroma_subsampling: "4:2:0",
+                y_stride: 4,
+                u_stride: 5,
+                v_stride: 6,
+                y_len: 7,
+                u_len: 8,
+                v_len: 9,
+            },
+            bytes: vec![0xAB, 0xCD],
+        };
+        let reply = frame.into_reply(77);
+        assert_eq!(reply.len(), 2);
+        assert_eq!(reply[0].0, FrameKind::Control);
+        assert_eq!(reply[1], (FrameKind::Data, vec![0xAB, 0xCD]));
+        let resp: Response = serde_json::from_slice(&reply[0].1).unwrap();
+        assert_eq!(resp.id, 77);
+        assert!(resp.ok);
+        let r = resp.result.unwrap();
+        assert_eq!(
+            r,
+            serde_json::json!({"width": 1, "height": 2, "bit_depth": 3, "chroma_subsampling": "4:2:0",
+                "y_stride": 4, "u_stride": 5, "v_stride": 6, "y_len": 7, "u_len": 8, "v_len": 9})
+        );
+    }
 
     /// Ground-truth pin: byte values independently verified against `bitvue-cli`'s
     /// `decode --dump` output for the same frame (`0f 10 10 10 d5 d5 d6 d6 ...`). Also pins the
