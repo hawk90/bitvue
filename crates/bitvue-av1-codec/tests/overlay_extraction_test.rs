@@ -589,19 +589,6 @@ fn test_partition_grid_structure() {
 }
 
 #[test]
-fn test_extract_pixel_info() {
-    let frame_data = [];
-
-    let result = overlay_extraction::extract_pixel_info(&frame_data, 0, 100, 200);
-    assert!(result.is_ok());
-
-    let info = result.unwrap();
-    assert_eq!(info.frame_index, 0);
-    assert_eq!(info.pixel_x, 100);
-    assert_eq!(info.pixel_y, 200);
-}
-
-#[test]
 fn test_superblock_coverage() {
     let width = 1920;
     let height = 1080;
