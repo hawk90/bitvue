@@ -67,7 +67,7 @@ impl StrategyCapabilities {
     /// Supports 8, 10, and 12-bit video with SIMD acceleration.
     pub const fn avx2() -> Self {
         Self {
-            speedup_factor: 4.5,
+            speedup_factor: 1.0, // converts with the scalar code for now, see strategy/avx2.rs
             supports_10bit: true,
             supports_12bit: true,
             max_resolution: (7680, 4320),
@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn test_avx2_capabilities() {
         let avx2_caps = StrategyCapabilities::avx2();
-        assert_eq!(avx2_caps.speedup_factor, 4.5);
+        assert_eq!(avx2_caps.speedup_factor, 1.0);
         assert!(avx2_caps.supports_10bit); // 10-bit support added
         assert!(avx2_caps.supports_12bit); // 12-bit support added
         assert!(!avx2_caps.is_hardware_accelerated);

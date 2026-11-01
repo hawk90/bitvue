@@ -36,7 +36,7 @@ const MAX_FRAME_SIZE: usize = 7680 * 4320 * 3;
 ///
 /// This function automatically selects the best available conversion strategy
 /// for the current platform:
-/// - **x86_64**: AVX2 (~4.5x speedup)
+/// - **x86_64**: AVX2 strategy (converts with the scalar code for now, see `strategy/avx2.rs`)
 /// - **ARM/Apple Silicon**: NEON (~3.5x speedup)
 /// - **Other**: Scalar baseline (1.0x)
 ///

@@ -126,7 +126,7 @@ impl StrategyRegistry {
     fn detect_best_strategy_type() -> StrategyType {
         // Priority order for auto-detection:
         // 1. Metal (macOS GPU) - when implemented
-        // 2. AVX2 (x86_64 CPU) - ~4.5x speedup
+        // 2. AVX2 (x86_64 CPU) - scalar code for now (strategy/avx2.rs)
         // 3. NEON (ARM CPU) - ~3.5x speedup
         // 4. Scalar (fallback)
 
@@ -173,7 +173,7 @@ impl StrategyRegistry {
                 StrategyType::Avx2,
                 available,
                 format!(
-                    "~4.5x speedup{}",
+                    "scalar code for now{}",
                     if available { "" } else { " (not available)" }
                 ),
             ));
