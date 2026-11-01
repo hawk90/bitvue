@@ -6,6 +6,10 @@
 //! Recorded from the unmodified `coding_unit.rs` before it was split by responsibility.
 //!
 //! To re-record after an intentional parsing change, run with `GOLDEN_PRINT=1`.
+//! Re-recorded for #233 (a packet's later frames take their reference order hints from just
+//! before their own header, so their sign bias differs): the total coding unit count went from
+//! 8834 to 8811, and 12 of the 25 coding unit digests and 8 of 25 for each of the partition,
+//! prediction mode and transform grids changed. The unmodified code reproduced the old values.
 
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
@@ -79,33 +83,33 @@ fn digests() -> (Vec<u64>, usize) {
 }
 
 const GOLDEN: &[u64] = &[
-    0xb87ef9d12e4bbf5d,
-    0x5331372a687e3254,
-    0x11f70813a494414c,
-    0x88009509ea67c5ec,
+    0x0a81a316145f1f12,
+    0x7af517f7bdcd28a4,
+    0x5e71b5a7b937ef15,
+    0x6a3065a936508759,
     0x869681e2bdaed115,
     0x21af796ce947fd3f,
     0x03dfe3c00adafeab,
     0xfdeb37056e117b24,
     0xfc86d5fe12840318,
-    0x251d3a0e9eb29698,
+    0x380d1766d3a6cf9c,
     0xe024a86399984c47,
-    0x2f9dac90b7d4301a,
-    0xc1297c373b4a39c2,
-    0x17a1370a82f39b63,
-    0x49ddf20e16fc9f30,
+    0xc17c4ba907d5f0c6,
+    0xccc44540ac8c9997,
+    0xbad101dfc908c732,
+    0xf0524fb7a97b5b67,
     0x072f461a8fea3c28,
-    0x99dd126fc2e70278,
-    0x7e602abd0a917302,
+    0x46a4834bd1bd4e63,
+    0x309258c7d70f64b9,
     0x9f98e9a465f7a508,
     0xcf2ada19ec647eba,
     0xb7451849ed872adc,
     0xc396d61e47ccdcd7,
-    0x544059377bee9a9f,
+    0x367d0a0125b449f9,
     0x7aa596193e24f397,
     0x175d9b195ab1ba25,
 ];
-const GOLDEN_TOTAL_CUS: usize = 8834;
+const GOLDEN_TOTAL_CUS: usize = 8811;
 
 #[test]
 fn real_fixture_coding_units_match_the_recorded_digests() {
@@ -192,10 +196,10 @@ fn real_fixture_overlay_grids_match_the_recorded_digests() {
 }
 
 const GOLDEN_PARTITION: &[u64] = &[
-    0x0bc08ad3783995b7,
-    0xf32481071f052b41,
-    0x73bede0621b67cd5,
-    0x5fa83edb1ac1ec98,
+    0x39a56190927ae4e6,
+    0x70f2442f0d36dfa7,
+    0xbd0c16562e633b39,
+    0x95ded9107eac325a,
     0x8f0dcad272cd4076,
     0xc09f4305e598bdae,
     0x381a9138dc78f991,
@@ -205,11 +209,11 @@ const GOLDEN_PARTITION: &[u64] = &[
     0x9a9a66d3bf25e704,
     0xab46596b713a2bb2,
     0x39a60ca4ed08b26e,
-    0x845a2bff4e8f2dd5,
-    0xadf80a26dbdb9e0b,
+    0x5b73441fad727ac3,
+    0x07abfaa32db095ff,
     0x51307cce4d6bc1ce,
-    0x434dd0ba1ec28bff,
-    0x07c9af25a3ee0744,
+    0x776ffa67b618b1b1,
+    0x4399c58c60ea88a5,
     0x7953ff1861e31c7e,
     0xedfc26fbafacb03d,
     0xbe85941cf7389c95,
@@ -219,10 +223,10 @@ const GOLDEN_PARTITION: &[u64] = &[
     0x7d15faef405ae14b,
 ];
 const GOLDEN_PREDICTION_MODE: &[u64] = &[
-    0x4a16e8a8155f903e,
-    0x085a6dbf60bde57c,
-    0x630feec7040181d0,
-    0xab562227b9654def,
+    0x24ce1e0ddd3de04b,
+    0x14f985deaff62652,
+    0x82390f8d28de11b9,
+    0xfd99b45b482c10b4,
     0x997dece8b2b10238,
     0xc507be7e17539ec3,
     0x19db41032e804cef,
@@ -232,11 +236,11 @@ const GOLDEN_PREDICTION_MODE: &[u64] = &[
     0x38fa24a9924a6c53,
     0x1e091270f02bf810,
     0xa77a70016002f32e,
-    0x0a51ac66c9161640,
-    0x6f87e358a90cfc67,
+    0x9f713b70c66e25b0,
+    0xd137c6cf1d09761b,
     0x58bdc8f077a0cc32,
-    0x37e42f04c9a56489,
-    0x1ae1d3c08de3084c,
+    0xb14820b0b928e47b,
+    0x6dabc28e07982f48,
     0x970eea53998598ac,
     0x14ab227100bb8db7,
     0x7066cf9d59062aa5,
@@ -246,10 +250,10 @@ const GOLDEN_PREDICTION_MODE: &[u64] = &[
     0x0df30c9a3dc31a0d,
 ];
 const GOLDEN_TRANSFORM: &[u64] = &[
-    0xc99d2e66c8d2b234,
-    0x2084be4d51ba2f0a,
-    0x12113ba1d3435b76,
-    0x553206406f5fd1ee,
+    0x02766d212a30f134,
+    0x2242e2e1041702d2,
+    0xde24bb10a85737c0,
+    0x9d762db8157538c6,
     0xbf50c74acf46a038,
     0xdf9bdddbfd9e5090,
     0x37860ee7b54f712e,
@@ -259,11 +263,11 @@ const GOLDEN_TRANSFORM: &[u64] = &[
     0x4d87e077e2f40efc,
     0xa5d3327a560d22e6,
     0xd269b8dec072b8fe,
-    0xfd0a4be0f3b9557e,
-    0x38a90d2e6ccc4eaa,
+    0x7e2e090483b48bc4,
+    0x55339193afec404e,
     0xd576d3f4b3ef1b44,
-    0x59b26e41c5d367c4,
-    0xb702d0b335f43ec4,
+    0x2aa103b53c5af620,
+    0xbb32be3628a00656,
     0xab88cf87054add62,
     0x8781733b0b31256a,
     0x6781e1b45ac1d552,
