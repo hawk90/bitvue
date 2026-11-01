@@ -467,6 +467,23 @@ jobs:
         run: |
           cd frontend && npm ci
           cd ../bitvue-desktop && npm ci
+      # The Electron binary is downloaded from github.com on first use (#177: a 504 there failed
+      # the job at the selftest step). Cache it by lockfile, and retry the download here, with
+      # a growing pause, instead of letting `npx electron` fetch it once and fail.
+      - name: Cache Electron binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('bitvue-desktop/package-lock.json') }}
+      - name: Download Electron binary (retried)
+        run: |
+          cd bitvue-desktop
+          for attempt in 1 2 3 4 5; do
+            node node_modules/electron/install.js && exit 0
+            echo "Electron download failed (attempt $attempt of 5)"
+            sleep $((attempt * 20))
+          done
+          exit 1
       - name: Type-check
         run: cd bitvue-desktop && npm run typecheck
       - name: Unit and integration tests
