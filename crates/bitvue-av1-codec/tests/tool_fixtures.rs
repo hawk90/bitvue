@@ -23,6 +23,9 @@ const SEGMENTATION_PALETTE: &[u8] =
 const SKIPMODE_PALETTE: &[u8] =
     include_bytes!("../../../test_data/av1_aomenc_skipmode_palette.ivf");
 const INTRABC_ALLOWED: &[u8] = include_bytes!("../../../test_data/av1_svtav1_intrabc_allowed.ivf");
+const LOSSLESS_TILED: &[u8] = include_bytes!("../../../test_data/av1_aomenc_lossless_tiled.ivf");
+const LOSSLESS_TESTSRC2: &[u8] =
+    include_bytes!("../../../test_data/av1_aomenc_lossless_testsrc2.ivf");
 
 struct Frame {
     parsed: ParsedFrame,
@@ -167,6 +170,33 @@ fn a_frame_that_allows_intrabc_is_decoded_in_step() {
         5
     );
     check_digest("intrabc_allowed", &f, 15559747495860676135);
+}
+
+/// aomenc `--lossless=1` (CodedLossless: 4x4 Walsh-Hadamard transforms in every plane). Chroma used
+/// to be read as one large transform block per 64x64 luma chunk instead of 4x4 blocks, which
+/// desynchronised the tile decode of every such frame (#388: key frames stopped after 0 to 3 of 4
+/// superblocks). Every frame of both clips, inter frames included, decodes completely and ends
+/// where its symbols say it does.
+#[test]
+fn lossless_frames_are_decoded_in_step() {
+    for (name, ivf, golden) in [
+        ("lossless_tiled", LOSSLESS_TILED, 17328800481020161262u64),
+        (
+            "lossless_testsrc2",
+            LOSSLESS_TESTSRC2,
+            9621018677174943790u64,
+        ),
+    ] {
+        let f = frames(ivf);
+        assert_eq!(f.len(), 3, "{name}");
+        for (i, frame) in f.iter().enumerate() {
+            assert!(frame.parsed.coded_lossless, "{name} frame {i}");
+            assert_eq!(frame.provenance, Provenance::Verified, "{name} frame {i}");
+            assert!(!frame.units.is_empty(), "{name} frame {i}");
+        }
+        assert_eq!(verified(&f), vec![0, 1, 2], "{name}");
+        check_digest(name, &f, golden);
+    }
 }
 
 bitvue_test_alloc::install!();

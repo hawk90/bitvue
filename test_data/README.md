@@ -53,6 +53,10 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 | `av1_fuzz_dav1d_frame_thread_hang.ivf` | 16 KB IVF of corrupt frames from an `av1_decode` fuzz timeout (unminimized). With dav1d frame threading on, repeated decodes of it hang in `dav1d_get_picture`; `Av1Decoder` sets `max_frame_delay = 1` (`crates/bitvue-decode/tests/fuzz_regression_test.rs`) | produced by the fuzzer: `cargo +nightly fuzz run -s none av1_decode` (timeout artifact) |
 | `av1_aomenc_194x72.ivf` | aomenc 3.15.2, 194x72, 11 frames (10 shown + 1 hidden) of `testsrc2`: a width that is not a multiple of 8 (`oracle_test.rs`) | commands below |
 | `av1_aomenc_114x136_palette.ivf` | aomenc 3.15.2, 114x136, 2 frames of `testsrc2`, palette on and most other tools off: blocks reaching past the right edge (`oracle_test.rs`) | commands below |
+| `av1_aomenc_segmentation_palette.ivf` | aomenc, 128x128, 8 frames of `testsrc2`, `--aq-mode=1`: segmentation on every frame (78 key-frame blocks outside segment 0) and 63 palette blocks on the key frame (`tests/tool_fixtures.rs`) | commands below |
+| `av1_aomenc_skipmode_palette.ivf` | aomenc, 128x128, 8 frames of a 4x4 tiling of a 32x32 `testsrc2` crop, `--tune-content=screen`: 8 palette blocks on the key frame, `skip_mode_present` on frame 4 with 4 skip-mode blocks (`tests/tool_fixtures.rs`) | commands below |
+| `av1_svtav1_intrabc_allowed.ivf` | SVT-AV1 4.2.0, 128x128, 3 frames of the same tiling, `--scm 1 --enable-intrabc 1`: the key frame sets `allow_intrabc` (no block uses it) (`tests/tool_fixtures.rs`) | commands below |
+| `av1_aomenc_lossless_tiled.ivf`, `av1_aomenc_lossless_testsrc2.ivf` | aomenc, 128x128, 3 frames, `--lossless=1` (CodedLossless): the tiled pattern (504 bytes) and `testsrc2` (11 KB), 64x64 superblocks. Regression for #388 (chroma cut into 4x4 transform blocks); every frame decodes as `Verified` (`tests/tool_fixtures.rs`) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |
 | `avc_test.h264`, `hevc_test.hevc`, `vp9_test.ivf` | 320x240 | x264 / x265 / libvpx; content and command not recorded |
 
@@ -119,6 +123,13 @@ ffmpeg -y -f lavfi -i "testsrc2=size=32x32:rate=10:duration=1.2" -vf "tile=4x4:n
 aomenc tiled8.y4m --ivf -o av1_aomenc_skipmode_palette.ivf --limit=8 --cpu-used=1 --sb-size=64 --threads=1 --end-usage=q --cq-level=20 --min-q=0 --max-q=63 --tune-content=screen --enable-intrabc=1 --enable-palette=1 --lag-in-frames=0
 SvtAv1EncApp -i tiled8.y4m -b av1_svtav1_intrabc_allowed.ivf --scm 1 --enable-intrabc 1 --preset 4 --lp 1 --keyint 0 -n 3
 ```
+
+```bash
+aomenc tiled8.y4m --ivf -o av1_aomenc_lossless_tiled.ivf --limit=3 --cpu-used=1 --sb-size=64 --threads=1 --lag-in-frames=0 --lossless=1 --tune-content=screen
+aomenc src.y4m --ivf -o av1_aomenc_lossless_testsrc2.ivf --limit=3 --cpu-used=1 --sb-size=64 --threads=1 --lag-in-frames=0 --lossless=1
+```
+
+(`src.y4m` here is the 128x128 `testsrc2` source of the commands above.)
 
 No encoder tried produced a block that actually uses intra block copy from these sources (the flag is set, no block uses it).
 

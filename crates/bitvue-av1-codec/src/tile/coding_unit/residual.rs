@@ -216,10 +216,16 @@ struct ChromaTiling {
 
 /// The chroma block of an 8x8-or-larger luma block is half its size; a 4-wide/tall block (which
 /// shares its chroma with its neighbours) still has a 4-sample chroma side. Each axis is capped at
-/// 32 samples per transform block.
-fn chroma_tiling(mi: MiRect) -> ChromaTiling {
+/// 32 samples per transform block, except in a lossless frame, where spec 5.11.34's `residual()`
+/// uses `TX_4X4` for every plane (`txSz = Lossless ? TX_4X4 : get_tx_size(plane, TxSize)`): the
+/// chroma block is then cut into 4x4 transform blocks (#388).
+fn chroma_tiling(mi: MiRect, lossless: bool) -> ChromaTiling {
     let (chroma_w, chroma_h) = (((mi.width + 1) >> 1) * 4, ((mi.height + 1) >> 1) * 4);
-    let (tx_w, tx_h) = (chroma_w.min(32), chroma_h.min(32));
+    let (tx_w, tx_h) = if lossless {
+        (4, 4)
+    } else {
+        (chroma_w.min(32), chroma_h.min(32))
+    };
     ChromaTiling {
         tx_w,
         tx_h,
@@ -231,6 +237,12 @@ fn chroma_tiling(mi: MiRect) -> ChromaTiling {
 /// The index into the block's per-4x4 luma transform types of the sample co-located with chroma
 /// transform block `(tile_col, tile_row)`; chroma units are two luma 4x4s wide, and a block
 /// narrower than that clamps to its last row/column.
+/// The tiles of one plane that belong to a 64x64 luma chunk: `per_chunk` tiles per axis starting at
+/// the chunk's index, clipped to the `tiles` the block has.
+fn chunk_tiles(chunk: u32, per_chunk: u32, tiles: u32) -> std::ops::Range<u32> {
+    chunk * per_chunk..((chunk + 1) * per_chunk).min(tiles)
+}
+
 fn colocated_luma_index(
     tile_col: u32,
     tile_row: u32,
@@ -281,16 +293,18 @@ fn read_chroma_residual(
             tx_h: chroma_tx_h,
             tiles_x: chroma_tiles_x,
             tiles_y: chroma_tiles_y,
-        } = chroma_tiling(mi);
+        } = chroma_tiling(mi, tx_type_flags.coded_lossless);
         let (chroma_tx_w4, chroma_tx_h4) = (chroma_tx_w / 4, chroma_tx_h / 4);
         let not_one_blk = chroma_tiles_x * chroma_tiles_y > 1;
         let (cx4_base, cy4_base) = (x4 / 2, y4 / 2);
-        // A chroma transform (at most 32 samples a side, i.e. 64 luma) is one 64x64 chunk of
-        // the block, so `chunk` picks the single tile of each plane that belongs to it.
+        // A 64x64 luma chunk covers 32x32 chroma samples: one tile of each plane when the chroma
+        // transform is 32 wide (or the block is smaller), and `32 / size` per axis for the 4x4
+        // transforms of a lossless frame. `chunk` picks the tiles of each plane that belong to it.
         let (chunk_col, chunk_row) = chunk;
+        let (per_chunk_x, per_chunk_y) = ((32 / chroma_tx_w).max(1), (32 / chroma_tx_h).max(1));
         for plane in 0..2usize {
-            for tile_row in chunk_row..(chunk_row + 1).min(chroma_tiles_y) {
-                for tile_col in chunk_col..(chunk_col + 1).min(chroma_tiles_x) {
+            for tile_row in chunk_tiles(chunk_row, per_chunk_y, chroma_tiles_y) {
+                for tile_col in chunk_tiles(chunk_col, per_chunk_x, chroma_tiles_x) {
                     let cx4 = cx4_base + tile_col * chroma_tx_w4;
                     let cy4 = cy4_base + tile_row * chroma_tx_h4;
                     // Spec 5.11.35: a transform block starting outside the frame (in chroma
@@ -875,14 +889,60 @@ mod tests {
     }
 
     #[test]
+    fn a_lossless_frame_cuts_chroma_into_4x4_transform_blocks() {
+        // #388: spec residual() uses TX_4X4 for every plane when Lossless
+        let tile = |w4, h4| {
+            let t = chroma_tiling(
+                MiRect {
+                    x4: 0,
+                    y4: 0,
+                    width: w4,
+                    height: h4,
+                },
+                true,
+            );
+            (t.tx_w, t.tx_h, t.tiles_x, t.tiles_y)
+        };
+        assert_eq!(tile(1, 1), (4, 4, 1, 1)); // 4x4 luma
+        assert_eq!(tile(4, 4), (4, 4, 2, 2)); // 16x16 luma -> 8x8 chroma
+        assert_eq!(tile(16, 16), (4, 4, 8, 8)); // 64x64 luma -> 32x32 chroma
+        assert_eq!(tile(32, 32), (4, 4, 16, 16)); // 128x128 luma
+        assert_eq!(tile(3, 5), (4, 4, 2, 3)); // odd sizes round up like the normal case
+        assert_eq!(tile(32, 8), (4, 4, 16, 4));
+    }
+
+    #[test]
+    fn each_64x64_chunk_owns_a_run_of_chroma_tiles() {
+        // normal case: one 32-wide tile per chunk (or the block's single tile)
+        assert_eq!(chunk_tiles(0, 1, 1), 0..1);
+        assert_eq!(chunk_tiles(0, 1, 2), 0..1);
+        assert_eq!(chunk_tiles(1, 1, 2), 1..2);
+        assert!(
+            chunk_tiles(1, 1, 1).is_empty(),
+            "a chunk the block does not reach"
+        );
+        // a block whose single tile is smaller than a chunk's share still gets that tile
+        assert_eq!(chunk_tiles(0, 2, 1), 0..1);
+        // lossless 128x128 luma: 16 tiles per axis, 8 per chunk
+        assert_eq!(chunk_tiles(0, 8, 16), 0..8);
+        assert_eq!(chunk_tiles(1, 8, 16), 8..16);
+        // lossless block smaller than a chunk: only the tiles it has
+        assert_eq!(chunk_tiles(0, 8, 3), 0..3);
+        assert!(chunk_tiles(1, 8, 3).is_empty());
+    }
+
+    #[test]
     fn chroma_is_half_the_luma_block_rounded_up_to_4_and_capped_at_32_per_axis() {
         let tile = |w4, h4| {
-            let t = chroma_tiling(MiRect {
-                x4: 0,
-                y4: 0,
-                width: w4,
-                height: h4,
-            });
+            let t = chroma_tiling(
+                MiRect {
+                    x4: 0,
+                    y4: 0,
+                    width: w4,
+                    height: h4,
+                },
+                false,
+            );
             (t.tx_w, t.tx_h, t.tiles_x, t.tiles_y)
         };
         assert_eq!(tile(1, 1), (4, 4, 1, 1)); // 4x4 luma: still a 4x4 chroma block
