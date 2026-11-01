@@ -1,297 +1,111 @@
-#![allow(hidden_glob_reexports)]
-#![allow(unreachable_code)]
-#![allow(non_camel_case_types)]
-#![allow(unused_assignments)]
-#![allow(unused_parens)]
-#![allow(unused_imports)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_comparisons)]
-#![allow(unused_doc_comments)]
-//! Tests for FFmpeg integration
+//! The FFmpeg-backed decoders (H.264, H.265, VP9) on real clips. Only built with
+//! `--features ffmpeg`, which needs FFmpeg's libraries; CI does not build that feature today.
+//! (This file used to hold ten tests that defined their own structs and asserted on literals they
+//! had just written, and ran in every build, #386.)
 
-#[test]
-fn test_ffmpeg_decoder_initialization() {
-    struct FFmpegDecoder {
-        codec_name: String,
-        initialized: bool,
-    }
+#![cfg(feature = "ffmpeg")]
 
-    impl FFmpegDecoder {
-        fn new(codec_name: String) -> Self {
-            Self {
-                codec_name,
-                initialized: false,
-            }
-        }
+use bitvue_decode::decoder::{validate_frame, ChromaFormat};
+use bitvue_decode::traits::{CodecType, Decoder, DecoderFactory};
+use bitvue_decode::{H264Decoder, HevcDecoder, Vp9Decoder};
 
-        fn init(&mut self) -> Result<(), String> {
-            if self.codec_name.is_empty() {
-                return Err("Invalid codec name".to_string());
-            }
-            self.initialized = true;
-            Ok(())
-        }
-    }
-
-    let mut decoder = FFmpegDecoder::new("libdav1d".to_string());
-    assert!(decoder.init().is_ok());
-    assert!(decoder.initialized);
+fn clip(name: &str) -> Vec<u8> {
+    std::fs::read(format!(
+        "{}/../../test_data/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap_or_else(|e| panic!("test_data/{name}: {e}"))
 }
 
 #[test]
-fn test_codec_context() {
-    struct CodecContext {
-        width: i32,
-        height: i32,
-        pix_fmt: String,
-        time_base_num: i32,
-        time_base_den: i32,
+fn each_decoder_reports_its_codec_and_capabilities() {
+    let decoders: [(Box<dyn Decoder>, CodecType); 3] = [
+        (Box::new(H264Decoder::new().unwrap()), CodecType::H264),
+        (Box::new(HevcDecoder::new().unwrap()), CodecType::H265),
+        (Box::new(Vp9Decoder::new().unwrap()), CodecType::VP9),
+    ];
+    for (decoder, codec) in decoders {
+        assert_eq!(decoder.codec_type(), codec);
+        let caps = decoder.capabilities();
+        assert_eq!(caps.codec, codec);
+        assert!(caps.supported_bit_depths.contains(&8), "{codec}");
+        assert!(caps.max_width >= 1920 && caps.max_height >= 1080, "{codec}");
     }
-
-    impl CodecContext {
-        fn framerate(&self) -> f64 {
-            if self.time_base_num == 0 {
-                0.0
-            } else {
-                self.time_base_den as f64 / self.time_base_num as f64
-            }
-        }
-    }
-
-    let ctx = CodecContext {
-        width: 1920,
-        height: 1080,
-        pix_fmt: "yuv420p".to_string(),
-        time_base_num: 1,
-        time_base_den: 60,
-    };
-
-    assert_eq!(ctx.framerate(), 60.0);
 }
 
 #[test]
-fn test_packet_management() {
-    struct AVPacket {
-        data: Vec<u8>,
-        pts: i64,
-        dts: i64,
-        size: usize,
+fn the_factory_builds_the_ffmpeg_decoders() {
+    for codec in [CodecType::H264, CodecType::H265, CodecType::VP9] {
+        assert_eq!(DecoderFactory::create(codec).unwrap().codec_type(), codec);
+        assert!(DecoderFactory::available_codecs().contains(&codec));
     }
-
-    impl AVPacket {
-        fn is_valid(&self) -> bool {
-            !self.data.is_empty() && self.size > 0
-        }
-    }
-
-    let packet = AVPacket {
-        data: vec![0u8; 1024],
-        pts: 0,
-        dts: 0,
-        size: 1024,
-    };
-
-    assert!(packet.is_valid());
 }
 
 #[test]
-fn test_frame_allocation() {
-    struct AVFrame {
-        width: usize,
-        height: usize,
-        data: Vec<Vec<u8>>,
-        linesize: Vec<usize>,
-    }
-
-    impl AVFrame {
-        fn alloc_yuv420(width: usize, height: usize) -> Self {
-            let y_size = width * height;
-            let uv_size = (width / 2) * (height / 2);
-
-            Self {
-                width,
-                height,
-                data: vec![vec![0u8; y_size], vec![0u8; uv_size], vec![0u8; uv_size]],
-                linesize: vec![width, width / 2, width / 2],
-            }
+fn vp9_packets_decode_to_every_frame_of_the_clip() {
+    // ffprobe: 60 frames, 352x288
+    let data = clip("sample_vp9.ivf");
+    let mut decoder = Vp9Decoder::new().unwrap();
+    let (mut pos, mut frames) = (32usize, Vec::new());
+    while pos + 12 <= data.len() {
+        let size = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+        decoder
+            .send_data(&data[pos + 12..pos + 12 + size], None)
+            .unwrap();
+        while let Ok(f) = decoder.get_frame() {
+            frames.push(f);
         }
-
-        fn plane_count(&self) -> usize {
-            self.data.len()
-        }
+        pos += 12 + size;
     }
+    decoder.flush();
+    while let Ok(f) = decoder.get_frame() {
+        frames.push(f);
+    }
+    assert_eq!(frames.len(), 60);
+    for (i, f) in frames.iter().enumerate() {
+        assert_eq!((f.width, f.height, f.bit_depth), (352, 288, 8), "frame {i}");
+        assert_eq!(f.chroma_format, ChromaFormat::Yuv420, "frame {i}");
+        validate_frame(f).unwrap_or_else(|e| panic!("frame {i}: {e}"));
+    }
+}
 
-    let frame = AVFrame::alloc_yuv420(1920, 1080);
-    assert_eq!(frame.plane_count(), 3);
+/// A raw Annex B stream sent as one packet yields at least its first picture once the decoder is
+/// flushed. (It should yield all of them; it yields one, see the issue linked in the PR.)
+#[test]
+fn h264_and_hevc_streams_decode_a_valid_first_picture() {
+    let cases: [(&str, Box<dyn Decoder>); 2] = [
+        ("avc_test.h264", Box::new(H264Decoder::new().unwrap())),
+        ("hevc_test.hevc", Box::new(HevcDecoder::new().unwrap())),
+    ];
+    for (file, mut decoder) in cases {
+        decoder.send_data(&clip(file), None).unwrap();
+        decoder.flush();
+        let frame = decoder
+            .get_frame()
+            .unwrap_or_else(|e| panic!("{file}: no frame after flush: {e}"));
+        assert_eq!(
+            (frame.width, frame.height, frame.bit_depth),
+            (320, 240, 8),
+            "{file}"
+        );
+        assert_eq!(frame.chroma_format, ChromaFormat::Yuv420, "{file}");
+        validate_frame(&frame).unwrap_or_else(|e| panic!("{file}: {e}"));
+    }
 }
 
 #[test]
-fn test_decode_packet() {
-    struct DecodeContext {
-        packets_decoded: usize,
-        frames_output: usize,
-    }
-
-    impl DecodeContext {
-        fn send_packet(&mut self) -> bool {
-            self.packets_decoded += 1;
-            true
-        }
-
-        fn receive_frame(&mut self) -> Option<usize> {
-            if self.packets_decoded > self.frames_output {
-                self.frames_output += 1;
-                Some(self.frames_output - 1)
-            } else {
-                None
-            }
-        }
-    }
-
-    let mut ctx = DecodeContext {
-        packets_decoded: 0,
-        frames_output: 0,
-    };
-
-    assert!(ctx.send_packet());
-    assert_eq!(ctx.receive_frame(), Some(0));
-}
-
-#[test]
-fn test_sw_scale_context() {
-    struct SwsContext {
-        src_width: usize,
-        src_height: usize,
-        dst_width: usize,
-        dst_height: usize,
-    }
-
-    impl SwsContext {
-        fn needs_scaling(&self) -> bool {
-            self.src_width != self.dst_width || self.src_height != self.dst_height
-        }
-    }
-
-    let sws = SwsContext {
-        src_width: 3840,
-        src_height: 2160,
-        dst_width: 1920,
-        dst_height: 1080,
-    };
-
-    assert!(sws.needs_scaling());
-}
-
-#[test]
-fn test_pts_dts_handling() {
-    struct TimestampHandler {
-        pts: i64,
-        dts: i64,
-        time_base: (i32, i32),
-    }
-
-    impl TimestampHandler {
-        fn pts_to_seconds(&self) -> f64 {
-            (self.pts * self.time_base.0 as i64) as f64 / self.time_base.1 as f64
-        }
-
-        fn is_valid(&self) -> bool {
-            self.pts >= self.dts
-        }
-    }
-
-    let ts = TimestampHandler {
-        pts: 60,
-        dts: 60,
-        time_base: (1, 60),
-    };
-
-    assert!(ts.is_valid());
-    assert_eq!(ts.pts_to_seconds(), 1.0);
-}
-
-#[test]
-fn test_codec_parameters() {
-    struct CodecParams {
-        codec_id: u32,
-        bit_rate: i64,
-        profile: i32,
-        level: i32,
-    }
-
-    impl CodecParams {
-        fn is_configured(&self) -> bool {
-            self.codec_id > 0 && self.bit_rate > 0
-        }
-    }
-
-    let params = CodecParams {
-        codec_id: 225, // AV1
-        bit_rate: 5000000,
-        profile: 0,
-        level: 40,
-    };
-
-    assert!(params.is_configured());
-}
-
-#[test]
-fn test_buffer_ref() {
-    struct AVBufferRef {
-        data: Vec<u8>,
-        ref_count: usize,
-    }
-
-    impl AVBufferRef {
-        fn clone_ref(&mut self) -> AVBufferRef {
-            self.ref_count += 1;
-            AVBufferRef {
-                data: self.data.clone(),
-                ref_count: 1,
-            }
-        }
-
-        fn unref(&mut self) {
-            if self.ref_count > 0 {
-                self.ref_count -= 1;
-            }
-        }
-    }
-
-    let mut buf = AVBufferRef {
-        data: vec![1, 2, 3],
-        ref_count: 1,
-    };
-
-    let _cloned = buf.clone_ref();
-    assert_eq!(buf.ref_count, 2);
-}
-
-#[test]
-fn test_stream_info() {
-    struct StreamInfo {
-        index: usize,
-        codec_type: String,
-        time_base: (i32, i32),
-        duration: i64,
-    }
-
-    impl StreamInfo {
-        fn duration_seconds(&self) -> f64 {
-            (self.duration * self.time_base.0 as i64) as f64 / self.time_base.1 as f64
-        }
-    }
-
-    let stream = StreamInfo {
-        index: 0,
-        codec_type: "video".to_string(),
-        time_base: (1, 1000),
-        duration: 60000,
-    };
-
-    assert_eq!(stream.duration_seconds(), 60.0);
+fn garbage_is_not_a_panic_and_a_reset_decoder_works_again() {
+    let mut decoder = Vp9Decoder::new().unwrap();
+    let _ = decoder.send_data(&[0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4, 5, 6], None);
+    decoder.reset().unwrap();
+    let data = clip("sample_vp9.ivf");
+    let size = u32::from_le_bytes(data[32..36].try_into().unwrap()) as usize;
+    decoder.send_data(&data[44..44 + size], None).unwrap();
+    decoder.flush();
+    assert!(
+        decoder.get_frame().is_ok(),
+        "the first key frame decodes after a reset"
+    );
 }
 
 bitvue_test_alloc::install!();
