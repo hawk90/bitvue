@@ -78,24 +78,57 @@ fn raw_frames_come_back_plane_by_plane_then_end_of_file() {
 }
 
 #[test]
-fn each_chroma_format_reads_its_own_plane_sizes() {
-    // 4x2: 4:2:0 -> 2 chroma samples per plane, 4:2:2 -> 4, 4:4:4 -> 8, mono -> none
-    for (chroma, uv, expected) in [
-        (ChromaSubsampling::Yuv420, 2, ChromaFormat::Yuv420),
-        (ChromaSubsampling::Yuv422, 4, ChromaFormat::Yuv422),
-        (ChromaSubsampling::Yuv444, 8, ChromaFormat::Yuv444),
-        (ChromaSubsampling::Mono, 0, ChromaFormat::Monochrome),
+fn each_chroma_format_reads_its_own_plane_sizes_strides_and_seeks() {
+    // 4x2: 4:2:0 -> 2 chroma samples per plane (stride 2), 4:2:2 -> 4 (stride 2), 4:4:4 -> 8
+    // (stride 4), mono -> none
+    for (chroma, uv, uv_stride, expected) in [
+        (
+            ChromaSubsampling::Yuv420,
+            2usize,
+            2usize,
+            ChromaFormat::Yuv420,
+        ),
+        (ChromaSubsampling::Yuv422, 4, 2, ChromaFormat::Yuv422),
+        (ChromaSubsampling::Yuv444, 8, 4, ChromaFormat::Yuv444),
+        (ChromaSubsampling::Mono, 0, 0, ChromaFormat::Monochrome),
     ] {
         let dir = TempDir::new().unwrap();
-        let bytes: Vec<u8> = (0..8 + 2 * uv as u8).collect();
+        let frame_len = 8 + 2 * uv;
+        // two frames of distinct, position-dependent bytes
+        let bytes: Vec<u8> = (0..2 * frame_len).map(|i| (i * 3 + 1) as u8).collect();
         let path = write(&dir, "clip.yuv", &bytes);
         let mut loader =
             YuvLoader::open(&path, Some(params(4, 2, chroma, BitDepth::Bit8))).unwrap();
         let f = loader.read_frame().unwrap().unwrap();
         assert_eq!(f.chroma_format, expected, "{chroma:?}");
-        assert_eq!(f.u_plane.as_ref().map(|p| p.len()), (uv > 0).then_some(uv));
-        assert_eq!(f.v_plane.as_ref().map(|p| p.len()), (uv > 0).then_some(uv));
+        assert_eq!(
+            (f.u_stride, f.v_stride),
+            (uv_stride, uv_stride),
+            "{chroma:?}"
+        );
+        assert_eq!(&*f.y_plane, &bytes[..8], "{chroma:?}");
+        assert_eq!(
+            f.u_plane.as_deref(),
+            (uv > 0).then(|| &bytes[8..8 + uv]),
+            "{chroma:?}"
+        );
+        assert_eq!(
+            f.v_plane.as_deref(),
+            (uv > 0).then(|| &bytes[8 + uv..8 + 2 * uv]),
+            "{chroma:?}"
+        );
+        // the second frame starts exactly one frame later, reached by reading or by seeking
+        let second = loader.read_frame().unwrap().unwrap();
+        assert_eq!(
+            &*second.y_plane,
+            &bytes[frame_len..frame_len + 8],
+            "{chroma:?}"
+        );
         assert!(loader.read_frame().unwrap().is_none(), "{chroma:?}");
+        loader.seek_to_frame(1).unwrap();
+        let seeked = loader.read_frame().unwrap().unwrap();
+        assert_eq!(&*seeked.y_plane, &*second.y_plane, "{chroma:?}");
+        assert_eq!(seeked.u_plane, second.u_plane, "{chroma:?}");
     }
 }
 
