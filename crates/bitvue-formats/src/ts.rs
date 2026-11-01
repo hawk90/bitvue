@@ -543,26 +543,14 @@ where
             if packet.payload_unit_start {
                 // Flush any previously accumulated PES buffer
                 if let Some((buffer, pts, dts)) = pes_buffers.remove(&video_pid) {
-                    let nal_units = split_annex_b_nal_units(&buffer);
-                    for nal in nal_units {
-                        if nal.is_empty() {
-                            continue;
-                        }
-                        let key_frame = is_keyframe_fn(&nal);
-                        let size = nal.len();
-                        samples.push((
-                            pes_index,
-                            VideoSample {
-                                offset: byte_offset,
-                                size,
-                                pts,
-                                dts,
-                                key_frame,
-                                data: nal,
-                            },
-                        ));
-                        byte_offset += size;
-                    }
+                    flush_pes(
+                        &buffer,
+                        (pts, dts),
+                        pes_index,
+                        &is_keyframe_fn,
+                        &mut byte_offset,
+                        &mut samples,
+                    );
                     pes_index += 1;
                 }
 
@@ -580,29 +568,48 @@ where
 
     // Flush the final PES buffer
     if let Some((buffer, pts, dts)) = pes_buffers.remove(&video_pid) {
-        let nal_units = split_annex_b_nal_units(&buffer);
-        for nal in nal_units {
-            if nal.is_empty() {
-                continue;
-            }
-            let key_frame = is_keyframe_fn(&nal);
-            let size = nal.len();
-            samples.push((
-                pes_index,
-                VideoSample {
-                    offset: byte_offset,
-                    size,
-                    pts,
-                    dts,
-                    key_frame,
-                    data: nal,
-                },
-            ));
-            byte_offset += size;
-        }
+        flush_pes(
+            &buffer,
+            (pts, dts),
+            pes_index,
+            &is_keyframe_fn,
+            &mut byte_offset,
+            &mut samples,
+        );
     }
 
     Ok(samples)
+}
+
+/// Splits one finished PES payload into its Annex B NAL units and appends one `VideoSample` per
+/// non-empty NAL (all sharing the PES packet's PTS/DTS), advancing `byte_offset`.
+fn flush_pes(
+    buffer: &[u8],
+    (pts, dts): (Option<u64>, Option<u64>),
+    pes_index: usize,
+    is_keyframe_fn: &impl Fn(&[u8]) -> bool,
+    byte_offset: &mut usize,
+    samples: &mut Vec<(usize, VideoSample)>,
+) {
+    for nal in split_annex_b_nal_units(buffer) {
+        if nal.is_empty() {
+            continue;
+        }
+        let key_frame = is_keyframe_fn(&nal);
+        let size = nal.len();
+        samples.push((
+            pes_index,
+            VideoSample {
+                offset: *byte_offset,
+                size,
+                pts,
+                dts,
+                key_frame,
+                data: nal,
+            },
+        ));
+        *byte_offset += size;
+    }
 }
 
 /// Join the NAL units of each access unit (one coded picture) into one sample.
@@ -1836,6 +1843,29 @@ mod stream_tests {
         let all: Vec<u8> = v.iter().flat_map(|s| s.data.iter().copied()).collect();
         let nals = split_annex_b_nal_units(&all);
         assert_eq!(nals, extract_avc_samples(&d).unwrap());
+    }
+
+    #[test]
+    fn every_pes_packet_is_its_own_picture_even_without_delimiters() {
+        let mut d = psi_packets(&[(STREAM_TYPE_AVC, VIDEO_PID, &[])]);
+        for (i, nal) in [&IDR[..], &NON_IDR[..], &NON_IDR[..]].iter().enumerate() {
+            let es = annex_b(&[(&[0, 0, 0, 1], nal)]);
+            d.extend(pes_packets(
+                VIDEO_PID,
+                &pes(0xE0, Some(9000 + 3000 * i as u64), None, &es),
+                184,
+            ));
+        }
+        let v = extract_avc_video_samples(&d).unwrap();
+        assert_eq!(v.len(), 3);
+        assert_eq!(
+            v.iter().map(|s| s.pts).collect::<Vec<_>>(),
+            vec![Some(9000), Some(12000), Some(15000)]
+        );
+        assert_eq!(
+            v.iter().map(|s| s.key_frame).collect::<Vec<_>>(),
+            vec![true, false, false]
+        );
     }
 
     #[test]
