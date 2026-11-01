@@ -104,7 +104,7 @@ impl Default for ParityGate {
 impl ParityGate {
     pub fn evaluate(&self, score: &ParityScore) -> ParityGateResult {
         let passes_percentage = score.percentage >= self.required_pass_percentage;
-        let p0_all_pass = score.hard_fails.is_empty();
+        let p0_all_pass = score.parity_ready;
 
         let passed = if self.p0_must_all_pass {
             passes_percentage && p0_all_pass
@@ -117,6 +117,7 @@ impl ParityGate {
             actual_percentage: score.percentage,
             required_percentage: self.required_pass_percentage,
             p0_failures: score.hard_fails.clone(),
+            p0_unfinished: score.p0_unfinished.clone(),
             parity_ready: score.parity_ready,
         }
     }
@@ -129,6 +130,9 @@ pub struct ParityGateResult {
     pub actual_percentage: f64,
     pub required_percentage: f64,
     pub p0_failures: Vec<String>,
+    /// P0 items without a verdict (see [`ParityScore::p0_unfinished`])
+    #[serde(default)]
+    pub p0_unfinished: Vec<String>,
     pub parity_ready: bool,
 }
 
