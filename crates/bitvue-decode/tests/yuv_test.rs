@@ -1,325 +1,329 @@
-#![allow(hidden_glob_reexports)]
-#![allow(unreachable_code)]
-#![allow(non_camel_case_types)]
-#![allow(unused_assignments)]
-#![allow(unused_parens)]
-#![allow(unused_imports)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_comparisons)]
-#![allow(unused_doc_comments)]
-//! Tests for YUV format handling
+//! YUV -> RGB conversion through the public API: `yuv_to_rgb` and every conversion strategy
+//! available on this machine, against the textbook BT.601 full-range formula. (This file used to
+//! hold eleven tests that defined their own structs and asserted on literals they had just
+//! written, #386.)
+
+use bitvue_decode::decoder::{ChromaFormat, DecodedFrame, FrameType};
+use bitvue_decode::strategy::{ScalarStrategy, YuvConversionStrategy};
+use bitvue_decode::yuv::{rgb_to_image, yuv_to_rgb};
+
+fn frame(
+    width: u32,
+    height: u32,
+    bit_depth: u8,
+    chroma: ChromaFormat,
+    y: &[u8],
+    u: Option<&[u8]>,
+    v: Option<&[u8]>,
+) -> DecodedFrame {
+    DecodedFrame {
+        width,
+        height,
+        bit_depth,
+        y_plane: y.to_vec().into_boxed_slice().into(),
+        y_stride: width as usize,
+        u_plane: u.map(|p| p.to_vec().into_boxed_slice().into()),
+        u_stride: 0,
+        v_plane: v.map(|p| p.to_vec().into_boxed_slice().into()),
+        v_stride: 0,
+        timestamp: 0,
+        frame_type: FrameType::Key,
+        qp_avg: None,
+        chroma_format: chroma,
+    }
+}
+
+/// BT.601 full range in floating point, rounded and clamped: the reference the fixed-point
+/// implementations must stay within a couple of levels of.
+fn textbook(y: f64, u: f64, v: f64) -> [i32; 3] {
+    let c = |x: f64| x.round().clamp(0.0, 255.0) as i32;
+    [
+        c(y + 1.402 * (v - 128.0)),
+        c(y - 0.344136 * (u - 128.0) - 0.714136 * (v - 128.0)),
+        c(y + 1.772 * (u - 128.0)),
+    ]
+}
+
+fn assert_close(got: &[u8], want: [i32; 3], tolerance: i32, what: &str) {
+    for (channel, (&g, &w)) in got.iter().zip(want.iter()).enumerate() {
+        assert!(
+            (i32::from(g) - w).abs() <= tolerance,
+            "{what}: channel {channel} is {g}, textbook value {w}"
+        );
+    }
+}
+
+/// A deterministic pseudo-random byte source.
+fn bytes(seed: &mut u64, n: usize) -> Vec<u8> {
+    (0..n)
+        .map(|_| {
+            *seed ^= *seed << 13;
+            *seed ^= *seed >> 7;
+            *seed ^= *seed << 17;
+            (*seed >> 24) as u8
+        })
+        .collect()
+}
 
 #[test]
-fn test_yuv_frame_structure() {
-    struct YuvFrame {
-        width: usize,
-        height: usize,
-        y_plane: Vec<u8>,
-        u_plane: Vec<u8>,
-        v_plane: Vec<u8>,
+fn grey_stays_grey_whatever_the_luma() {
+    // U = V = 128 carries no colour: R = G = B = Y for every luma value
+    let y: Vec<u8> = (0..=255).collect();
+    let neutral = vec![128u8; 256];
+    let f = frame(
+        16,
+        16,
+        8,
+        ChromaFormat::Yuv444,
+        &y,
+        Some(&neutral),
+        Some(&neutral),
+    );
+    let rgb = yuv_to_rgb(&f);
+    for (i, px) in rgb.chunks(3).enumerate() {
+        assert_eq!(px, [i as u8; 3], "luma {i}");
     }
+}
 
-    impl YuvFrame {
-        fn new_420(width: usize, height: usize) -> Self {
-            let y_size = width * height;
-            let uv_size = (width / 2) * (height / 2);
+#[test]
+fn primary_colours_match_the_textbook_formula() {
+    // (Y, U, V) of full-range BT.601 red, green, blue, white, black, yellow
+    let colours: [(u8, u8, u8, [i32; 3]); 6] = [
+        (76, 85, 255, [255, 0, 0]),
+        (150, 44, 21, [0, 255, 0]),
+        (29, 255, 107, [0, 0, 255]),
+        (255, 128, 128, [255, 255, 255]),
+        (0, 128, 128, [0, 0, 0]),
+        (226, 1, 149, [255, 255, 0]),
+    ];
+    let y: Vec<u8> = colours.iter().map(|c| c.0).collect();
+    let u: Vec<u8> = colours.iter().map(|c| c.1).collect();
+    let v: Vec<u8> = colours.iter().map(|c| c.2).collect();
+    let f = frame(6, 1, 8, ChromaFormat::Yuv444, &y, Some(&u), Some(&v));
+    let rgb = yuv_to_rgb(&f);
+    for (i, c) in colours.iter().enumerate() {
+        assert_close(&rgb[i * 3..i * 3 + 3], c.3, 4, &format!("colour {i}"));
+        // and the formula itself agrees with the labelled colour
+        assert_close(
+            &rgb[i * 3..i * 3 + 3],
+            textbook(f64::from(c.0), f64::from(c.1), f64::from(c.2)),
+            2,
+            &format!("colour {i} vs formula"),
+        );
+    }
+}
 
-            Self {
-                width,
-                height,
-                y_plane: vec![0u8; y_size],
-                u_plane: vec![0u8; uv_size],
-                v_plane: vec![0u8; uv_size],
+#[test]
+fn chroma_is_shared_the_way_each_subsampling_says() {
+    // 4x2, luma flat 100; two distinct chroma colours
+    let y = [100u8; 8];
+    // 4:2:0: one chroma sample per 2x2 block -> the left two columns share the first, the right two
+    // the second, in both rows
+    let f = frame(
+        4,
+        2,
+        8,
+        ChromaFormat::Yuv420,
+        &y,
+        Some(&[60, 200]),
+        Some(&[180, 40]),
+    );
+    let rgb = yuv_to_rgb(&f);
+    let px = |x: usize, row: usize| &rgb[(row * 4 + x) * 3..(row * 4 + x) * 3 + 3];
+    for row in 0..2 {
+        assert_eq!(px(0, row), px(1, row));
+        assert_eq!(px(2, row), px(3, row));
+    }
+    assert_eq!(px(0, 0), px(0, 1));
+    assert_ne!(px(0, 0), px(2, 0));
+    assert_close(px(0, 0), textbook(100.0, 60.0, 180.0), 2, "4:2:0 left");
+    assert_close(px(3, 1), textbook(100.0, 200.0, 40.0), 2, "4:2:0 right");
+
+    // 4:2:2: one chroma sample per 2 columns, every row has its own
+    let f = frame(
+        4,
+        2,
+        8,
+        ChromaFormat::Yuv422,
+        &y,
+        Some(&[60, 200, 90, 30]),
+        Some(&[180, 40, 70, 220]),
+    );
+    let rgb = yuv_to_rgb(&f);
+    let px = |x: usize, row: usize| &rgb[(row * 4 + x) * 3..(row * 4 + x) * 3 + 3];
+    assert_close(
+        px(1, 0),
+        textbook(100.0, 60.0, 180.0),
+        2,
+        "4:2:2 row 0 left",
+    );
+    assert_close(
+        px(2, 0),
+        textbook(100.0, 200.0, 40.0),
+        2,
+        "4:2:2 row 0 right",
+    );
+    assert_close(px(1, 1), textbook(100.0, 90.0, 70.0), 2, "4:2:2 row 1 left");
+    assert_close(
+        px(3, 1),
+        textbook(100.0, 30.0, 220.0),
+        2,
+        "4:2:2 row 1 right",
+    );
+
+    // 4:4:4: every pixel its own
+    let u: Vec<u8> = (0..8).map(|i| 20 + i * 30).collect();
+    let v: Vec<u8> = (0..8).map(|i| 240 - i * 30).collect();
+    let f = frame(4, 2, 8, ChromaFormat::Yuv444, &y, Some(&u), Some(&v));
+    let rgb = yuv_to_rgb(&f);
+    for i in 0..8 {
+        assert_close(
+            &rgb[i * 3..i * 3 + 3],
+            textbook(100.0, f64::from(u[i]), f64::from(v[i])),
+            2,
+            &format!("4:4:4 pixel {i}"),
+        );
+    }
+}
+
+#[test]
+fn high_bit_depth_samples_are_scaled_down_to_eight_bits() {
+    // 10 bit little-endian: Y = 1023 is white, 512/512/512 is mid grey, 0 is black
+    let le = |vals: &[u16]| -> Vec<u8> { vals.iter().flat_map(|v| v.to_le_bytes()).collect() };
+    let f = frame(
+        3,
+        1,
+        10,
+        ChromaFormat::Yuv444,
+        &le(&[1023, 512, 0]),
+        Some(&le(&[512, 512, 512])),
+        Some(&le(&[512, 512, 512])),
+    );
+    let rgb = yuv_to_rgb(&f);
+    assert_eq!(rgb.len(), 9);
+    assert_close(&rgb[0..3], [255, 255, 255], 1, "10-bit white");
+    assert_close(&rgb[3..6], [128, 128, 128], 1, "10-bit grey");
+    assert_close(&rgb[6..9], [0, 0, 0], 1, "10-bit black");
+    // 12 bit: 4095 is white
+    let f = frame(1, 1, 12, ChromaFormat::Monochrome, &le(&[4095]), None, None);
+    assert_eq!(yuv_to_rgb(&f), vec![255, 255, 255]);
+}
+
+#[test]
+fn a_frame_with_missing_chroma_planes_falls_back_to_grey() {
+    for chroma in [
+        ChromaFormat::Yuv420,
+        ChromaFormat::Yuv422,
+        ChromaFormat::Yuv444,
+    ] {
+        let f = frame(2, 2, 8, chroma, &[10, 90, 170, 250], None, None);
+        let rgb = yuv_to_rgb(&f);
+        let expected: Vec<u8> = [10u8, 90, 170, 250].iter().flat_map(|&y| [y; 3]).collect();
+        assert_eq!(rgb, expected, "{chroma:?}");
+    }
+    let f = frame(2, 1, 8, ChromaFormat::Monochrome, &[7, 200], None, None);
+    assert_eq!(yuv_to_rgb(&f), vec![7, 7, 7, 200, 200, 200]);
+}
+
+#[test]
+fn every_available_strategy_agrees_with_scalar() {
+    let mut strategies: Vec<Box<dyn YuvConversionStrategy>> = vec![Box::new(ScalarStrategy::new())];
+    #[cfg(target_arch = "x86_64")]
+    strategies.push(Box::new(bitvue_decode::strategy::Avx2Strategy::new()));
+    #[cfg(target_arch = "aarch64")]
+    strategies.push(Box::new(bitvue_decode::strategy::NeonStrategy::new()));
+
+    let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+    // sizes that are not a multiple of the SIMD width, plus a wide one
+    for (w, h) in [(2usize, 2usize), (18, 6), (34, 4), (66, 8), (130, 2)] {
+        for depth in [8u8, 10, 12] {
+            let bps = if depth > 8 { 2 } else { 1 };
+            let mask = (1u16 << depth) - 1;
+            let sample = |seed: &mut u64, n: usize| -> Vec<u8> {
+                if depth > 8 {
+                    bytes(seed, n * 2)
+                        .chunks(2)
+                        .flat_map(|c| (u16::from_le_bytes([c[0], c[1]]) & mask).to_le_bytes())
+                        .collect()
+                } else {
+                    bytes(seed, n)
+                }
+            };
+            let y = sample(&mut seed, w * h);
+            let (u420, v420) = (
+                sample(&mut seed, w / 2 * (h / 2)),
+                sample(&mut seed, w / 2 * (h / 2)),
+            );
+            let (u422, v422) = (sample(&mut seed, w / 2 * h), sample(&mut seed, w / 2 * h));
+            let (u444, v444) = (sample(&mut seed, w * h), sample(&mut seed, w * h));
+            let _ = bps;
+            for (name, u, v) in [
+                ("420", &u420, &v420),
+                ("422", &u422, &v422),
+                ("444", &u444, &v444),
+            ] {
+                let run = |s: &dyn YuvConversionStrategy| {
+                    let mut rgb = vec![0u8; w * h * 3];
+                    match name {
+                        "420" => s.convert_yuv420_to_rgb(&y, u, v, w, h, &mut rgb, depth),
+                        "422" => s.convert_yuv422_to_rgb(&y, u, v, w, h, &mut rgb, depth),
+                        _ => s.convert_yuv444_to_rgb(&y, u, v, w, h, &mut rgb, depth),
+                    }
+                    .unwrap_or_else(|e| panic!("{} {name} {w}x{h} {depth}-bit: {e}", s.name()));
+                    rgb
+                };
+                let reference = run(strategies[0].as_ref());
+                for s in &strategies[1..] {
+                    if !s.is_available() {
+                        continue;
+                    }
+                    let got = run(s.as_ref());
+                    let worst = got
+                        .iter()
+                        .zip(&reference)
+                        .map(|(a, b)| (i32::from(*a) - i32::from(*b)).abs())
+                        .max()
+                        .unwrap();
+                    assert!(
+                        worst <= 2,
+                        "{} vs scalar, {name} {w}x{h} {depth}-bit: largest difference {worst} (2 allowed: the SIMD paths round each term on its own)",
+                        s.name()
+                    );
+                }
             }
         }
-
-        fn total_size(&self) -> usize {
-            self.y_plane.len() + self.u_plane.len() + self.v_plane.len()
-        }
     }
-
-    let frame = YuvFrame::new_420(1920, 1080);
-    assert_eq!(frame.total_size(), 3110400);
 }
 
 #[test]
-fn test_yuv_subsampling() {
-    #[derive(Debug, PartialEq)]
-    enum ChromaSubsampling {
-        Yuv420,
-        Yuv422,
-        Yuv444,
-    }
-
-    struct SubsamplingInfo {
-        format: ChromaSubsampling,
-    }
-
-    impl SubsamplingInfo {
-        fn horizontal_factor(&self) -> usize {
-            match self.format {
-                ChromaSubsampling::Yuv420 | ChromaSubsampling::Yuv422 => 2,
-                ChromaSubsampling::Yuv444 => 1,
-            }
-        }
-
-        fn vertical_factor(&self) -> usize {
-            match self.format {
-                ChromaSubsampling::Yuv420 => 2,
-                ChromaSubsampling::Yuv422 | ChromaSubsampling::Yuv444 => 1,
-            }
-        }
-    }
-
-    let info = SubsamplingInfo {
-        format: ChromaSubsampling::Yuv420,
-    };
-
-    assert_eq!(info.horizontal_factor(), 2);
-    assert_eq!(info.vertical_factor(), 2);
+fn rgb_data_becomes_an_image_only_if_it_fits() {
+    let img = rgb_to_image(vec![1, 2, 3, 4, 5, 6], 2, 1).unwrap();
+    assert_eq!((img.width(), img.height()), (2, 1));
+    assert_eq!(img.get_pixel(1, 0).0, [4, 5, 6]);
+    let err = rgb_to_image(vec![0; 5], 2, 1).unwrap_err();
+    assert!(
+        err.contains("width=2") && err.contains("data_len=5"),
+        "{err}"
+    );
 }
 
 #[test]
-fn test_yuv_to_rgb_conversion() {
-    fn yuv_to_rgb(y: u8, u: u8, v: u8) -> (u8, u8, u8) {
-        let y = y as i32;
-        let u = u as i32 - 128;
-        let v = v as i32 - 128;
-
-        let r = (y + (1.370705 * v as f32) as i32).clamp(0, 255) as u8;
-        let g =
-            (y - (0.337633 * u as f32) as i32 - (0.698001 * v as f32) as i32).clamp(0, 255) as u8;
-        let b = (y + (1.732446 * u as f32) as i32).clamp(0, 255) as u8;
-
-        (r, g, b)
-    }
-
-    // Mid-gray input (u/v offsets cancel to 0) should round-trip to mid-gray RGB with no color
-    // shift -- `<= 255` was a no-op assertion (r/g/b are already u8, so always true; the real
-    // clamping happens inside yuv_to_rgb before the u8 cast) that verified nothing.
-    let (r, g, b) = yuv_to_rgb(128, 128, 128);
-    assert_eq!((r, g, b), (128, 128, 128));
-}
-
-#[test]
-fn test_yuv_plane_size() {
-    struct YuvPlaneSizes {
-        width: usize,
-        height: usize,
-        format: String,
-    }
-
-    impl YuvPlaneSizes {
-        fn y_plane_size(&self) -> usize {
-            self.width * self.height
-        }
-
-        fn u_plane_size(&self) -> usize {
-            match self.format.as_str() {
-                "yuv420p" => (self.width / 2) * (self.height / 2),
-                "yuv422p" => (self.width / 2) * self.height,
-                "yuv444p" => self.width * self.height,
-                _ => 0,
-            }
-        }
-
-        fn v_plane_size(&self) -> usize {
-            self.u_plane_size()
-        }
-    }
-
-    let sizes = YuvPlaneSizes {
-        width: 1920,
-        height: 1080,
-        format: "yuv420p".to_string(),
-    };
-
-    assert_eq!(sizes.y_plane_size(), 2073600);
-    assert_eq!(sizes.u_plane_size(), 518400);
-}
-
-#[test]
-fn test_yuv_stride_handling() {
-    struct YuvStride {
-        width: usize,
-        height: usize,
-        y_stride: usize,
-        uv_stride: usize,
-    }
-
-    impl YuvStride {
-        fn new_420(width: usize, height: usize) -> Self {
-            Self {
-                width,
-                height,
-                y_stride: width,
-                uv_stride: width / 2,
-            }
-        }
-
-        fn y_plane_size_with_stride(&self) -> usize {
-            self.y_stride * self.height
-        }
-
-        fn uv_plane_size_with_stride(&self) -> usize {
-            self.uv_stride * (self.height / 2)
-        }
-    }
-
-    let stride = YuvStride::new_420(1920, 1080);
-    assert_eq!(stride.y_stride, 1920);
-    assert_eq!(stride.uv_stride, 960);
-}
-
-#[test]
-fn test_yuv_range() {
-    #[derive(Debug, PartialEq)]
-    enum YuvRange {
-        Limited, // 16-235 for Y, 16-240 for UV
-        Full,    // 0-255
-    }
-
-    struct RangeInfo {
-        range: YuvRange,
-    }
-
-    impl RangeInfo {
-        fn y_min(&self) -> u8 {
-            match self.range {
-                YuvRange::Limited => 16,
-                YuvRange::Full => 0,
-            }
-        }
-
-        fn y_max(&self) -> u8 {
-            match self.range {
-                YuvRange::Limited => 235,
-                YuvRange::Full => 255,
-            }
-        }
-    }
-
-    let limited = RangeInfo {
-        range: YuvRange::Limited,
-    };
-
-    assert_eq!(limited.y_min(), 16);
-    assert_eq!(limited.y_max(), 235);
-}
-
-#[test]
-fn test_planar_to_packed() {
-    fn planar_to_packed_yuv422(y: &[u8], u: &[u8], v: &[u8]) -> Vec<u8> {
-        let mut packed = Vec::new();
-        for i in 0..y.len() {
-            packed.push(y[i]);
-            if i % 2 == 0 {
-                packed.push(u[i / 2]);
-            } else {
-                packed.push(v[i / 2]);
-            }
-        }
-        packed
-    }
-
-    let y = vec![128, 129, 130, 131];
-    let u = vec![64, 65];
-    let v = vec![192, 193];
-
-    let packed = planar_to_packed_yuv422(&y, &u, &v);
-    assert_eq!(packed[0], 128); // Y0
-    assert_eq!(packed[1], 64); // U0
-}
-
-#[test]
-fn test_yuv_alignment() {
-    fn align_dimension(size: usize, alignment: usize) -> usize {
-        size.div_ceil(alignment) * alignment
-    }
-
-    assert_eq!(align_dimension(1920, 16), 1920);
-    assert_eq!(align_dimension(1921, 16), 1936);
-}
-
-#[test]
-fn test_yuv_color_space() {
-    #[derive(Debug, PartialEq)]
-    enum ColorSpace {
-        Bt601,
-        Bt709,
-        Bt2020,
-    }
-
-    struct ColorSpaceInfo {
-        space: ColorSpace,
-    }
-
-    impl ColorSpaceInfo {
-        fn is_hdr(&self) -> bool {
-            self.space == ColorSpace::Bt2020
-        }
-    }
-
-    let hdr = ColorSpaceInfo {
-        space: ColorSpace::Bt2020,
-    };
-
-    assert!(hdr.is_hdr());
-}
-
-#[test]
-fn test_yuv_bit_depth() {
-    struct BitDepthInfo {
-        bit_depth: u8,
-    }
-
-    impl BitDepthInfo {
-        fn bytes_per_sample(&self) -> usize {
-            if self.bit_depth > 8 {
-                2
-            } else {
-                1
-            }
-        }
-
-        fn max_value(&self) -> u16 {
-            (1 << self.bit_depth) - 1
-        }
-    }
-
-    let info_8bit = BitDepthInfo { bit_depth: 8 };
-    let info_10bit = BitDepthInfo { bit_depth: 10 };
-
-    assert_eq!(info_8bit.bytes_per_sample(), 1);
-    assert_eq!(info_10bit.bytes_per_sample(), 2);
-    assert_eq!(info_10bit.max_value(), 1023);
-}
-
-#[test]
-fn test_yuv_copy_plane() {
-    fn copy_plane(
-        src: &[u8],
-        dst: &mut [u8],
-        width: usize,
-        height: usize,
-        src_stride: usize,
-        dst_stride: usize,
-    ) {
-        for y in 0..height {
-            let src_offset = y * src_stride;
-            let dst_offset = y * dst_stride;
-            dst[dst_offset..dst_offset + width]
-                .copy_from_slice(&src[src_offset..src_offset + width]);
-        }
-    }
-
-    let src = vec![1u8; 2000];
-    let mut dst = vec![0u8; 2000];
-
-    copy_plane(&src, &mut dst, 100, 10, 200, 200);
-    assert_eq!(dst[0], 1);
+fn the_scalar_strategy_scales_twelve_bit_white_and_grey() {
+    let le = |vals: &[u16]| -> Vec<u8> { vals.iter().flat_map(|v| v.to_le_bytes()).collect() };
+    let mut rgb = vec![0u8; 6];
+    ScalarStrategy::new()
+        .convert_yuv444_to_rgb(
+            &le(&[4095, 2048]),
+            &le(&[2048, 2048]),
+            &le(&[2048, 2048]),
+            2,
+            1,
+            &mut rgb,
+            12,
+        )
+        .unwrap();
+    assert_close(&rgb[0..3], [255, 255, 255], 1, "12-bit white");
+    assert_close(&rgb[3..6], [128, 128, 128], 1, "12-bit grey");
 }
 
 bitvue_test_alloc::install!();
