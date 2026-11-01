@@ -742,17 +742,18 @@ impl Av1Decoder {
         reader: &mut std::io::BufReader<R>,
         file_size: usize,
     ) -> Result<Vec<DecodedFrame>> {
-        use std::io::SeekFrom;
+        use std::io::{Read, Seek, SeekFrom};
 
         // Parse IVF header first (32 bytes)
         let mut header_buf = [0u8; 32];
 
-        // Seek back to start to read header
-        let reader_ref = reader.get_mut();
-        reader_ref
+        // Seek back to start to read header. Through the BufReader itself: seeking the inner file
+        // behind its back left the buffered bytes and the file position out of step, so after the
+        // first 16 KB it re-read the file from byte 32 and lost or corrupted the later frames.
+        reader
             .seek(SeekFrom::Start(0))
             .map_err(|e| DecodeError::Decode(format!("Failed to seek: {}", e)))?;
-        reader_ref
+        reader
             .read_exact(&mut header_buf)
             .map_err(|e| DecodeError::Decode(format!("Failed to read IVF header: {}", e)))?;
 
