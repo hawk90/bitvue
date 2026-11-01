@@ -590,7 +590,11 @@ impl Av1Decoder {
             .canonicalize()
             .map_err(|e| DecodeError::Decode(format!("Invalid path: {}", e)))?;
 
-        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        // Canonicalised the same way as the path: on Windows `canonicalize` returns `\\?\C:\...`
+        // while `current_dir` is `C:\...`, so every path below the working directory was refused.
+        let current_dir = std::env::current_dir()
+            .and_then(|dir| dir.canonicalize())
+            .unwrap_or_else(|_| PathBuf::from("."));
 
         if !canonical.starts_with(&current_dir) {
             return Err(DecodeError::Decode(
