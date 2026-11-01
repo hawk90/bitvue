@@ -7,6 +7,14 @@ use crate::{parse_all_obus, parse_frame_header_basic, ObuType};
 use bitvue_engine::BitvueError;
 use std::sync::Arc;
 
+/// Header sizes in bytes found by [`ParsedFrame::absorb_frame_header`].
+struct HeaderSizes {
+    /// From `parse_frame_header_basic` (an approximation for inter frames)
+    basic: Option<usize>,
+    /// From `parse_frame_header_full`: where the tile bytes really start
+    full: Option<usize>,
+}
+
 impl ParsedFrame {
     /// Parse OBU data and cache all relevant information
     ///
@@ -347,30 +355,28 @@ impl ParsedFrame {
         // `delta_q_enabled` when `seq_header` isn't available yet (a Frame OBU can't
         // spec-legally precede a Sequence Header, so this fallback path is defensive,
         // not a real-stream case).
-        // A temporal unit can hold several frames (a hidden ARF followed by the shown
-        // frame): every field below describes the frame parsed last, so the tile
-        // bytes of an earlier one must not stay in front of them.
-        tile_data.clear();
-        self.tile_groups.clear();
-        if let Ok(frame_hdr) = parse_frame_header_basic(payload) {
-            self.apply_basic_header(&frame_hdr);
-            if seq.is_none() && frame_hdr.header_size_bytes < payload.len() {
-                tile_data.extend_from_slice(&payload[frame_hdr.header_size_bytes..]);
+        let sizes = self.absorb_frame_header(payload, seq, ref_state, tile_data);
+        match (seq, sizes) {
+            // No sequence header yet (defensive): cut at the basic header's size.
+            (
+                None,
+                HeaderSizes {
+                    basic: Some(size), ..
+                },
+            ) if size < payload.len() => {
+                tile_data.extend_from_slice(&payload[size..]);
             }
-        }
-        if let Some(seq) = seq {
-            // The slots' order hints as they are right before THIS frame's header: an earlier
-            // frame of the same packet may have refreshed them (taken once per packet, the sign
-            // bias and order distances of every later frame came from stale hints, #233).
-            let prev_ref_order_hint = *ref_state.ref_order_hint();
-            if let Ok(full_hdr) = parse_frame_header_full(payload, seq, ref_state) {
-                self.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
-                if full_hdr.header_size_bytes < payload.len() {
-                    let start = tile_data.len();
-                    tile_data.extend_from_slice(&payload[full_hdr.header_size_bytes..]);
-                    self.tile_groups.push(start..tile_data.len());
-                }
+            (
+                Some(_),
+                HeaderSizes {
+                    full: Some(size), ..
+                },
+            ) if size < payload.len() => {
+                let start = tile_data.len();
+                tile_data.extend_from_slice(&payload[size..]);
+                self.tile_groups.push(start..tile_data.len());
             }
+            _ => {}
         }
     }
 
@@ -382,12 +388,29 @@ impl ParsedFrame {
         ref_state: &mut RefFrameState,
         tile_data: &mut Vec<u8>,
     ) {
-        // Same reset as for `ObuType::Frame`: this header starts a new frame, so the
-        // tile groups gathered for an earlier frame of the packet are not its own.
+        self.absorb_frame_header(payload, seq, ref_state, tile_data);
+    }
+
+    /// The part `OBU_FRAME` and `OBU_FRAME_HEADER` share: this header starts a new frame, so the
+    /// tile bytes and tile groups gathered for an earlier frame of the packet are dropped, then
+    /// the basic and (given a sequence header) the full header are applied. Returns the header
+    /// sizes in bytes, from which an `OBU_FRAME` cuts its tile bytes.
+    fn absorb_frame_header(
+        &mut self,
+        payload: &[u8],
+        seq: Option<&crate::SequenceHeader>,
+        ref_state: &mut RefFrameState,
+        tile_data: &mut Vec<u8>,
+    ) -> HeaderSizes {
         tile_data.clear();
         self.tile_groups.clear();
+        let mut sizes = HeaderSizes {
+            basic: None,
+            full: None,
+        };
         if let Ok(frame_hdr) = parse_frame_header_basic(payload) {
             self.apply_basic_header(&frame_hdr);
+            sizes.basic = Some(frame_hdr.header_size_bytes);
         }
         if let Some(seq) = seq {
             // The slots' order hints as they are right before THIS frame's header: an earlier
@@ -396,8 +419,10 @@ impl ParsedFrame {
             let prev_ref_order_hint = *ref_state.ref_order_hint();
             if let Ok(full_hdr) = parse_frame_header_full(payload, seq, ref_state) {
                 self.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
+                sizes.full = Some(full_hdr.header_size_bytes);
             }
         }
+        sizes
     }
 
     /// An `OBU_TILE_GROUP`: its payload is appended to `tile_data`, with a range of its own.
