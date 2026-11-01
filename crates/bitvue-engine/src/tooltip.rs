@@ -169,25 +169,39 @@ impl TimelineTooltip {
             lines.push(format!("Error: {}", error));
         }
 
-        // Evidence chain (per evidence_hover.001)
-        if self.syntax_path.is_some() || self.bit_offset.is_some() {
-            lines.push(String::new()); // Separator
-            lines.push("Evidence Chain:".to_string());
-
-            if let Some(ref path) = self.syntax_path {
-                lines.push(format!("  Syntax: {}", path));
-            }
-
-            if let Some(byte_off) = self.byte_offset {
-                lines.push(format!("  Byte offset: {}", byte_off));
-            }
-
-            if let Some(bit_off) = self.bit_offset {
-                lines.push(format!("  Bit offset: {}", bit_off));
-            }
-        }
+        push_evidence_chain(
+            &mut lines,
+            self.syntax_path.as_deref(),
+            self.byte_offset,
+            self.bit_offset,
+        );
 
         lines.join("\n")
+    }
+}
+
+/// Appends the "Evidence Chain" section (per evidence_hover.001) shared by the tooltips that
+/// carry a syntax path and bit/byte offsets. Nothing is added unless a syntax path or a bit
+/// offset is present (a byte offset alone does not open the section).
+fn push_evidence_chain(
+    lines: &mut Vec<String>,
+    syntax_path: Option<&str>,
+    byte_offset: Option<u64>,
+    bit_offset: Option<u64>,
+) {
+    if syntax_path.is_none() && bit_offset.is_none() {
+        return;
+    }
+    lines.push(String::new()); // Separator
+    lines.push("Evidence Chain:".to_string());
+    if let Some(path) = syntax_path {
+        lines.push(format!("  Syntax: {}", path));
+    }
+    if let Some(byte_off) = byte_offset {
+        lines.push(format!("  Byte offset: {}", byte_off));
+    }
+    if let Some(bit_off) = bit_offset {
+        lines.push(format!("  Bit offset: {}", bit_off));
     }
 }
 
@@ -495,23 +509,12 @@ impl PlayerTooltip {
             lines.push(format!("Overlays: {}", self.active_overlays.join(", ")));
         }
 
-        // Evidence chain (per evidence_hover.001)
-        if self.syntax_path.is_some() || self.bit_offset.is_some() {
-            lines.push(String::new()); // Separator
-            lines.push("Evidence Chain:".to_string());
-
-            if let Some(ref path) = self.syntax_path {
-                lines.push(format!("  Syntax: {}", path));
-            }
-
-            if let Some(byte_off) = self.byte_offset {
-                lines.push(format!("  Byte offset: {}", byte_off));
-            }
-
-            if let Some(bit_off) = self.bit_offset {
-                lines.push(format!("  Bit offset: {}", bit_off));
-            }
-        }
+        push_evidence_chain(
+            &mut lines,
+            self.syntax_path.as_deref(),
+            self.byte_offset,
+            self.bit_offset,
+        );
 
         lines.join("\n")
     }

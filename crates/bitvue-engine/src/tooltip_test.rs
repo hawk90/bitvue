@@ -473,3 +473,63 @@ mod format_tests {
         assert!(text.contains("→ Parse error"));
     }
 }
+
+// ============================================================================
+// Evidence Chain section (shared by the timeline and player tooltips)
+// ============================================================================
+#[test]
+fn evidence_chain_lists_path_then_byte_then_bit_after_a_blank_line() {
+    let mut lines = vec!["head".to_string()];
+    push_evidence_chain(&mut lines, Some("OBU.x"), Some(7), Some(56));
+    assert_eq!(
+        lines,
+        vec![
+            "head",
+            "",
+            "Evidence Chain:",
+            "  Syntax: OBU.x",
+            "  Byte offset: 7",
+            "  Bit offset: 56"
+        ]
+    );
+}
+
+#[test]
+fn evidence_chain_opens_on_a_path_or_a_bit_offset_but_not_a_byte_offset_alone() {
+    let mut lines = Vec::new();
+    push_evidence_chain(&mut lines, None, Some(7), None);
+    push_evidence_chain(&mut lines, None, None, None);
+    assert!(lines.is_empty());
+
+    push_evidence_chain(&mut lines, Some("p"), None, None);
+    assert_eq!(lines, vec!["", "Evidence Chain:", "  Syntax: p"]);
+
+    let mut lines = Vec::new();
+    push_evidence_chain(&mut lines, None, None, Some(3));
+    assert_eq!(lines, vec!["", "Evidence Chain:", "  Bit offset: 3"]);
+}
+
+#[test]
+fn timeline_and_player_tooltips_end_with_the_evidence_chain() {
+    let mut t = create_test_timeline_tooltip();
+    t.syntax_path = Some("A.b".to_string());
+    t.byte_offset = Some(9);
+    t.bit_offset = Some(72);
+    assert!(t
+        .format()
+        .ends_with("\n\nEvidence Chain:\n  Syntax: A.b\n  Byte offset: 9\n  Bit offset: 72"));
+    t.syntax_path = None;
+    t.bit_offset = None;
+    assert!(!t.format().contains("Evidence Chain"));
+
+    let mut p = create_test_player_tooltip();
+    p.syntax_path = Some("C.d".to_string());
+    p.byte_offset = Some(1);
+    p.bit_offset = Some(8);
+    assert!(p
+        .format()
+        .ends_with("\n\nEvidence Chain:\n  Syntax: C.d\n  Byte offset: 1\n  Bit offset: 8"));
+    p.syntax_path = None;
+    p.bit_offset = None;
+    assert!(!p.format().contains("Evidence Chain"));
+}
