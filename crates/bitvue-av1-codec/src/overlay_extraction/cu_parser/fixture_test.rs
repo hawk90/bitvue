@@ -1188,3 +1188,67 @@ mod frame_size_limit {
         assert!(parse_coding_units_checked(&parsed).is_err());
     }
 }
+
+/// The first superblock that fails ends the frame (#176): whatever the decoder read after losing
+/// its place would be noise presented as coding units. Corrupting one byte of the fixture's key
+/// frame (6 superblocks, 3 x 2) makes the decode fail part way: the units are exactly those of
+/// the superblocks decoded before the failure, in raster order, and no later one shows up even
+/// though the decoder would go on producing symbols.
+#[test]
+fn a_corrupted_tile_stops_at_the_first_failed_superblock_and_adds_nothing_after_it() {
+    let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+    let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+    let obu_data: Vec<u8> = [seq_bytes.as_slice(), frames[0].data.as_slice()].concat();
+    let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+    let (sb, cols) = (parsed.dimensions.sb_size, parsed.dimensions.sb_cols);
+    assert_eq!(
+        (parsed.dimensions.sb_cols, parsed.dimensions.sb_rows),
+        (3, 2),
+        "the fixture's key frame is 3 x 2 superblocks"
+    );
+
+    let decode = |pos: usize| {
+        let mut bytes = parsed.tile_data.to_vec();
+        bytes[pos] ^= 0xA5;
+        let mut variant = parsed.clone();
+        variant.tile_data = std::sync::Arc::from(bytes);
+        decode_frame(
+            &variant,
+            FrameDecodeInputs {
+                temporal: None,
+                initial_cdf: None,
+            },
+        )
+        .unwrap()
+    };
+
+    // (byte flipped, superblocks decoded before the failure), found by flipping every 7th byte
+    for (pos, decoded_before_failure) in [(105, 4), (140, 5)] {
+        let d = decode(pos);
+        assert_eq!(d.outcome.superblocks_total, 6);
+        assert_eq!(
+            d.outcome.superblocks_decoded, decoded_before_failure,
+            "byte {pos}"
+        );
+        assert!(!d.units.is_empty());
+        // raster index of every unit's superblock: none at or past the failed one
+        let indexes: Vec<u32> = d
+            .units
+            .iter()
+            .map(|u| (u.y / sb) * cols + u.x / sb)
+            .collect();
+        assert!(
+            indexes.iter().all(|&i| i < decoded_before_failure),
+            "byte {pos}: a unit from a superblock after the failure: {indexes:?}"
+        );
+        assert!(
+            indexes.windows(2).all(|w| w[0] <= w[1]),
+            "byte {pos}: units are not in raster order"
+        );
+        assert_eq!(
+            indexes.iter().copied().max(),
+            Some(decoded_before_failure - 1),
+            "byte {pos}: the last decoded superblock contributes units"
+        );
+    }
+}
