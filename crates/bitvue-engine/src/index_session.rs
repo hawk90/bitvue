@@ -76,8 +76,9 @@ pub struct IndexSession {
     /// Cancellation flag
     should_cancel: Arc<AtomicBool>,
 
-    /// Progress counter for UI updates
-    progress_counter: Arc<AtomicU64>,
+    /// Progress of the running full index in thousandths (0..=1000), from the extractor's own
+    /// progress reports; `estimated_progress` reads it
+    progress_permille: Arc<AtomicU64>,
 }
 
 impl IndexSession {
@@ -89,7 +90,7 @@ impl IndexSession {
             full_index: Arc::new(Mutex::new(None)),
             evidence_manager: Arc::new(Mutex::new(IndexExtractorEvidenceManager::new_empty())),
             should_cancel: Arc::new(AtomicBool::new(false)),
-            progress_counter: Arc::new(AtomicU64::new(0)),
+            progress_permille: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -266,12 +267,30 @@ impl IndexSession {
         let should_cancel = Arc::clone(&self.should_cancel);
         let cancel_fn = move || should_cancel.load(Ordering::SeqCst);
 
-        // Execute full extraction (without progress callback for simplicity)
-        let result = extractor.extract_full_index(
-            reader,
-            None, // Progress callbacks not yet supported due to lifetime constraints
-            Some(&cancel_fn),
-        );
+        // The extractor reports a fraction and a message once per step; the session keeps the
+        // fraction for `estimated_progress` and forwards each report to the caller's callback
+        // (the number of reports so far stands in for the frames indexed). The closure borrows
+        // the callback for the duration of this call only, so no 'static bound is needed.
+        let reports = std::cell::Cell::new(0usize);
+        let on_progress = |fraction: f64, message: &str| {
+            let fraction = if fraction.is_finite() {
+                fraction.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            self.progress_permille
+                .store((fraction * 1000.0) as u64, Ordering::SeqCst);
+            reports.set(reports.get() + 1);
+            report_full(
+                &progress_callback,
+                fraction,
+                message.to_string(),
+                reports.get(),
+            );
+        };
+
+        // Execute full extraction
+        let result = extractor.extract_full_index(reader, Some(&on_progress), Some(&cancel_fn));
 
         match result {
             Ok(frames) => {
@@ -331,6 +350,7 @@ impl IndexSession {
         }
 
         self.reset_cancellation();
+        self.progress_permille.store(0, Ordering::SeqCst);
         Ok(())
     }
 
@@ -407,7 +427,7 @@ impl IndexSession {
         *self.full_index.lock().unwrap() = None;
         self.evidence_manager.lock().unwrap().clear();
         self.reset_cancellation();
-        self.progress_counter.store(0, Ordering::SeqCst);
+        self.progress_permille.store(0, Ordering::SeqCst);
     }
 
     /// Get current progress (0.0 to 1.0)
@@ -419,14 +439,9 @@ impl IndexSession {
             IndexingState::QuickIndexing => 0.0, // Quick is too fast to track meaningfully
             IndexingState::QuickComplete => 0.0,
             IndexingState::FullIndexing => {
-                // Estimate based on progress counter
-                let frames_so_far = self.progress_counter.load(Ordering::SeqCst);
-                if let Some(quick) = self.quick_index() {
-                    if let Some(estimated_total) = quick.estimated_frame_count {
-                        return (frames_so_far as f64 / estimated_total as f64).min(0.99);
-                    }
-                }
-                0.5 // Unknown, assume halfway
+                // The extractor's own fraction; 0.0 until its first report, and never 1.0 before
+                // the index is stored (that is `FullComplete`)
+                (self.progress_permille.load(Ordering::SeqCst) as f64 / 1000.0).min(0.99)
             }
             IndexingState::FullComplete => 1.0,
             IndexingState::Error | IndexingState::Cancelled => 0.0,
