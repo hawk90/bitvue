@@ -5,7 +5,7 @@ name: CI
 #   changes ─┬─ rust-lint   test-allocator check + fmt + clippy + bench compile + `--locked` (ubuntu, ~2 min)
 #            ├─ rust-test   one job per crate per OS (19 x 3, 12 at a time, as in #37)
 #            ├─ rust-vmaf   bitvue-metrics with the optional `vmaf` feature, 3 OSes
-#            ├─ rust-vvdec  bitvue-decode with the optional `vvdec` feature (real VVC stream), 2 OSes
+#            ├─ rust-vvdec  bitvue-decode with the optional `vvdec` feature (real VVC stream), 3 OSes
 #            ├─ fuzz-build  every fuzz target is registered and compiles (fuzz/ is outside the workspace)
 #            ├─ parity      scripts/parity_check.sh --local against the CLI
 #            ├─ coverage    cargo-llvm-cov -> Codecov
@@ -268,7 +268,10 @@ jobs:
 
   # The optional `vvdec` feature of bitvue-decode links the system libvvdec 3.x, which nothing else
   # in CI builds. Debian/Ubuntu ship no vvdec package, so Linux builds v3.2.0 from source (~25 s on
-  # 4 cores); macOS uses Homebrew. Runs the real-stream test (tests/vvdec_real_decode.rs).
+  # 4 cores); macOS uses Homebrew; Windows uses the vcpkg that the runner image ships (the same
+  # one install-dav1d uses), with the `x64-windows-static-md` triplet: static libraries, but the
+  # dynamic C runtime Rust links, which a C++ library should not mix with the static one (#64).
+  # Runs the real-stream test (tests/vvdec_real_decode.rs).
   rust-vvdec:
     name: VVC (vvdec) (${{ matrix.os }})
     needs: changes
@@ -276,7 +279,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-latest]
+        os: [ubuntu-26.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -293,6 +296,13 @@ jobs:
       - name: libvvdec (macOS)
         if: runner.os == 'macOS'
         run: brew install vvdec
+      - name: libvvdec (Windows, vcpkg)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          C:\vcpkg\vcpkg.exe install vvdec:x64-windows-static-md --clean-after-build
+          # install-dav1d already put its own pkgconfig directory in PKG_CONFIG_PATH
+          echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows-static-md\lib\pkgconfig;$env:PKG_CONFIG_PATH" >> $env:GITHUB_ENV
       - name: libvvdec (Linux, from source)
         if: runner.os == 'Linux'
         run: |
