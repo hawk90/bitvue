@@ -12,9 +12,8 @@ fi
 if [ -f rust-toolchain.toml ] && command -v rustup >/dev/null 2>&1; then
   rustup show active-toolchain >/dev/null   # installs the pinned toolchain on first use
 fi
-if command -v corepack >/dev/null 2>&1; then
-  corepack enable >/dev/null 2>&1 || true   # honours "packageManager" in package.json
-fi
+# No `corepack enable`: with no arguments it replaces a globally installed pnpm/yarn shim with its
+# own, and it never manages npm. The npm version is enforced by `devEngines` in package.json.
 
 scripts/sync-deps.sh --all
 

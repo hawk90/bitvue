@@ -70,7 +70,7 @@ commands.validate.run = "grep -qE '^(feat|fix|docs|style|refactor|perf|test|chor
 run = "scripts/sync-deps.sh"
 
 [post-checkout.commands.sync-deps]
-run = "scripts/sync-deps.sh --since {1}"
+run = "scripts/sync-deps.sh --hook post-checkout {1} {3}"
 
 [post-rewrite.commands.sync-deps]
-run = "scripts/sync-deps.sh"
+run = "scripts/sync-deps.sh --hook post-rewrite {1}"

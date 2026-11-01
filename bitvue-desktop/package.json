@@ -8,6 +8,18 @@
   "engines": {
     "node": ">=24.22.1"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^24",
+      "onFail": "error"
+    },
+    "packageManager": {
+      "name": "npm",
+      "version": "^12.2.0",
+      "onFail": "error"
+    }
+  },
   "main": "dist/electron/main.js",
   "scripts": {
     "postinstall": "node scripts/patch-electron-app-name.mjs",

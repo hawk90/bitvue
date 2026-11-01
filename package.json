@@ -7,6 +7,18 @@
   "engines": {
     "node": ">=24.22.1"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^24",
+      "onFail": "error"
+    },
+    "packageManager": {
+      "name": "npm",
+      "version": "^12.2.0",
+      "onFail": "error"
+    }
+  },
   "scripts": {
     "dev": "cd frontend && npm run dev",
     "build": "cd frontend && npm run build",
