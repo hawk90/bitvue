@@ -80,23 +80,7 @@ pub(super) fn compute_inter_tx_blocks(
 
     let mut leaves = Vec::new();
     if let Some((uw, uh)) = uniform_size {
-        let (uw4, uh4) = (uw / 4, uh / 4);
-        let (uw_class, uh_class) = (tx_size_class(uw) as u8, tx_size_class(uh) as u8);
-        let mut ly = y4;
-        while ly < y4 + height_4x4 {
-            let mut lx = x4;
-            while lx < x4 + width_4x4 {
-                leaves.push(TxBlock {
-                    x4: lx,
-                    y4: ly,
-                    width_px: uw,
-                    height_px: uh,
-                });
-                tile_ctx.set_var_tx_class(lx, ly, uw4, uh4, uw_class, uh_class);
-                lx += uw4;
-            }
-            ly += uh4;
-        }
+        push_leaves(tile_ctx, x4, y4, width_4x4, height_4x4, uw, uh, &mut leaves);
     } else {
         let (tile_w4, tile_h4) = (max_ytx_w / 4, max_ytx_h / 4);
         let mut ty = y4;
