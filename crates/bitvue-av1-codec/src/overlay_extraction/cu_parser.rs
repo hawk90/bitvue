@@ -149,7 +149,7 @@ pub(crate) fn decode_frame(
 
     let mut all_cus = Vec::new();
 
-    // Pre-allocate capacity based on superblock count
+    // Pre-allocate capacity based on superblock count (a guess: only the allocation depends on it)
     let estimated_cus = (sb_cols * sb_rows) as usize * 4;
     all_cus.reserve(estimated_cus);
 
@@ -161,6 +161,8 @@ pub(crate) fn decode_frame(
     });
 
     let tiles = tile_slices(parsed)?;
+    // `> 1` or `>= 1` decodes the same: a one-tile layout covers the whole frame and its
+    // `context_update_tile_id` can only name that tile (#277).
     let layout = parsed.tiles.as_ref().filter(|l| l.tile_count() > 1);
     let update_tile = layout.map_or(0, |l| l.context_update_tile_id);
 
@@ -337,6 +339,10 @@ fn decode_superblock_rows(
             trace_segments.push(((tile_pos.0, sb_y, tile_pos.1), Vec::new()));
             state.decoder.decoder.range_trace = Some(Vec::new());
         }
+        // The left contexts span the tile's full height and are addressed by absolute 4x4 row, so
+        // a new superblock row only reads entries nothing has written yet and this reset changes
+        // nothing in the decode (dropping it leaves every test green, #176). It mirrors the
+        // spec's per-row left-context reset and keeps that true if the addressing changes.
         state.tile_ctx.start_superblock_row();
         for sb_x in col_sbs.clone() {
             let sb_pixel_x = sb_x * sb_size;
@@ -362,6 +368,11 @@ fn decode_superblock_rows(
                         sb_pixel_y,
                         e
                     );
+                    // Whatever follows a failure is noise. In practice it also never decodes: with
+                    // `continue` here, 35,318 single-byte corruptions (6 fixture frames, every
+                    // byte, 3 flip patterns) gave the same superblock and unit counts, because
+                    // every later superblock fails again (#176). The `break` stays so that this
+                    // does not depend on that.
                     break 'tile;
                 }
             }
