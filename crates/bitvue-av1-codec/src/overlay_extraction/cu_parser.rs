@@ -149,7 +149,7 @@ pub(crate) fn decode_frame(
 
     let mut all_cus = Vec::new();
 
-    // Pre-allocate capacity based on superblock count
+    // Pre-allocate capacity based on superblock count (a guess: only the allocation depends on it)
     let estimated_cus = (sb_cols * sb_rows) as usize * 4;
     all_cus.reserve(estimated_cus);
 
@@ -161,6 +161,8 @@ pub(crate) fn decode_frame(
     });
 
     let tiles = tile_slices(parsed)?;
+    // `> 1` or `>= 1` decodes the same: a one-tile layout covers the whole frame and its
+    // `context_update_tile_id` can only name that tile (#277).
     let layout = parsed.tiles.as_ref().filter(|l| l.tile_count() > 1);
     let update_tile = layout.map_or(0, |l| l.context_update_tile_id);
 
