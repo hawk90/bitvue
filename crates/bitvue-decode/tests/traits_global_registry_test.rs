@@ -1,5 +1,8 @@
 //! `DecoderFactory::register_codec` goes through the process-wide registry, so it gets its own
 //! test binary: registering a codec here must not change what the other trait tests see.
+//! H.266 is only unbuildable without the `vvdec` feature, so the whole file needs it off.
+
+#![cfg(not(feature = "vvdec"))]
 
 use bitvue_decode::decoder::{DecodeError, DecodedFrame};
 use bitvue_decode::traits::{CodecType, Decoder, DecoderCapabilities, DecoderFactory};
@@ -32,7 +35,6 @@ impl Decoder for Nothing {
 }
 
 #[test]
-#[cfg(not(feature = "vvdec"))]
 fn registering_through_the_factory_makes_the_codec_buildable_once() {
     // the default build cannot create H.266 ...
     assert!(DecoderFactory::create(CodecType::H266).is_err());
