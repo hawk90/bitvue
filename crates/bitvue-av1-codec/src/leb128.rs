@@ -15,6 +15,15 @@ const MAX_LEB128_BITS: u32 = MAX_LEB128_BYTES as u32 * 7; // 56 bits
 // Compile-time assertion to ensure MAX_LEB128_BITS doesn't exceed 64
 const _: () = assert!(MAX_LEB128_BITS <= 64, "LEB128 max bits must not exceed 64");
 
+/// ORs one 7-bit group into `value` at `shift`, or `None` if the group would not fit in the
+/// 56 bits AV1 allows (the shared overflow check of every LEB128 decoder in this crate).
+pub(crate) fn add_group(value: u64, shift: u32, data_bits: u64) -> Option<u64> {
+    if shift >= MAX_LEB128_BITS || (shift > 0 && data_bits > (u64::MAX >> shift)) {
+        return None;
+    }
+    Some(value | (data_bits << shift))
+}
+
 /// Decodes an unsigned LEB128 value from a byte slice
 ///
 /// Returns the decoded value and the number of bytes consumed.
@@ -49,17 +58,10 @@ pub fn decode_uleb128(data: &[u8]) -> Result<(u64, usize)> {
         // Extract 7 data bits
         let data_bits = (byte & 0x7F) as u64;
 
-        // Check for overflow before shifting.
-        // Per LEB128 spec, we have MAX_LEB128_BITS (56) maximum, not 64.
-        // This check ensures we don't exceed the spec's limits.
-        if shift >= MAX_LEB128_BITS || (shift > 0 && data_bits > (u64::MAX >> shift)) {
-            return Err(BitvueError::Parse {
-                offset: bytes_read as u64,
-                message: "LEB128 value overflow".to_string(),
-            });
-        }
-
-        value |= data_bits << shift;
+        value = add_group(value, shift, data_bits).ok_or_else(|| BitvueError::Parse {
+            offset: bytes_read as u64,
+            message: "LEB128 value overflow".to_string(),
+        })?;
         shift += 7;
 
         // Check continuation bit (MSB)
@@ -114,6 +116,21 @@ pub fn leb128_size(value: u64) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn add_group_places_the_group_at_the_shift_and_keeps_lower_bits() {
+        assert_eq!(add_group(0, 0, 0x7F), Some(0x7F));
+        assert_eq!(add_group(0x7F, 7, 0x01), Some(0x7F | (1 << 7)));
+        // Last group an 8-byte value can carry: shift 49.
+        assert_eq!(add_group(5, 49, 0x7F), Some(5 | (0x7F << 49)));
+    }
+
+    #[test]
+    fn add_group_refuses_a_shift_at_or_past_56_bits() {
+        assert_eq!(add_group(0, 56, 0), None);
+        assert_eq!(add_group(0, 63, 1), None);
+        assert_eq!(add_group(0, 55, 0), Some(0));
+    }
 
     #[test]
     fn test_decode_single_byte() {
