@@ -1,261 +1,139 @@
-#![allow(hidden_glob_reexports)]
-#![allow(unreachable_code)]
-#![allow(non_camel_case_types)]
-#![allow(unused_assignments)]
-#![allow(unused_parens)]
-#![allow(unused_imports)]
-//! Tests for Decode System (FFmpeg, VVDec, etc.)
+//! System-level checks of the decode crate through its public API: real clips from `test_data/`
+//! and the real size / format helpers. (This file used to hold twelve tests that defined their own
+//! structs and asserted on literals they had just written, so they could not fail whatever the
+//! crate did, #63.)
 
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_comparisons)]
-#![allow(unused_doc_comments)]
+use bitvue_decode::decoder::{detect_format, validate_frame, ChromaFormat, VideoFormat};
+use bitvue_decode::{Av1Decoder, BitDepth, ChromaSubsampling, YuvFileParams};
 
-#[test]
-fn test_yuv_frame_dimensions() {
-    // Test YUV frame dimension calculations
-    struct YuvFrame {
-        width: u32,
-        height: u32,
-        format: ChromaFormat,
-    }
-
-    #[derive(Debug, PartialEq)]
-    enum ChromaFormat {
-        YUV420,
-        YUV422,
-        YUV444,
-    }
-
-    let frame = YuvFrame {
-        width: 1920,
-        height: 1080,
-        format: ChromaFormat::YUV420,
-    };
-
-    let y_size = (frame.width * frame.height) as usize;
-    let uv_size = match frame.format {
-        ChromaFormat::YUV420 => y_size / 4,
-        ChromaFormat::YUV422 => y_size / 2,
-        ChromaFormat::YUV444 => y_size,
-    };
-
-    assert_eq!(y_size, 2073600);
-    assert_eq!(uv_size, 518400); // YUV420
+fn test_data(name: &str) -> Vec<u8> {
+    std::fs::read(format!(
+        "{}/../../test_data/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap_or_else(|e| panic!("test_data/{name}: {e}"))
 }
 
-#[test]
-fn test_decode_frame_buffer() {
-    // Test frame buffer management
-    struct FrameBuffer {
-        capacity: usize,
-        current_frames: usize,
+/// The `pts` of every packet of an IVF file (12-byte frame headers after the 32-byte file header).
+fn ivf_pts(data: &[u8]) -> Vec<i64> {
+    let (mut pos, mut out) = (32usize, Vec::new());
+    while pos + 12 <= data.len() {
+        let size = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+        out.push(u64::from_le_bytes(data[pos + 4..pos + 12].try_into().unwrap()) as i64);
+        pos += 12 + size;
     }
-
-    let mut buffer = FrameBuffer {
-        capacity: 16,
-        current_frames: 0,
-    };
-
-    // Add frames
-    buffer.current_frames += 1;
-    assert!(buffer.current_frames <= buffer.capacity);
-
-    // Fill buffer
-    buffer.current_frames = buffer.capacity;
-    assert_eq!(buffer.current_frames, buffer.capacity);
+    out
 }
 
-#[test]
-fn test_decode_pts_dts() {
-    // Test PTS/DTS handling
-    struct Timestamp {
-        pts: i64, // Presentation timestamp
-        dts: i64, // Decode timestamp
-    }
-
-    let timestamps = [
-        Timestamp { pts: 0, dts: 0 },
-        Timestamp { pts: 3, dts: 1 },
-        Timestamp { pts: 1, dts: 2 },
-        Timestamp { pts: 2, dts: 3 },
-    ];
-
-    // DTS should be monotonically increasing
-    for i in 1..timestamps.len() {
-        assert!(timestamps[i].dts > timestamps[i - 1].dts);
+fn params(width: u32, height: u32, chroma: ChromaSubsampling, depth: BitDepth) -> YuvFileParams {
+    YuvFileParams {
+        width,
+        height,
+        chroma_subsampling: chroma,
+        bit_depth: depth,
+        frame_rate: (30, 1),
     }
 }
 
 #[test]
-fn test_decode_pixel_formats() {
-    // Test supported pixel format conversion
-    #[derive(Debug, PartialEq)]
-    enum PixelFormat {
-        YUV420P,
-        YUV422P,
-        YUV444P,
-        YUV420P10LE,
-        YUV422P10LE,
+fn raw_frame_size_follows_chroma_format_and_bit_depth() {
+    use BitDepth::{Bit10, Bit12, Bit8};
+    use ChromaSubsampling::{Mono, Yuv420, Yuv422, Yuv444};
+    // 1920 x 1080: luma 2,073,600 samples; chroma 1/4, 1/2, 1 of that per plane, twice
+    for (chroma, depth, bytes) in [
+        (Yuv420, Bit8, 3_110_400),
+        (Yuv422, Bit8, 4_147_200),
+        (Yuv444, Bit8, 6_220_800),
+        (Mono, Bit8, 2_073_600),
+        (Yuv420, Bit10, 6_220_800),
+        (Yuv444, Bit12, 12_441_600),
+        (Mono, Bit10, 4_147_200),
+    ] {
+        let p = params(1920, 1080, chroma, depth);
+        assert_eq!(p.frame_size_bytes(), bytes, "{chroma:?} {depth:?}");
+        assert_eq!(
+            p.y_plane_size(),
+            2_073_600 * depth.bytes_per_sample(),
+            "{chroma:?} {depth:?}"
+        );
     }
-
-    let formats = [PixelFormat::YUV420P, PixelFormat::YUV420P10LE];
-
-    assert_eq!(formats.len(), 2);
 }
 
 #[test]
-fn test_decode_bit_depth() {
-    // Test bit depth handling
-    struct DecodeConfig {
-        bit_depth: u8,
-        max_value: u16,
+fn bit_depth_sets_the_bytes_per_sample() {
+    for (depth, bits, bytes) in [
+        (BitDepth::Bit8, 8, 1),
+        (BitDepth::Bit10, 10, 2),
+        (BitDepth::Bit12, 12, 2),
+    ] {
+        assert_eq!(depth.bits(), bits);
+        assert_eq!(depth.bytes_per_sample(), bytes);
     }
-
-    let config_8bit = DecodeConfig {
-        bit_depth: 8,
-        max_value: 255,
-    };
-
-    let config_10bit = DecodeConfig {
-        bit_depth: 10,
-        max_value: 1023,
-    };
-
-    assert_eq!(config_8bit.max_value, (1 << config_8bit.bit_depth) - 1);
-    assert_eq!(config_10bit.max_value, (1 << config_10bit.bit_depth) - 1);
 }
 
 #[test]
-fn test_decode_error_concealment() {
-    // Test error concealment strategies
-    #[derive(Debug, PartialEq)]
-    enum ConcealmentStrategy {
-        None,
-        CopyPrevious,
-        Interpolate,
-        Gray,
+fn a_real_ivf_decodes_to_every_frame_with_its_size_depth_and_chroma_format() {
+    let data = test_data("av1_aomenc_testsrc2.ivf");
+    let frames = Av1Decoder::new().unwrap().decode_all(&data).unwrap();
+    // ffprobe: 12 frames, 320x240, yuv420p
+    assert_eq!(frames.len(), 12);
+    for (i, f) in frames.iter().enumerate() {
+        assert_eq!((f.width, f.height, f.bit_depth), (320, 240, 8), "frame {i}");
+        assert_eq!(f.chroma_format, ChromaFormat::Yuv420, "frame {i}");
+        // planes are packed rows; `*_stride` reports the decoder's own (padded) stride
+        assert_eq!(f.y_plane.len(), 320 * 240, "frame {i}");
+        assert!(f.y_stride >= 320, "frame {i}");
+        for plane in [&f.u_plane, &f.v_plane] {
+            assert_eq!(
+                plane.as_ref().map(|p| p.len()),
+                Some(160 * 120),
+                "frame {i}"
+            );
+        }
+        validate_frame(f).unwrap_or_else(|e| panic!("frame {i}: {e}"));
     }
-
-    let strategy = ConcealmentStrategy::CopyPrevious;
-    assert_eq!(strategy, ConcealmentStrategy::CopyPrevious);
 }
 
 #[test]
-fn test_decode_threading() {
-    // Test multi-threaded decode configuration
-    struct ThreadingConfig {
-        thread_count: usize,
-        thread_type: ThreadType,
-    }
-
-    #[derive(Debug, PartialEq)]
-    enum ThreadType {
-        Frame,
-        Slice,
-        Both,
-    }
-
-    let config = ThreadingConfig {
-        thread_count: 4,
-        thread_type: ThreadType::Frame,
-    };
-
-    assert!(config.thread_count > 0);
-    assert!(config.thread_count <= 32);
+fn decoded_frames_carry_the_pts_of_their_ivf_packets_in_order() {
+    let data = test_data("av1_aomenc_testsrc2.ivf");
+    let pts = ivf_pts(&data);
+    let frames = Av1Decoder::new().unwrap().decode_all(&data).unwrap();
+    let got: Vec<i64> = frames.iter().map(|f| f.timestamp).collect();
+    assert_eq!(pts, (0..12).collect::<Vec<i64>>(), "the clip's own pts");
+    assert_eq!(got, pts);
 }
 
 #[test]
-fn test_decode_sei_parsing() {
-    // Test SEI message parsing
-    #[derive(Debug, PartialEq)]
-    enum SeiPayloadType {
-        BufferingPeriod = 0,
-        PicTiming = 1,
-        UserDataUnregistered = 5,
-        RecoveryPoint = 6,
+fn detect_format_tells_each_container_and_bitstream_from_its_signature() {
+    for (file, expected) in [
+        ("av1_aomenc_testsrc2.ivf", VideoFormat::Ivf),
+        ("sample_vp9.ivf", VideoFormat::Ivf),
+        ("sample_h264.mp4", VideoFormat::Mp4),
+        ("sample_hevc.mp4", VideoFormat::Mp4),
+        ("sample_vp9.mkv", VideoFormat::Mkv),
+        ("sample_vp9.webm", VideoFormat::Mkv),
+        ("avc_test.h264", VideoFormat::AnnexB),
+        ("hevc_test.hevc", VideoFormat::AnnexB),
+    ] {
+        assert_eq!(detect_format(&test_data(file)), expected, "{file}");
     }
-
-    let sei_types = [
-        SeiPayloadType::BufferingPeriod,
-        SeiPayloadType::PicTiming,
-        SeiPayloadType::RecoveryPoint,
-    ];
-
-    assert_eq!(sei_types.len(), 3);
+    assert_eq!(detect_format(&[]), VideoFormat::Unknown);
+    assert_eq!(detect_format(b"DKI"), VideoFormat::Unknown);
+    assert_eq!(detect_format(b"not a video file"), VideoFormat::Unknown);
 }
 
 #[test]
-fn test_vvdec_nal_parsing() {
-    // Test VVC NAL unit parsing for VVDec
-    struct VvcNal {
-        nal_unit_type: u8,
-        temporal_id: u8,
-        layer_id: u8,
+fn a_truncated_ivf_is_an_error_not_a_panic_or_a_partial_success() {
+    let data = test_data("av1_aomenc_testsrc2.ivf");
+    for cut in [33, 100, data.len() / 2, data.len() - 1] {
+        let result = Av1Decoder::new().unwrap().decode_all(&data[..cut]);
+        assert!(
+            result.is_err(),
+            "a {cut}-byte prefix of {} decoded",
+            data.len()
+        );
     }
-
-    let nal = VvcNal {
-        nal_unit_type: 7, // IDR_W_RADL
-        temporal_id: 0,
-        layer_id: 0,
-    };
-
-    assert!(nal.nal_unit_type <= 31);
-    assert!(nal.temporal_id <= 7);
-}
-
-#[test]
-fn test_ffmpeg_codec_selection() {
-    // Test FFmpeg codec selection
-    #[derive(Debug, PartialEq)]
-    enum FfmpegCodec {
-        H264,
-        Hevc,
-        VP9,
-        AV1,
-        MPEG2,
-    }
-
-    let codecs = [FfmpegCodec::H264, FfmpegCodec::Hevc, FfmpegCodec::VP9];
-
-    assert_eq!(codecs.len(), 3);
-}
-
-#[test]
-fn test_decode_frame_reordering() {
-    // Test decode frame reordering buffer
-    struct ReorderBuffer {
-        max_reorder: usize,
-        current_size: usize,
-    }
-
-    let mut buffer = ReorderBuffer {
-        max_reorder: 4,
-        current_size: 0,
-    };
-
-    buffer.current_size = 3;
-    assert!(buffer.current_size <= buffer.max_reorder);
-}
-
-#[test]
-fn test_decode_output_queue() {
-    // Test decoded frame output queue
-    struct OutputQueue {
-        capacity: usize,
-        frames: Vec<usize>,
-    }
-
-    let mut queue = OutputQueue {
-        capacity: 8,
-        frames: Vec::new(),
-    };
-
-    queue.frames.push(0);
-    queue.frames.push(1);
-
-    assert!(queue.frames.len() <= queue.capacity);
 }
 
 bitvue_test_alloc::install!();
