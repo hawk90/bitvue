@@ -69,27 +69,30 @@ fn vp9_packets_decode_to_every_frame_of_the_clip() {
     }
 }
 
-/// A raw Annex B stream sent as one packet yields at least its first picture once the decoder is
-/// flushed. (It should yield all of them; it yields one, see the issue linked in the PR.)
+/// A raw Annex B stream sent whole decodes every picture, in order (#402): the decoders split it
+/// into access units, because libavcodec takes one packet to be one picture.
 #[test]
-fn h264_and_hevc_streams_decode_a_valid_first_picture() {
-    let cases: [(&str, Box<dyn Decoder>); 2] = [
-        ("avc_test.h264", Box::new(H264Decoder::new().unwrap())),
-        ("hevc_test.hevc", Box::new(HevcDecoder::new().unwrap())),
+fn h264_and_hevc_streams_decode_every_picture() {
+    let cases: [(&str, usize, Box<dyn Decoder>); 3] = [
+        ("avc_test.h264", 30, Box::new(H264Decoder::new().unwrap())),
+        ("hevc_test.hevc", 30, Box::new(HevcDecoder::new().unwrap())),
+        ("sample_h264.264", 60, Box::new(H264Decoder::new().unwrap())),
     ];
-    for (file, mut decoder) in cases {
-        decoder.send_data(&clip(file), None).unwrap();
+    for (file, pictures, mut decoder) in cases {
+        let mut frames = decoder.decode_all(&clip(file)).unwrap();
         decoder.flush();
-        let frame = decoder
-            .get_frame()
-            .unwrap_or_else(|e| panic!("{file}: no frame after flush: {e}"));
-        assert_eq!(
-            (frame.width, frame.height, frame.bit_depth),
-            (320, 240, 8),
-            "{file}"
-        );
-        assert_eq!(frame.chroma_format, ChromaFormat::Yuv420, "{file}");
-        validate_frame(&frame).unwrap_or_else(|e| panic!("{file}: {e}"));
+        frames.extend(decoder.collect_frames().unwrap());
+        assert_eq!(frames.len(), pictures, "{file}");
+        let (w, h) = (frames[0].width, frames[0].height);
+        for (i, frame) in frames.iter().enumerate() {
+            assert_eq!(
+                (frame.width, frame.height, frame.bit_depth),
+                (w, h, 8),
+                "{file} #{i}"
+            );
+            assert_eq!(frame.chroma_format, ChromaFormat::Yuv420, "{file} #{i}");
+            validate_frame(frame).unwrap_or_else(|e| panic!("{file} #{i}: {e}"));
+        }
     }
 }
 

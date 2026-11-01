@@ -18,6 +18,7 @@
 #![allow(clippy::doc_lazy_continuation)]
 #![allow(unfulfilled_lint_expectations)]
 
+pub mod annex_b;
 pub mod decoder;
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
