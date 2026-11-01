@@ -276,13 +276,8 @@ pub fn get_frame_analysis_command(
     let data = match byte_cache.read_range(0, full_len) {
         Ok(bytes) => bytes,
         Err(err) => {
-            return single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: crate::command_support::wire_error_code_for(&err),
-                    message: err.to_string(),
-                    offset: None,
-                },
+            return single_control_frame(crate::command_support::engine_error_response(
+                request.id, &err,
             ))
         }
     };
