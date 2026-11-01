@@ -51,9 +51,7 @@ pub use cu_parser::{parse_all_coding_units, parse_coding_units_checked};
 pub use deblocking::{extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge};
 pub use energy_extractor::{extract_energy_grid_from_parsed, EnergyGrid};
 pub use mv_extractor::{extract_mv_grid, extract_mv_grid_from_parsed};
-pub use parser::{
-    extract_pixel_info, FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame, PixelInfo,
-};
+pub use parser::{FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame};
 pub use partition::{
     extract_partition_grid, extract_partition_grid_from_parsed, extract_prediction_mode_grid,
     extract_prediction_mode_grid_from_parsed, extract_transform_grid,

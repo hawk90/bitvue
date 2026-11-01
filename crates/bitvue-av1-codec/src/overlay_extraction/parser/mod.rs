@@ -3,10 +3,8 @@
 //! Provides ParsedFrame struct and related types for caching parsed OBU data.
 
 mod parse;
-mod pixel_info;
 mod types;
 
-pub use pixel_info::{extract_pixel_info, PixelInfo};
 pub use types::{FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame};
 
 #[cfg(test)]
@@ -229,25 +227,6 @@ mod tests {
         // Act & Assert: Test that ObuRef is Copy (can be used in iterators)
         let _copy = obu_ref;
         let _another_copy = obu_ref;
-    }
-
-    #[test]
-    fn test_extract_pixel_info_with_empty_data() {
-        // Arrange: Empty OBU data
-        let obu_data = vec![];
-
-        // Act
-        let result = extract_pixel_info(&obu_data, 0, 100, 200);
-
-        // Assert: Should still return PixelInfo with defaults
-        assert!(
-            result.is_ok(),
-            "Pixel info extraction should handle empty data"
-        );
-        let info = result.unwrap();
-        assert_eq!(info.frame_index, 0);
-        assert_eq!(info.pixel_x, 100);
-        assert_eq!(info.pixel_y, 200);
     }
 
     // ---- ParsedFrame::parse / parse_with_ref_state over real and rebuilt OBU streams ----

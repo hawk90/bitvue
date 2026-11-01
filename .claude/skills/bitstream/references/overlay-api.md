@@ -33,7 +33,6 @@ This is the only overlay path wired into the app. Sidecar callers: `frame_analys
 | `extract_prediction_mode_grid(obu_data, frame_index)` / `_from_parsed` | `PredictionModeGrid` |
 | `extract_transform_grid(obu_data, frame_index)` / `_from_parsed` | `TransformGrid` |
 | `extract_energy_grid_from_parsed`, `extract_deblocking_data_from_parsed` | `EnergyGrid`, `DeblockingData` |
-| `extract_pixel_info(...)` | `PixelInfo` (hover tooltip) |
 
 ### How to call it correctly
 
