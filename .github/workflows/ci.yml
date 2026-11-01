@@ -489,6 +489,7 @@ jobs:
       - name: Unit and integration tests
         run: cd bitvue-desktop && npm run test:run
       - name: Build renderer and Electron main
+        id: build_electron
         run: |
           cd frontend && npm run build
           cd ../bitvue-desktop && npm run build:electron
@@ -498,8 +499,11 @@ jobs:
       # the GPU path made capturePage() fail with UnknownVizError.
       - name: Electron selftest (xvfb)
         run: cd bitvue-desktop && BITVUE_ELECTRON_SELFTEST=1 xvfb-run -a npx electron --no-sandbox --disable-gpu .
+      # Runs even when the selftest failed (the picture helps), but not when the build before it
+      # did: there is no dist/electron/main.js then, and this step's own "Cannot find module"
+      # failure hid the real cause in the job summary (#138).
       - name: Electron screenshot (visual evidence)
-        if: always()
+        if: always() && steps.build_electron.outcome == 'success'
         run: |
           cd bitvue-desktop
           BITVUE_ELECTRON_SCREENSHOT="$RUNNER_TEMP/bitvue-main.png" \
