@@ -171,7 +171,12 @@ impl StreamAnalyzer {
     }
 }
 
-fn find_sequence_header(frames: &[IvfFrame]) -> Option<(Vec<u8>, SequenceHeader)> {
+/// The stream's sequence header, from the first sequence header OBU in the first
+/// [`SEQUENCE_HEADER_SCAN_LIMIT`] packets: its bytes as they sit in the packet (OBU header and size
+/// included, ready to prepend to a packet) and the parsed header. `None` when there is none in
+/// those packets or the first one found does not parse. The one place every command that needs the
+/// stream's sequence header gets it from.
+pub fn find_sequence_header(frames: &[IvfFrame]) -> Option<(Vec<u8>, SequenceHeader)> {
     for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
         let mut iter = ObuIterator::new(&frame.data);
         while let Some(Ok(found)) = iter.next_obu_with_offset() {

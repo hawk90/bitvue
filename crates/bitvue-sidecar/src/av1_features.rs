@@ -19,28 +19,12 @@ use bitvue_av1_codec::advanced_features::{
 use bitvue_av1_codec::frame_header_full::{
     find_frame_header_payload, parse_frame_header_full, RefFrameState,
 };
-use bitvue_av1_codec::obu::{ObuIterator, ObuType};
-use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
 
 /// Fixed AV1 CDEF operating block size -- always 8x8 per spec, not a per-stream/per-frame value,
 /// so `extract_cdef_data` doesn't return it on `CdefData`; injected here at the wire boundary
 /// since the frontend's `Av1CdefData`/`AV1FeaturesView` inline type both expect it.
 const CDEF_BLOCK_SIZE: u32 = 8;
-
-const SEQUENCE_HEADER_SCAN_LIMIT: usize = 8;
-
-fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return parse_sequence_header(&found.obu.payload).ok();
-            }
-        }
-    }
-    None
-}
 
 /// `frame_index` is the display index (decode order, same convention as every other stream-A
 /// command). Scans every frame from 0 up to and including `frame_index` to build the reference
@@ -54,7 +38,8 @@ pub fn get_av1_features(data: &[u8], frame_index: usize) -> Result<Value, String
             frames.len()
         ));
     }
-    let seq = find_sequence_header(&frames)
+    let seq = bitvue_av1_codec::overlay_extraction::find_sequence_header(&frames)
+        .map(|(_, seq)| seq)
         .ok_or_else(|| "no sequence header found in the first few frames".to_string())?;
 
     let mut ref_state = RefFrameState::new();
