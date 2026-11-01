@@ -590,7 +590,11 @@ impl Av1Decoder {
             .canonicalize()
             .map_err(|e| DecodeError::Decode(format!("Invalid path: {}", e)))?;
 
-        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        // Canonicalised the same way as the path: on Windows `canonicalize` returns `\\?\C:\...`
+        // while `current_dir` is `C:\...`, so every path below the working directory was refused.
+        let current_dir = std::env::current_dir()
+            .and_then(|dir| dir.canonicalize())
+            .unwrap_or_else(|_| PathBuf::from("."));
 
         if !canonical.starts_with(&current_dir) {
             return Err(DecodeError::Decode(
@@ -742,17 +746,18 @@ impl Av1Decoder {
         reader: &mut std::io::BufReader<R>,
         file_size: usize,
     ) -> Result<Vec<DecodedFrame>> {
-        use std::io::SeekFrom;
+        use std::io::{Read, Seek, SeekFrom};
 
         // Parse IVF header first (32 bytes)
         let mut header_buf = [0u8; 32];
 
-        // Seek back to start to read header
-        let reader_ref = reader.get_mut();
-        reader_ref
+        // Seek back to start to read header. Through the BufReader itself: seeking the inner file
+        // behind its back left the buffered bytes and the file position out of step, so after the
+        // first 16 KB it re-read the file from byte 32 and lost or corrupted the later frames.
+        reader
             .seek(SeekFrom::Start(0))
             .map_err(|e| DecodeError::Decode(format!("Failed to seek: {}", e)))?;
-        reader_ref
+        reader
             .read_exact(&mut header_buf)
             .map_err(|e| DecodeError::Decode(format!("Failed to read IVF header: {}", e)))?;
 

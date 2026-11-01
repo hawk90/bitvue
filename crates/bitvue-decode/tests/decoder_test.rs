@@ -1,319 +1,184 @@
-#![allow(hidden_glob_reexports)]
-#![allow(unreachable_code)]
-#![allow(non_camel_case_types)]
-#![allow(unused_assignments)]
-#![allow(unused_parens)]
-#![allow(unused_imports)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_comparisons)]
-#![allow(unused_doc_comments)]
-//! Tests for Decoder module
+//! `Av1Decoder` on real clips: packet-by-packet decoding, flushing, bad input, film grain and the
+//! file entry point. (This file used to hold ten tests that defined their own structs and asserted
+//! on literals they had just written, #386.)
 
-#[test]
-fn test_decoder_initialization() {
-    struct Decoder {
-        codec: String,
-        initialized: bool,
+use bitvue_decode::decoder::{validate_frame, DecodeError, DecodedFrame};
+use bitvue_decode::Av1Decoder;
+use tempfile::TempDir;
+
+fn ivf(name: &str) -> Vec<u8> {
+    std::fs::read(format!(
+        "{}/../../test_data/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap_or_else(|e| panic!("test_data/{name}: {e}"))
+}
+
+/// The packets of an IVF file (12-byte frame headers after the 32-byte file header).
+fn packets(data: &[u8]) -> Vec<Vec<u8>> {
+    let (mut pos, mut out) = (32usize, Vec::new());
+    while pos + 12 <= data.len() {
+        let size = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+        out.push(data[pos + 12..pos + 12 + size].to_vec());
+        pos += 12 + size;
     }
+    out
+}
 
-    impl Decoder {
-        fn new(codec: String) -> Self {
-            Self {
-                codec,
-                initialized: false,
-            }
-        }
-
-        fn initialize(&mut self) {
-            self.initialized = true;
-        }
+fn drain(decoder: &mut Av1Decoder, into: &mut Vec<DecodedFrame>) {
+    while let Ok(frame) = decoder.get_frame() {
+        into.push(frame);
     }
-
-    let mut decoder = Decoder::new("AV1".to_string());
-    assert!(!decoder.initialized);
-    decoder.initialize();
-    assert!(decoder.initialized);
 }
 
 #[test]
-fn test_decoder_capabilities() {
-    #[derive(Debug, PartialEq)]
-    enum CodecSupport {
-        Hardware,
-        Software,
-        None,
-    }
-
-    struct DecoderCapabilities {
-        codec: String,
-        support: CodecSupport,
-        max_width: usize,
-        max_height: usize,
-    }
-
-    impl DecoderCapabilities {
-        fn supports_resolution(&self, width: usize, height: usize) -> bool {
-            width <= self.max_width && height <= self.max_height
-        }
-
-        fn is_supported(&self) -> bool {
-            self.support != CodecSupport::None
-        }
-    }
-
-    let caps = DecoderCapabilities {
-        codec: "AV1".to_string(),
-        support: CodecSupport::Hardware,
-        max_width: 7680,
-        max_height: 4320,
-    };
-
-    assert!(caps.is_supported());
-    assert!(caps.supports_resolution(1920, 1080));
-    assert!(!caps.supports_resolution(8192, 4320));
+fn a_decoder_with_nothing_sent_has_no_frame() {
+    let mut decoder = Av1Decoder::new().unwrap();
+    assert!(matches!(decoder.get_frame(), Err(DecodeError::NoFrame)));
+    // and empty input is refused rather than treated as zero frames
+    assert!(matches!(
+        decoder.decode_all(&[]),
+        Err(DecodeError::Decode(_))
+    ));
 }
 
 #[test]
-fn test_decode_frame() {
-    struct DecodeFrame {
-        frame_index: usize,
-        data: Vec<u8>,
-        decoded: bool,
+fn packets_sent_one_by_one_come_back_with_their_timestamps() {
+    let data = ivf("av1_aomenc_testsrc2.ivf");
+    let mut decoder = Av1Decoder::new().unwrap();
+    let mut frames = Vec::new();
+    for (i, packet) in packets(&data).iter().enumerate() {
+        decoder.send_data(packet, 100 + i as i64).unwrap();
+        drain(&mut decoder, &mut frames);
     }
-
-    impl DecodeFrame {
-        fn decode(&mut self) -> Result<(), String> {
-            if self.data.is_empty() {
-                return Err("No data to decode".to_string());
-            }
-            self.decoded = true;
-            Ok(())
-        }
+    decoder.flush();
+    drain(&mut decoder, &mut frames);
+    assert_eq!(frames.len(), 12);
+    assert_eq!(
+        frames.iter().map(|f| f.timestamp).collect::<Vec<_>>(),
+        (100..112).collect::<Vec<_>>()
+    );
+    for (i, f) in frames.iter().enumerate() {
+        assert_eq!((f.width, f.height, f.bit_depth), (320, 240, 8), "frame {i}");
+        validate_frame(f).unwrap_or_else(|e| panic!("frame {i}: {e}"));
     }
-
-    let mut frame = DecodeFrame {
-        frame_index: 0,
-        data: vec![1, 2, 3],
-        decoded: false,
-    };
-
-    assert!(frame.decode().is_ok());
-    assert!(frame.decoded);
 }
 
 #[test]
-fn test_decoder_config() {
-    struct DecoderConfig {
-        threads: usize,
-        low_latency: bool,
-        enable_postproc: bool,
+fn packet_by_packet_and_whole_file_decoding_give_the_same_pixels() {
+    let data = ivf("av1_aomenc_testsrc2.ivf");
+    let whole = Av1Decoder::new().unwrap().decode_all(&data).unwrap();
+    let mut decoder = Av1Decoder::new().unwrap();
+    let mut by_packet = Vec::new();
+    for (i, packet) in packets(&data).iter().enumerate() {
+        decoder.send_data_owned(packet.clone(), i as i64).unwrap();
+        drain(&mut decoder, &mut by_packet);
     }
-
-    impl Default for DecoderConfig {
-        fn default() -> Self {
-            Self {
-                threads: 4,
-                low_latency: false,
-                enable_postproc: false,
-            }
-        }
+    assert_eq!(whole.len(), by_packet.len());
+    for (i, (a, b)) in whole.iter().zip(&by_packet).enumerate() {
+        assert_eq!(a.y_plane, b.y_plane, "frame {i} luma");
+        assert_eq!(a.u_plane, b.u_plane, "frame {i} U");
     }
-
-    let config = DecoderConfig::default();
-    assert_eq!(config.threads, 4);
-    assert!(!config.low_latency);
 }
 
 #[test]
-fn test_frame_output() {
-    struct FrameOutput {
-        width: usize,
-        height: usize,
-        y_plane: Vec<u8>,
-        u_plane: Vec<u8>,
-        v_plane: Vec<u8>,
-    }
-
-    impl FrameOutput {
-        fn total_size(&self) -> usize {
-            self.y_plane.len() + self.u_plane.len() + self.v_plane.len()
-        }
-
-        fn is_valid(&self) -> bool {
-            let expected_y = self.width * self.height;
-            let expected_uv = (self.width / 2) * (self.height / 2);
-            self.y_plane.len() == expected_y
-                && self.u_plane.len() == expected_uv
-                && self.v_plane.len() == expected_uv
-        }
-    }
-
-    let output = FrameOutput {
-        width: 1920,
-        height: 1080,
-        y_plane: vec![0u8; 1920 * 1080],
-        u_plane: vec![0u8; 960 * 540],
-        v_plane: vec![0u8; 960 * 540],
-    };
-
-    assert!(output.is_valid());
+fn bad_input_is_an_error_and_the_decoder_keeps_working() {
+    let mut decoder = Av1Decoder::new().unwrap();
+    assert!(matches!(
+        decoder.send_data(&[0xde, 0xad, 0xbe, 0xef, 1, 2, 3], 5),
+        Err(DecodeError::Decode(_))
+    ));
+    assert!(matches!(decoder.get_frame(), Err(DecodeError::NoFrame)));
+    // the same decoder decodes a real clip afterwards
+    let frames = decoder.decode_all(&ivf("av1_aomenc_testsrc2.ivf")).unwrap();
+    assert_eq!(frames.len(), 12);
 }
 
 #[test]
-fn test_decoder_error_handling() {
-    #[derive(Debug, PartialEq)]
-    enum DecoderError {
-        InvalidData,
-        UnsupportedCodec,
-        DecodeFailed,
-        OutOfMemory,
-    }
-
-    struct DecoderResult {
-        success: bool,
-        error: Option<DecoderError>,
-    }
-
-    impl DecoderResult {
-        fn ok() -> Self {
-            Self {
-                success: true,
-                error: None,
-            }
-        }
-
-        fn err(error: DecoderError) -> Self {
-            Self {
-                success: false,
-                error: Some(error),
-            }
-        }
-    }
-
-    let ok_result = DecoderResult::ok();
-    assert!(ok_result.success);
-
-    let err_result = DecoderResult::err(DecoderError::InvalidData);
-    assert!(!err_result.success);
-    assert_eq!(err_result.error, Some(DecoderError::InvalidData));
+fn a_truncated_clip_is_an_error() {
+    let data = ivf("av1_aomenc_testsrc2.ivf");
+    let mut decoder = Av1Decoder::new().unwrap();
+    assert!(decoder.decode_all(&data[..data.len() / 2]).is_err());
 }
 
 #[test]
-fn test_decoder_state() {
-    #[derive(Debug, PartialEq)]
-    enum DecoderState {
-        Uninitialized,
-        Ready,
-        Decoding,
-        Error,
-    }
-
-    struct StatefulDecoder {
-        state: DecoderState,
-    }
-
-    impl StatefulDecoder {
-        fn transition(&mut self, new_state: DecoderState) {
-            self.state = new_state;
-        }
-
-        fn can_decode(&self) -> bool {
-            matches!(self.state, DecoderState::Ready)
-        }
-    }
-
-    let mut decoder = StatefulDecoder {
-        state: DecoderState::Uninitialized,
-    };
-
-    assert!(!decoder.can_decode());
-    decoder.transition(DecoderState::Ready);
-    assert!(decoder.can_decode());
+fn film_grain_is_applied_or_left_out_as_asked() {
+    // a clip with film grain: the two settings give different luma on every shown frame
+    let grain = ivf("av1_aomenc_filmgrain.ivf");
+    let with = Av1Decoder::new_with_apply_grain(true)
+        .unwrap()
+        .decode_all(&grain)
+        .unwrap();
+    let without = Av1Decoder::new_with_apply_grain(false)
+        .unwrap()
+        .decode_all(&grain)
+        .unwrap();
+    assert_eq!((with.len(), without.len()), (10, 10));
+    assert!(with
+        .iter()
+        .zip(&without)
+        .all(|(a, b)| a.y_plane != b.y_plane));
+    // and a clip without grain is not touched by the setting
+    let plain = ivf("av1_aomenc_testsrc2.ivf");
+    let a = Av1Decoder::new_with_apply_grain(true)
+        .unwrap()
+        .decode_all(&plain)
+        .unwrap();
+    let b = Av1Decoder::new_with_apply_grain(false)
+        .unwrap()
+        .decode_all(&plain)
+        .unwrap();
+    assert!(a.iter().zip(&b).all(|(x, y)| x.y_plane == y.y_plane));
 }
 
 #[test]
-fn test_decoder_flush() {
-    struct DecoderFlush {
-        pending_frames: Vec<usize>,
+fn decode_from_file_reads_a_file_below_the_working_directory_and_refuses_others() {
+    // tests run with the crate directory as working directory
+    let dir = TempDir::new_in(".").unwrap();
+    let path = dir.path().join("clip.ivf");
+    std::fs::write(&path, ivf("av1_aomenc_testsrc2.ivf")).unwrap();
+    let frames = Av1Decoder::new().unwrap().decode_from_file(&path).unwrap();
+    assert_eq!(frames.len(), 12);
+
+    // a file outside the working directory
+    let outside = format!(
+        "{}/../../test_data/av1_aomenc_testsrc2.ivf",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    match Av1Decoder::new().unwrap().decode_from_file(&outside) {
+        Err(DecodeError::Decode(m)) => assert!(m.contains("outside working directory"), "{m}"),
+        other => panic!("{:?}", other.map(|f| f.len())),
     }
-
-    impl DecoderFlush {
-        fn flush(&mut self) -> Vec<usize> {
-            std::mem::take(&mut self.pending_frames)
-        }
-
-        fn has_pending(&self) -> bool {
-            !self.pending_frames.is_empty()
-        }
+    // a file that does not exist
+    match Av1Decoder::new()
+        .unwrap()
+        .decode_from_file("no_such_clip.ivf")
+    {
+        Err(DecodeError::Decode(m)) => assert!(m.contains("Invalid path"), "{m}"),
+        other => panic!("{:?}", other.map(|f| f.len())),
     }
-
-    let mut decoder = DecoderFlush {
-        pending_frames: vec![1, 2, 3],
-    };
-
-    assert!(decoder.has_pending());
-    let flushed = decoder.flush();
-    assert_eq!(flushed.len(), 3);
-    assert!(!decoder.has_pending());
 }
 
 #[test]
-fn test_decoder_reset() {
-    struct Decoder {
-        frames_decoded: usize,
-        errors: usize,
-    }
+fn validate_frame_rejects_frames_that_cannot_be_right() {
+    let good = Av1Decoder::new()
+        .unwrap()
+        .decode_all(&ivf("av1_aomenc_testsrc2.ivf"))
+        .unwrap()
+        .remove(0);
+    assert!(validate_frame(&good).is_ok());
 
-    impl Decoder {
-        fn reset(&mut self) {
-            self.frames_decoded = 0;
-            self.errors = 0;
-        }
-    }
+    let mut zero_width = good.clone();
+    zero_width.width = 0;
+    assert!(validate_frame(&zero_width).is_err());
 
-    let mut decoder = Decoder {
-        frames_decoded: 100,
-        errors: 5,
-    };
+    let mut zero_height = good.clone();
+    zero_height.height = 0;
+    assert!(validate_frame(&zero_height).is_err());
 
-    decoder.reset();
-    assert_eq!(decoder.frames_decoded, 0);
-    assert_eq!(decoder.errors, 0);
-}
-
-#[test]
-fn test_pixel_format() {
-    #[derive(Debug, PartialEq)]
-    enum PixelFormat {
-        Yuv420,
-        Yuv422,
-        Yuv444,
-    }
-
-    struct PixelFormatInfo {
-        format: PixelFormat,
-        bit_depth: u8,
-    }
-
-    impl PixelFormatInfo {
-        fn bytes_per_pixel(&self) -> usize {
-            match self.bit_depth {
-                8 => 1,
-                10 => 2,
-                12 => 2,
-                _ => 1,
-            }
-        }
-    }
-
-    let format = PixelFormatInfo {
-        format: PixelFormat::Yuv420,
-        bit_depth: 10,
-    };
-
-    assert_eq!(format.bytes_per_pixel(), 2);
+    let mut short_plane = good.clone();
+    short_plane.y_plane = vec![0u8; 10].into_boxed_slice().into();
+    assert!(validate_frame(&short_plane).is_err());
 }
 
 bitvue_test_alloc::install!();
