@@ -5,12 +5,12 @@
   "private": true,
   "packageManager": "npm@12.2.1",
   "engines": {
-    "node": ">=24.22.1"
+    "node": ">=24.22.2"
   },
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "^24",
+      "version": "^24.22.2",
       "onFail": "error"
     },
     "packageManager": {

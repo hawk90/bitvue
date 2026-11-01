@@ -5,12 +5,12 @@
   "type": "module",
   "packageManager": "npm@12.2.1",
   "engines": {
-    "node": ">=24.22.1"
+    "node": ">=24.22.2"
   },
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "^24",
+      "version": "^24.22.2",
       "onFail": "error"
     },
     "packageManager": {
@@ -40,12 +40,12 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
-    "@tauri-apps/plugin-dialog": "^2.8.3",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-fs": "^2.7.1",
     "@vscode/codicons": "^0.0.46-24",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-resizable-panels": "^4.15.0"
+    "react-resizable-panels": "^4.15.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -67,7 +67,7 @@
     "stylelint": "^17.16.0",
     "stylelint-config-standard": "^40.0.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.72.0",
+    "typescript-eslint": "^8.72.1",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
   },
