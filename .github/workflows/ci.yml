@@ -6,6 +6,7 @@ name: CI
 #            ├─ rust-test   one job per crate per OS (19 x 3, 12 at a time, as in #37)
 #            ├─ rust-vmaf   bitvue-metrics with the optional `vmaf` feature, 3 OSes
 #            ├─ rust-vvdec  bitvue-decode with the optional `vvdec` feature (real VVC stream), 3 OSes
+#            ├─ rust-ffmpeg bitvue-decode with the optional `ffmpeg` feature (real H.264/H.265/VP9 clips), Linux + macOS
 #            ├─ fuzz-build  every fuzz target is registered and compiles (fuzz/ is outside the workspace)
 #            ├─ parity      scripts/parity_check.sh --local against the CLI
 #            ├─ coverage    cargo-llvm-cov -> Codecov
@@ -320,6 +321,48 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo clippy -p bitvue-decode --features vvdec --all-targets -- -D warnings
 
+  # The optional `ffmpeg` feature of bitvue-decode (ffmpeg-next 9 / ffmpeg-sys-next 9) links the
+  # system FFmpeg libraries, which nothing else in CI builds; tests/ffmpeg_test.rs decodes real
+  # H.264 / H.265 / VP9 clips with it. Linux uses the distro libav*-dev packages and libclang for
+  # bindgen, macOS uses Homebrew. Windows is not covered (no FFmpeg dev package on the runner).
+  rust-ffmpeg:
+    name: FFmpeg (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache: false
+          build-warnings: allow
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: ffmpeg-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/install-dav1d
+      - name: FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y ffmpeg libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev \
+            libavdevice-dev libswscale-dev libswresample-dev libclang-dev clang
+          ffmpeg -version | head -1
+      - name: FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ffmpeg
+          ffmpeg -version | head -1
+      - name: Test bitvue-decode with ffmpeg
+        run: cargo test -p bitvue-decode --features ffmpeg --no-fail-fast
+      - name: Clippy bitvue-decode with ffmpeg
+        if: runner.os == 'Linux'
+        run: cargo clippy -p bitvue-decode --features ffmpeg --all-targets -- -D warnings
+
   parity-regression:
     name: Parity Regression Suite
     needs: changes
@@ -552,9 +595,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libdav1d-dev pkg-config
       - name: Build documentation
-        # Not `--all-features`: the optional `ffmpeg` feature (ffmpeg-next 9) needs FFmpeg
-        # headers/libs matching ffmpeg-sys-next, which this runner has not been checked for, and
-        # `vmaf` is built and tested by the rust-vmaf job.
+        # Not `--all-features`: the optional `ffmpeg` feature needs FFmpeg headers/libs (built and
+        # tested by the rust-ffmpeg job) and `vmaf` is built and tested by the rust-vmaf job.
         run: >-
           cargo doc --no-deps --workspace --exclude abseil
           --features bitvue-av1-codec/debug-strings
@@ -571,7 +613,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [changes, rust-lint, fuzz-build, rust-test, rust-vmaf, rust-vvdec, parity-regression, coverage, frontend, desktop, docs]
+    needs: [changes, rust-lint, fuzz-build, rust-test, rust-vmaf, rust-vvdec, rust-ffmpeg, parity-regression, coverage, frontend, desktop, docs]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
