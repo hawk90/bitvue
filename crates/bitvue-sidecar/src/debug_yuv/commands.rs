@@ -258,30 +258,7 @@ pub fn get_debug_yuv_frame(
         &params.mode,
         params.amplify,
     ) {
-        Ok(frame) => {
-            let meta = Response::success(
-                request.id,
-                serde_json::json!({
-                    "width": frame.descriptor.width,
-                    "height": frame.descriptor.height,
-                    "bit_depth": frame.descriptor.bit_depth,
-                    "chroma_subsampling": frame.descriptor.chroma_subsampling,
-                    "y_stride": frame.descriptor.y_stride,
-                    "u_stride": frame.descriptor.u_stride,
-                    "v_stride": frame.descriptor.v_stride,
-                    "y_len": frame.descriptor.y_len,
-                    "u_len": frame.descriptor.u_len,
-                    "v_len": frame.descriptor.v_len,
-                }),
-            );
-            vec![
-                (
-                    FrameKind::Control,
-                    serde_json::to_vec(&meta).expect("Response always serializes"),
-                ),
-                (FrameKind::Data, frame.bytes),
-            ]
-        }
+        Ok(frame) => frame.into_reply(request.id),
         Err(message) => crate::command_support::single_control_frame(Response::failure(
             request.id,
             WireError {
