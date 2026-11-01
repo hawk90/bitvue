@@ -286,18 +286,44 @@ mod tests {
         let _serial = GLOBAL_CACHE_TESTS
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        // Add something to cache
+        // Tests elsewhere (cu_parser goes through the same global cache without this lock) insert
+        // entries concurrently, and an insert into a full cache evicts a quarter of it at random,
+        // so an entry can vanish between our insert and our check (~0.3% of the time with one
+        // busy inserter, #162). A background inserter makes that routine here; the test retries
+        // until it has seen the entry present, then clears and checks it is gone.
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let noise = {
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                let mut key = 1u64 << 40;
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ =
+                        get_or_parse_coding_units(key, || Ok((vec![], DecodeOutcome::default())));
+                    key += 1;
+                }
+            })
+        };
+
         let tile_data = vec![1u8, 2, 3];
         let cache_key = compute_frame_cache_key(&tile_data, 32, "");
-
-        let _ = get_or_parse_coding_units(cache_key, || Ok((vec![], DecodeOutcome::default())));
-        assert!(cu_cache_contains(cache_key));
-
-        // Clear and verify this entry is gone. Other tests (cu_parser goes
-        // through the same global cache) may insert concurrently, so the
-        // total size is not something this test can assert on.
-        clear_cu_cache();
-        assert!(!cu_cache_contains(cache_key));
+        let mut cleared_a_present_entry = false;
+        for _ in 0..200 {
+            let _ = get_or_parse_coding_units(cache_key, || Ok((vec![], DecodeOutcome::default())));
+            if cu_cache_contains(cache_key) {
+                // Clear and verify this entry is gone. The total size is not something this
+                // test can assert on: other threads insert concurrently.
+                clear_cu_cache();
+                assert!(!cu_cache_contains(cache_key));
+                cleared_a_present_entry = true;
+                break;
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        noise.join().unwrap();
+        assert!(
+            cleared_a_present_entry,
+            "the entry was evicted 200 times in a row"
+        );
     }
 
     // Previously ignored due to shared global cache state pollution during parallel test
