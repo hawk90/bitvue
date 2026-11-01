@@ -20,9 +20,10 @@ fn link_vvdec() {
     if let Err(e) = result {
         panic!(
             "the `vvdec` feature needs libvvdec 3.x (found via pkg-config): {e}\n\
-             macOS: `brew install vvdec`. Debian/Ubuntu ship no vvdec package: build\n\
-             https://github.com/fraunhoferhhi/vvdec (cmake; install it, then point PKG_CONFIG_PATH\n\
-             at its `lib/pkgconfig`)."
+             macOS: `brew install vvdec`. Windows: `vcpkg install vvdec:x64-windows-static-md\n\
+             pkgconf` and point PKG_CONFIG_PATH at its `lib/pkgconfig`. Debian/Ubuntu ship no vvdec\n\
+             package: build https://github.com/fraunhoferhhi/vvdec (cmake; install it, then point\n\
+             PKG_CONFIG_PATH at its `lib/pkgconfig`)."
         );
     }
 }
