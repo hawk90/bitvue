@@ -205,11 +205,9 @@ pub fn extract_qp_grid(
     Ok(QPGrid::new(grid_w, grid_h, ctu_size, ctu_size, qp, base_qp))
 }
 
-/// Extract MV Grid from HEVC bitstream
-///
-/// Parses CTUs from slice data and extracts motion vectors.
-pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, BitvueError> {
-    let base_qp = nal_units
+/// `init_qp` of the first PPS NAL that parses, or 26 (the neutral value) when there is none.
+fn base_qp_from_pps(nal_units: &[NalUnit]) -> i16 {
+    nal_units
         .iter()
         .find_map(|nal| {
             if nal.header.nal_unit_type == crate::nal::NalUnitType::PpsNut {
@@ -220,7 +218,14 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
                 None
             }
         })
-        .unwrap_or(26);
+        .unwrap_or(26)
+}
+
+/// Extract MV Grid from HEVC bitstream
+///
+/// Parses CTUs from slice data and extracts motion vectors.
+pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, BitvueError> {
+    let base_qp = base_qp_from_pps(nal_units);
     let width = sps.pic_width_in_luma_samples;
     let height = sps.pic_height_in_luma_samples;
 
@@ -299,18 +304,7 @@ type PredictionModeGridResult = Result<(u32, u32, u32, u32, Vec<Option<u8>>), Bi
 /// `modes` is a flat Vec (one entry per CTU) with values:
 ///   0 = Intra, 1 = Inter, 2 = Skip
 pub fn extract_prediction_mode_grid(nal_units: &[NalUnit], sps: &Sps) -> PredictionModeGridResult {
-    let base_qp = nal_units
-        .iter()
-        .find_map(|nal| {
-            if nal.header.nal_unit_type == crate::nal::NalUnitType::PpsNut {
-                crate::pps::parse_pps(&nal.payload)
-                    .ok()
-                    .map(|p| p.init_qp() as i16)
-            } else {
-                None
-            }
-        })
-        .unwrap_or(26);
+    let base_qp = base_qp_from_pps(nal_units);
     let width = sps.pic_width_in_luma_samples;
     let height = sps.pic_height_in_luma_samples;
     let ctu_size = 64u32;
@@ -348,18 +342,7 @@ pub fn extract_partition_grid(
     nal_units: &[NalUnit],
     sps: &Sps,
 ) -> Result<PartitionGrid, BitvueError> {
-    let base_qp = nal_units
-        .iter()
-        .find_map(|nal| {
-            if nal.header.nal_unit_type == crate::nal::NalUnitType::PpsNut {
-                crate::pps::parse_pps(&nal.payload)
-                    .ok()
-                    .map(|p| p.init_qp() as i16)
-            } else {
-                None
-            }
-        })
-        .unwrap_or(26);
+    let base_qp = base_qp_from_pps(nal_units);
     let width = sps.pic_width_in_luma_samples;
     let height = sps.pic_height_in_luma_samples;
 
@@ -990,6 +973,59 @@ mod tests {
             vui_parameters_present_flag: false,
             vui_parameters: None,
         }
+    }
+
+    /// A PPS payload up to `init_qp_minus26` (ids 0, flags 0, ref counts 0) with that value
+    /// se(v)-coded, then 1-bits so every later field reads as ue(0) / flag 1.
+    fn pps_payload(init_qp_minus26: i32) -> Vec<u8> {
+        let mut bits = String::from("110000000"); // ue(0) ue(0) 2 flags, 3-bit extra, 2 flags
+        bits.push_str("11"); // num_ref_idx_l0/l1_default_active_minus1 = ue(0)
+        let code = if init_qp_minus26 > 0 {
+            2 * init_qp_minus26 - 1
+        } else {
+            -2 * init_qp_minus26
+        } as u32
+            + 1;
+        let n = 32 - code.leading_zeros();
+        bits.push_str(&"0".repeat(n as usize - 1));
+        bits.push_str(&format!("{code:b}"));
+        bits.push_str(&"1".repeat(200));
+        while bits.len() % 8 != 0 {
+            bits.push('1');
+        }
+        bits.as_bytes()
+            .chunks(8)
+            .map(|c| u8::from_str_radix(std::str::from_utf8(c).unwrap(), 2).unwrap())
+            .collect()
+    }
+
+    fn pps_nal(init_qp_minus26: i32) -> NalUnit {
+        let mut nal = create_test_nal_unit(crate::NalUnitType::PpsNut);
+        nal.payload = pps_payload(init_qp_minus26);
+        nal
+    }
+
+    #[test]
+    fn base_qp_is_the_first_parsing_pps_and_26_without_one() {
+        assert_eq!(
+            crate::pps::parse_pps(&pps_payload(2)).unwrap().init_qp(),
+            28
+        );
+        assert_eq!(
+            crate::pps::parse_pps(&pps_payload(-3)).unwrap().init_qp(),
+            23
+        );
+        assert_eq!(base_qp_from_pps(&[]), 26);
+        let slice = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
+        assert_eq!(base_qp_from_pps(std::slice::from_ref(&slice)), 26);
+        assert_eq!(
+            base_qp_from_pps(&[slice.clone(), pps_nal(2), pps_nal(-3)]),
+            28
+        );
+        // A PPS that does not parse is skipped in favour of the next one.
+        let mut broken = create_test_nal_unit(crate::NalUnitType::PpsNut);
+        broken.payload = vec![];
+        assert_eq!(base_qp_from_pps(&[broken, pps_nal(-3)]), 23);
     }
 
     fn create_test_nal_unit(nal_type: crate::NalUnitType) -> NalUnit {
