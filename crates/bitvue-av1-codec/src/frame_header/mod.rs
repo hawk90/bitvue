@@ -691,4 +691,233 @@ mod tests {
         assert_eq!(h.base_q_idx, Some(7));
         assert_eq!(h.header_size_bits, bit_len);
     }
+
+    // ---- parse_frame_header_basic: the full header of every path (#161) ----
+    //
+    // The tests above pick fields; these compare the WHOLE returned header, so a changed default
+    // (`primary_ref_frame`, `disable_frame_end_update_cdf`, ...) or a stray field fails too.
+
+    /// Quantization and delta-q fields that follow the preamble: base_q_idx, three uncoded
+    /// deltas, no quantizer matrix, then delta_q_present (only when base_q_idx > 0) = 0.
+    fn quant_bits(base_q_idx: u32) -> Vec<(u32, u8)> {
+        let mut q = vec![(base_q_idx, 8), (0, 1), (0, 1), (0, 1), (0, 1)];
+        if base_q_idx > 0 {
+            q.push((0, 1));
+        }
+        q
+    }
+
+    fn bytes_for(bits: u64) -> usize {
+        bits.div_ceil(8) as usize
+    }
+
+    /// Every field of the returned header, compared through `Debug` (the type has no `PartialEq`).
+    fn assert_header(got: &FrameHeader, expected: FrameHeader) {
+        assert_eq!(format!("{got:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn basic_show_existing_frame_returns_the_slot_and_nothing_else() {
+        let (data, bits) = basic_bits(&[(1, 1), (0b101, 3)]);
+        let got = parse_frame_header_basic(&data).unwrap();
+        assert_header(
+            &got,
+            FrameHeader {
+                show_existing_frame: true,
+                frame_to_show_map_idx: Some(5),
+                header_size_bits: bits,
+                header_size_bytes: 1,
+                ..unparsed_header()
+            },
+        );
+        // every field the show-existing path never reads is at its default
+        assert_eq!(got.primary_ref_frame, 7);
+        assert!(got.disable_frame_end_update_cdf);
+        assert_eq!(got.refresh_frame_flags, None);
+    }
+
+    #[test]
+    fn basic_shown_key_frame_is_error_resilient_and_refreshes_every_slot() {
+        // show_existing 0, KEY, show_frame 1, (no showable, no error_resilient bit),
+        // disable_cdf_update 0, then quantization with delta_q_present = 1 + delta_q_res
+        let mut list = vec![(0, 1), (0, 2), (1, 1), (0, 1)];
+        list.extend([(100, 8), (0, 1), (0, 1), (0, 1), (0, 1), (1, 1), (0b10, 2)]);
+        let (data, bits) = basic_bits(&list);
+        let got = parse_frame_header_basic(&data).unwrap();
+        assert_header(
+            &got,
+            FrameHeader {
+                frame_type: FrameType::Key,
+                show_frame: true,
+                error_resilient_mode: true,
+                base_q_idx: Some(100),
+                y_dc_delta_q: Some(0),
+                uv_dc_delta_q: Some(0),
+                delta_q_present: true,
+                header_size_bits: bits,
+                header_size_bytes: bytes_for(bits),
+                refresh_frame_flags: Some(0xFF),
+                ref_frame_idx: None,
+                ..unparsed_header()
+            },
+        );
+    }
+
+    #[test]
+    fn basic_intra_only_frame_reads_primary_ref_and_refresh_flags_but_no_reference_indices() {
+        // show_existing 0, INTRA_ONLY, show_frame 1, showable 0, error_resilient 0,
+        // disable_cdf_update 0, frame_size_override 0, primary_ref_frame 5, refresh 0x0F
+        let mut list = vec![(0, 1), (2, 2), (1, 1), (0, 1), (0, 1), (0, 1), (0, 1)];
+        list.extend([(5, 3), (0x0F, 8)]);
+        list.extend(quant_bits(0)); // base_q_idx 0: no delta_q_present bit
+        let (data, bits) = basic_bits(&list);
+        let got = parse_frame_header_basic(&data).unwrap();
+        assert_header(
+            &got,
+            FrameHeader {
+                frame_type: FrameType::IntraOnly,
+                show_frame: true,
+                error_resilient_mode: false,
+                base_q_idx: Some(0),
+                y_dc_delta_q: Some(0),
+                uv_dc_delta_q: Some(0),
+                header_size_bits: bits,
+                header_size_bytes: bytes_for(bits),
+                refresh_frame_flags: Some(0x0F),
+                ref_frame_idx: None,
+                ..unparsed_header()
+            },
+        );
+    }
+
+    #[test]
+    fn basic_inter_frame_with_long_signaling_returns_the_seven_reference_indices() {
+        // INTER, shown, showable 0, error_resilient 0, disable_cdf 0, frame_size_override 0,
+        // primary_ref_frame 0, refresh 0x81, frame_refs_short_signaling 0, 7 x u(3)
+        let mut list = vec![(0, 1), (1, 2), (1, 1), (0, 1), (0, 1), (0, 1), (0, 1)];
+        list.extend([(0, 3), (0x81, 8), (0, 1)]);
+        let idx = [6u32, 5, 4, 3, 2, 1, 0];
+        list.extend(idx.iter().map(|&i| (i, 3)));
+        list.extend(quant_bits(60));
+        let (data, bits) = basic_bits(&list);
+        let got = parse_frame_header_basic(&data).unwrap();
+        assert_header(
+            &got,
+            FrameHeader {
+                frame_type: FrameType::Inter,
+                show_frame: true,
+                error_resilient_mode: false,
+                base_q_idx: Some(60),
+                y_dc_delta_q: Some(0),
+                uv_dc_delta_q: Some(0),
+                header_size_bits: bits,
+                header_size_bytes: bytes_for(bits),
+                refresh_frame_flags: Some(0x81),
+                ref_frame_idx: Some([6, 5, 4, 3, 2, 1, 0]),
+                ..unparsed_header()
+            },
+        );
+    }
+
+    #[test]
+    fn basic_inter_frame_with_short_signaling_has_no_reference_indices() {
+        // same preamble, frame_refs_short_signaling 1, last_frame_idx, gold_frame_idx
+        let mut list = vec![(0, 1), (1, 2), (1, 1), (0, 1), (0, 1), (0, 1), (0, 1)];
+        list.extend([(0, 3), (0x12, 8), (1, 1), (3, 3), (6, 3)]);
+        list.extend(quant_bits(40));
+        let (data, bits) = basic_bits(&list);
+        let got = parse_frame_header_basic(&data).unwrap();
+        assert_header(
+            &got,
+            FrameHeader {
+                frame_type: FrameType::Inter,
+                show_frame: true,
+                base_q_idx: Some(40),
+                y_dc_delta_q: Some(0),
+                uv_dc_delta_q: Some(0),
+                header_size_bits: bits,
+                header_size_bytes: bytes_for(bits),
+                refresh_frame_flags: Some(0x12),
+                ref_frame_idx: None,
+                ..unparsed_header()
+            },
+        );
+    }
+
+    #[test]
+    fn basic_switch_frame_skips_primary_ref_and_refresh_flags() {
+        // SWITCH, show_frame 1, showable 0, error_resilient 1, disable_cdf 0 (frame_size_override
+        // is implied, primary_ref_frame is absent, refresh is all slots), then long signaling
+        let mut list = vec![(0, 1), (3, 2), (1, 1), (0, 1), (1, 1), (0, 1)];
+        list.push((0, 1)); // frame_refs_short_signaling
+        list.extend((0..7u32).map(|i| (i, 3)));
+        list.extend(quant_bits(9));
+        let (data, bits) = basic_bits(&list);
+        let got = parse_frame_header_basic(&data).unwrap();
+        assert_header(
+            &got,
+            FrameHeader {
+                frame_type: FrameType::Switch,
+                show_frame: true,
+                error_resilient_mode: true,
+                base_q_idx: Some(9),
+                y_dc_delta_q: Some(0),
+                uv_dc_delta_q: Some(0),
+                header_size_bits: bits,
+                header_size_bytes: bytes_for(bits),
+                refresh_frame_flags: Some(0xFF),
+                ref_frame_idx: Some([0, 1, 2, 3, 4, 5, 6]),
+                ..unparsed_header()
+            },
+        );
+    }
+
+    #[test]
+    fn basic_hidden_key_frame_reads_the_bits_a_shown_one_implies() {
+        // KEY with show_frame 0: showable_frame and error_resilient_mode are coded, and so are
+        // primary_ref_frame (error_resilient 0) and refresh_frame_flags
+        let mut list = vec![(0, 1), (0, 2), (0, 1), (1, 1), (0, 1), (0, 1)];
+        list.extend([(2, 3), (0x3C, 8)]);
+        list.extend(quant_bits(30));
+        let (data, bits) = basic_bits(&list);
+        let got = parse_frame_header_basic(&data).unwrap();
+        assert_header(
+            &got,
+            FrameHeader {
+                frame_type: FrameType::Key,
+                show_frame: false,
+                error_resilient_mode: false,
+                base_q_idx: Some(30),
+                y_dc_delta_q: Some(0),
+                uv_dc_delta_q: Some(0),
+                header_size_bits: bits,
+                header_size_bytes: bytes_for(bits),
+                refresh_frame_flags: Some(0x3C),
+                ref_frame_idx: None,
+                ..unparsed_header()
+            },
+        );
+    }
+
+    #[test]
+    fn basic_truncated_payloads_give_partial_headers_or_an_error() {
+        // nothing at all, or the show_existing slot cut off
+        assert!(parse_frame_header_basic(&[]).is_err());
+        // a shown key frame cut right after the preamble: valid header, quantizer unknown
+        let (data, _) = basic_bits(&[(0, 1), (0, 2), (1, 1), (0, 1)]);
+        let got = parse_frame_header_basic(&data).unwrap();
+        assert_eq!(got.frame_type, FrameType::Key);
+        assert_eq!(got.base_q_idx, None);
+        assert_eq!(got.y_dc_delta_q, None);
+        assert!(!got.delta_q_present);
+        assert_eq!(got.refresh_frame_flags, Some(0xFF));
+        // an inter frame whose reference indices are cut short: no indices, no quantizer
+        let mut list = vec![(0, 1), (1, 2), (1, 1), (0, 1), (0, 1), (0, 1), (0, 1)];
+        list.extend([(0, 3), (0xAA, 8), (0, 1), (1, 3), (2, 3)]);
+        let (data, _) = basic_bits(&list);
+        let got = parse_frame_header_basic(&data[..data.len() - 1]).unwrap();
+        assert_eq!(got.frame_type, FrameType::Inter);
+        assert_eq!(got.ref_frame_idx, None);
+        assert_eq!(got.base_q_idx, None);
+    }
 }
