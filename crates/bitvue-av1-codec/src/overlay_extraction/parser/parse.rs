@@ -247,8 +247,6 @@ impl ParsedFrame {
         ref_state: &mut RefFrameState,
     ) -> Result<Self, BitvueError> {
         let obu_data: Arc<[u8]> = Arc::from(obu_data);
-        // Order hints of the reference slots as they were before this frame's own header.
-        let prev_ref_order_hint = *ref_state.ref_order_hint();
 
         // Handle empty data: return a default ParsedFrame immediately.
         // Callers that extract grids from empty data receive the default 1920x1080
@@ -294,14 +292,12 @@ impl ParsedFrame {
                     &obu.payload,
                     seq_header.as_ref(),
                     ref_state,
-                    &prev_ref_order_hint,
                     &mut tile_data,
                 ),
                 ObuType::FrameHeader => frame.absorb_frame_header_obu(
                     &obu.payload,
                     seq_header.as_ref(),
                     ref_state,
-                    &prev_ref_order_hint,
                     &mut tile_data,
                 ),
                 ObuType::TileGroup => frame.absorb_tile_group_obu(&obu.payload, &mut tile_data),
@@ -321,7 +317,6 @@ impl ParsedFrame {
         payload: &[u8],
         seq: Option<&crate::SequenceHeader>,
         ref_state: &mut RefFrameState,
-        prev_ref_order_hint: &[u32; 8],
         tile_data: &mut Vec<u8>,
     ) {
         // OBU_FRAME packs frame_header() + byte_alignment() + tile_group() into one
@@ -364,8 +359,12 @@ impl ParsedFrame {
             }
         }
         if let Some(seq) = seq {
+            // The slots' order hints as they are right before THIS frame's header: an earlier
+            // frame of the same packet may have refreshed them (taken once per packet, the sign
+            // bias and order distances of every later frame came from stale hints, #233).
+            let prev_ref_order_hint = *ref_state.ref_order_hint();
             if let Ok(full_hdr) = parse_frame_header_full(payload, seq, ref_state) {
-                self.apply_full_header(&full_hdr, seq, prev_ref_order_hint);
+                self.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
                 if full_hdr.header_size_bytes < payload.len() {
                     let start = tile_data.len();
                     tile_data.extend_from_slice(&payload[full_hdr.header_size_bytes..]);
@@ -381,7 +380,6 @@ impl ParsedFrame {
         payload: &[u8],
         seq: Option<&crate::SequenceHeader>,
         ref_state: &mut RefFrameState,
-        prev_ref_order_hint: &[u32; 8],
         tile_data: &mut Vec<u8>,
     ) {
         // Same reset as for `ObuType::Frame`: this header starts a new frame, so the
@@ -392,8 +390,12 @@ impl ParsedFrame {
             self.apply_basic_header(&frame_hdr);
         }
         if let Some(seq) = seq {
+            // The slots' order hints as they are right before THIS frame's header: an earlier
+            // frame of the same packet may have refreshed them (taken once per packet, the sign
+            // bias and order distances of every later frame came from stale hints, #233).
+            let prev_ref_order_hint = *ref_state.ref_order_hint();
             if let Ok(full_hdr) = parse_frame_header_full(payload, seq, ref_state) {
-                self.apply_full_header(&full_hdr, seq, prev_ref_order_hint);
+                self.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
             }
         }
     }
