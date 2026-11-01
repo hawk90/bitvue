@@ -392,6 +392,43 @@ impl Decoder for FfmpegDecoder {
     }
 }
 
+/// libavcodec's H.264 / HEVC decoders take one packet to be one access unit, so a stream holding
+/// several (a whole Annex B file, say) is sent one access unit at a time (#402). The first goes
+/// out with `timestamp`, the rest with the decoder's running timestamp.
+#[cfg(feature = "ffmpeg")]
+fn send_access_units(
+    inner: &mut FfmpegDecoder,
+    codec: crate::annex_b::AnnexBCodec,
+    data: &[u8],
+    timestamp: Option<i64>,
+) -> Result<()> {
+    for (i, unit) in crate::annex_b::split_access_units(codec, data)
+        .into_iter()
+        .enumerate()
+    {
+        inner.send_data(unit, if i == 0 { timestamp } else { None })?;
+    }
+    Ok(())
+}
+
+/// `Decoder::decode_all` for the access-unit codecs. The frame buffer holds at most
+/// `MAX_FRAME_BUFFER_SIZE` pictures and drops the oldest beyond that, so the default
+/// send-everything-then-collect would lose all but the last few of a long stream: the decoded
+/// pictures are taken out after every access unit instead.
+#[cfg(feature = "ffmpeg")]
+fn decode_all_access_units(
+    inner: &mut FfmpegDecoder,
+    codec: crate::annex_b::AnnexBCodec,
+    data: &[u8],
+) -> Result<Vec<DecodedFrame>> {
+    let mut frames = Vec::new();
+    for unit in crate::annex_b::split_access_units(codec, data) {
+        inner.send_data(unit, None)?;
+        frames.extend(inner.collect_frames()?);
+    }
+    Ok(frames)
+}
+
 /// H.264/AVC decoder
 #[cfg(feature = "ffmpeg")]
 pub struct H264Decoder {
@@ -418,7 +455,16 @@ impl Decoder for H264Decoder {
     }
 
     fn send_data(&mut self, data: &[u8], timestamp: Option<i64>) -> Result<()> {
-        self.inner.send_data(data, timestamp)
+        send_access_units(
+            &mut self.inner,
+            crate::annex_b::AnnexBCodec::H264,
+            data,
+            timestamp,
+        )
+    }
+
+    fn decode_all(&mut self, data: &[u8]) -> Result<Vec<DecodedFrame>> {
+        decode_all_access_units(&mut self.inner, crate::annex_b::AnnexBCodec::H264, data)
     }
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
@@ -460,7 +506,16 @@ impl Decoder for HevcDecoder {
     }
 
     fn send_data(&mut self, data: &[u8], timestamp: Option<i64>) -> Result<()> {
-        self.inner.send_data(data, timestamp)
+        send_access_units(
+            &mut self.inner,
+            crate::annex_b::AnnexBCodec::Hevc,
+            data,
+            timestamp,
+        )
+    }
+
+    fn decode_all(&mut self, data: &[u8]) -> Result<Vec<DecodedFrame>> {
+        decode_all_access_units(&mut self.inner, crate::annex_b::AnnexBCodec::Hevc, data)
     }
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
