@@ -11,15 +11,12 @@
 //! reconstruction step in the analysis path (the debug-YUV / `get_decoded_frame_yuv` commands
 //! decode real pixels via `dav1d`, a separate code path this command doesn't touch).
 
-use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_prediction_mode_grid_from_parsed, extract_qp_grid_from_parsed,
     extract_transform_grid_from_parsed, frame_provenance, Provenance,
 };
-use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
+use bitvue_av1_codec::sequence::SequenceHeader;
 use serde_json::{json, Value};
-
-const SEQUENCE_HEADER_SCAN_LIMIT: usize = 8;
 
 /// Ordered to match the frontend's `ENCODER_STAGES`/`CODING_STAGES` (`CodingFlowView.tsx`) --
 /// `current_stage` is the last entry in this list whose `completed` came back true.
@@ -31,18 +28,6 @@ const STAGE_ORDER: &[(&str, &str)] = &[
     ("entropy", "Entropy Coding"),
     ("reconstruction", "Reconstruction"),
 ];
-
-fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return parse_sequence_header(&found.obu.payload).ok();
-            }
-        }
-    }
-    None
-}
 
 /// Human-readable names for whichever `SequenceHeader` tool flags are actually enabled in this
 /// stream -- real per-stream data, not the frontend's static per-codec-name guess.
@@ -105,7 +90,8 @@ pub fn get_coding_flow_analysis(data: &[u8], frame_index: usize) -> Result<Value
             frames.len()
         ));
     }
-    let seq = find_sequence_header(&frames)
+    let seq = bitvue_av1_codec::overlay_extraction::find_sequence_header(&frames)
+        .map(|(_, seq)| seq)
         .ok_or_else(|| "no sequence header found in the first few frames".to_string())?;
 
     let parsed =

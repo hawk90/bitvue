@@ -59,7 +59,7 @@ pub use partition::{
 };
 pub use provenance::{frame_provenance, DecodeOutcome, Provenance};
 pub use qp_extractor::{extract_qp_grid, extract_qp_grid_from_parsed};
-pub use stream_analyzer::StreamAnalyzer;
+pub use stream_analyzer::{find_sequence_header, StreamAnalyzer};
 pub use stream_state::StreamDecodeState;
 
 // Test utilities (only available in tests)

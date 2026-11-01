@@ -29,9 +29,8 @@
 use bitvue_av1_codec::frame_header::parse_frame_header_basic;
 use bitvue_av1_codec::frame_header_full::{parse_frame_header_full, RefFrameState};
 use bitvue_av1_codec::ivf::parse_ivf_frames;
-use bitvue_av1_codec::obu::ObuType;
 use bitvue_av1_codec::parse_obu_syntax;
-use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
+use bitvue_av1_codec::sequence::SequenceHeader;
 use bitvue_engine::event::{Category, Diagnostic, Severity};
 use bitvue_engine::frame_identity::{FrameMetadata, TimelineMapper};
 use bitvue_engine::timeline::TimelineBase;
@@ -409,24 +408,6 @@ fn find_frame_obu(chunk_data: &[u8]) -> Option<bitvue_av1_codec::obu::ObuWithOff
     None
 }
 
-/// Scans the first few frames for a real Sequence Header OBU (AV1 streams typically repeat it at
-/// or near keyframes) -- needed for [`parse_frame_header_full`]'s required `SequenceHeader`
-/// context. Same recipe as `bitvue-sidecar/src/frame_analysis.rs`'s `find_sequence_header`
-/// (indexer doesn't depend on bitvue-sidecar, so this is its own copy, not a shared call).
-const SEQUENCE_HEADER_SCAN_LIMIT: usize = 8;
-
-fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = bitvue_av1_codec::obu::ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return parse_sequence_header(&found.obu.payload).ok();
-            }
-        }
-    }
-    None
-}
-
 /// Real IVF/AV1 parsing: walks IVF chunks via `bitvue_av1_codec::ivf::parse_ivf_frames`, then
 /// parses each frame's real Frame/FrameHeader OBU (found via [`find_frame_obu`], not assumed to
 /// be the first OBU in the chunk) for frame-type/QP/ref-frame metadata. Modeled on
@@ -469,7 +450,9 @@ fn index_ivf_av1(
 
     let mut units = Vec::with_capacity(frames.len());
     let mut offset = header.header_size as u64;
-    let mut headers = FrameHeaders::new(find_sequence_header(&frames));
+    let mut headers = FrameHeaders::new(
+        bitvue_av1_codec::overlay_extraction::find_sequence_header(&frames).map(|(_, seq)| seq),
+    );
     let mut slots = ReferenceSlots::default();
 
     for (frame_index, frame) in frames.iter().enumerate() {

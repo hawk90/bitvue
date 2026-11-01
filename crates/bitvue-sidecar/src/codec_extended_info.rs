@@ -29,14 +29,11 @@ use bitvue_av1_codec::frame_header::FrameType;
 use bitvue_av1_codec::frame_header_full::{
     find_frame_header_payload, parse_frame_header_full, relative_dist, RefFrameState,
 };
-use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_qp_grid_from_parsed, frame_provenance, Provenance,
 };
-use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
 
-const SEQUENCE_HEADER_SCAN_LIMIT: usize = 8;
 const NUM_REF_FRAMES: usize = 8;
 
 #[derive(Clone, Copy)]
@@ -71,18 +68,6 @@ fn frame_type_wire(t: FrameType) -> &'static str {
         FrameType::SP => "P",
         FrameType::Unknown => "UNKNOWN",
     }
-}
-
-fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return parse_sequence_header(&found.obu.payload).ok();
-            }
-        }
-    }
-    None
 }
 
 fn ref_entry_json(list_idx: usize, slot: usize, s: &SlotState, poc_delta: i64) -> Value {
@@ -120,7 +105,8 @@ pub fn get_codec_extended_info(data: &[u8], frame_index: usize) -> Result<Value,
             frames.len()
         ));
     }
-    let seq = find_sequence_header(&frames)
+    let seq = bitvue_av1_codec::overlay_extraction::find_sequence_header(&frames)
+        .map(|(_, seq)| seq)
         .ok_or_else(|| "no sequence header found in the first few frames".to_string())?;
     let order_hint_bits = seq.order_hint_bits_minus_1.map_or(0, |b| b as u32 + 1);
 

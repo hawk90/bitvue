@@ -17,26 +17,10 @@
 use bitvue_av1_codec::frame_header_full::{
     find_frame_header_payloads, parse_frame_header_full, thread_ref_state_before,
 };
-use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge,
 };
-use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
-
-const SEQUENCE_HEADER_SCAN_LIMIT: usize = 8;
-
-fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
-    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
-        let mut iter = ObuIterator::new(&frame.data);
-        while let Some(Ok(found)) = iter.next_obu_with_offset() {
-            if found.obu.header.obu_type == ObuType::SequenceHeader {
-                return parse_sequence_header(&found.obu.payload).ok();
-            }
-        }
-    }
-    None
-}
 
 pub fn get_deblocking_analysis(data: &[u8], frame_index: usize) -> Result<Value, String> {
     let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(data)
@@ -47,7 +31,8 @@ pub fn get_deblocking_analysis(data: &[u8], frame_index: usize) -> Result<Value,
             frames.len()
         ));
     }
-    let seq = find_sequence_header(&frames)
+    let seq = bitvue_av1_codec::overlay_extraction::find_sequence_header(&frames)
+        .map(|(_, seq)| seq)
         .ok_or_else(|| "no sequence header found in the first few frames".to_string())?;
 
     // The frame the analysis describes is the last one of the packet; its loop filter parameters
