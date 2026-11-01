@@ -150,15 +150,12 @@ pub fn parse_leb128_size_syntax(
         let data_bits = (byte & 0x7F) as u64;
         let has_continuation = (byte & 0x80) != 0;
 
-        // Check for overflow before shifting
-        if shift >= 64 || (shift > 0 && data_bits > (u64::MAX >> shift)) {
-            return Err(BitvueError::Parse {
+        value = crate::leb128::add_group(value, shift, data_bits).ok_or_else(|| {
+            BitvueError::Parse {
                 offset: range.start_bit,
                 message: "LEB128 value overflow".to_string(),
-            });
-        }
-
-        value |= data_bits << shift;
+            }
+        })?;
         shift += 7;
 
         // Create syntax node for this byte
