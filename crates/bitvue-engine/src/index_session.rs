@@ -77,7 +77,8 @@ pub struct IndexSession {
     should_cancel: Arc<AtomicBool>,
 
     /// Progress of the running full index in thousandths (0..=1000), from the extractor's own
-    /// progress reports; `estimated_progress` reads it
+    /// progress reports; `estimated_progress` reads it. Zero whenever a full index can start: a
+    /// quick index needs `Idle`, and the only way back to `Idle` is `reset()`, which clears it.
     progress_permille: Arc<AtomicU64>,
 }
 
@@ -350,7 +351,6 @@ impl IndexSession {
         }
 
         self.reset_cancellation();
-        self.progress_permille.store(0, Ordering::SeqCst);
         Ok(())
     }
 
