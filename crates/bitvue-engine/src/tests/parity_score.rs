@@ -300,9 +300,9 @@ fn a_failed_lower_severity_item_is_not_a_hard_fail() {
 }
 
 #[test]
-fn unfinished_p0_items_do_not_block_readiness() {
-    // Pins current behaviour: only a *failed* P0 blocks `parity_ready`, although the comment in
-    // the code says "all P0 items pass". See the tracking issue for this mismatch.
+fn unfinished_p0_items_block_readiness_without_being_hard_fails() {
+    // #287: blocked, skipped and not-tested P0 items used to leave `parity_ready` true. They are
+    // not failures (`hard_fails` stays empty), but a P0 item that has not passed is not parity.
     for result in [
         ParityResult::Blocked,
         ParityResult::Skipped,
@@ -311,8 +311,66 @@ fn unfinished_p0_items_do_not_block_readiness() {
         let m = matrix(vec![item("a", ParityCategory::IA, Severity::P0)]);
         let s = calculate_parity_score(&m, &results(&[("a", result)]), &unit_weights());
         assert!(s.hard_fails.is_empty(), "{result:?}");
-        assert!(s.parity_ready, "{result:?}");
+        assert_eq!(s.p0_unfinished, ["a"], "{result:?}");
+        assert!(!s.parity_ready, "{result:?}");
     }
+}
+
+#[test]
+fn a_p0_item_without_any_recorded_result_is_unfinished() {
+    let m = matrix(vec![item("a", ParityCategory::IA, Severity::P0)]);
+    let s = calculate_parity_score(&m, &HashMap::new(), &unit_weights());
+    assert_eq!(s.p0_unfinished, ["a"]);
+    assert!(!s.parity_ready);
+}
+
+#[test]
+fn readiness_needs_every_p0_to_pass_and_ignores_lower_severities() {
+    let m = matrix(vec![
+        item("p0a", ParityCategory::IA, Severity::P0),
+        item("p0b", ParityCategory::Contract, Severity::P0),
+        item("p1", ParityCategory::IA, Severity::P1),
+        item("p2", ParityCategory::IA, Severity::P2),
+    ]);
+    // all P0 pass; lower severities failed or untested
+    let ready = results(&[
+        ("p0a", ParityResult::Pass),
+        ("p0b", ParityResult::Pass),
+        ("p1", ParityResult::Fail),
+    ]);
+    let s = calculate_parity_score(&m, &ready, &unit_weights());
+    assert!(s.hard_fails.is_empty() && s.p0_unfinished.is_empty());
+    assert!(s.parity_ready);
+    // one P0 short of a verdict is enough to withdraw it
+    let one_short = results(&[("p0a", ParityResult::Pass), ("p1", ParityResult::Pass)]);
+    let s = calculate_parity_score(&m, &one_short, &unit_weights());
+    assert_eq!(s.p0_unfinished, ["p0b"]);
+    assert!(!s.parity_ready);
+}
+
+#[test]
+fn the_parity_gate_fails_on_an_unfinished_p0_and_names_it() {
+    use crate::parity_harness::ParityGate;
+    let m = matrix(vec![
+        item("a", ParityCategory::IA, Severity::P0),
+        item("b", ParityCategory::IA, Severity::P0),
+        item("c", ParityCategory::IA, Severity::P1),
+    ]);
+    // 2 of 3 items pass (66%), so lower the percentage bar to isolate the P0 rule
+    let r = results(&[("a", ParityResult::Pass), ("c", ParityResult::Pass)]);
+    let score = calculate_parity_score(&m, &r, &unit_weights());
+    let mut gate = ParityGate {
+        required_pass_percentage: 10.0,
+        p0_must_all_pass: true,
+    };
+    let result = gate.evaluate(&score);
+    assert!(!result.passed);
+    assert_eq!(result.p0_unfinished, ["b"]);
+    assert!(result.p0_failures.is_empty());
+    assert!(!result.parity_ready);
+    // with the P0 rule off only the percentage counts
+    gate.p0_must_all_pass = false;
+    assert!(gate.evaluate(&score).passed);
 }
 
 #[test]

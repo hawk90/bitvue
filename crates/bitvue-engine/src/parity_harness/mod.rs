@@ -332,7 +332,13 @@ pub struct ParityScore {
     pub by_category: HashMap<ParityCategory, CategoryScore>,
     pub by_severity: HashMap<Severity, SeverityScore>,
     pub items: Vec<ScoredParityItem>,
+    /// P0 items that failed.
     pub hard_fails: Vec<String>,
+    /// P0 items with no verdict: blocked, skipped or not tested (no result recorded counts as
+    /// not tested). A P0 item that has not passed is not parity.
+    #[serde(default)]
+    pub p0_unfinished: Vec<String>,
+    /// Every P0 item passed. Vacuously true for a matrix with no P0 items.
     pub parity_ready: bool,
 }
 
@@ -367,6 +373,7 @@ pub fn calculate_parity_score(
     let mut by_category: HashMap<ParityCategory, CategoryScore> = HashMap::new();
     let mut by_severity: HashMap<Severity, SeverityScore> = HashMap::new();
     let mut hard_fails = Vec::new();
+    let mut p0_unfinished = Vec::new();
     let mut total_score = 0.0;
     let mut max_possible = 0.0;
 
@@ -377,9 +384,15 @@ pub fn calculate_parity_score(
             .unwrap_or(ParityResult::NotTested);
         let scored = score_item(item, result, weights);
 
-        // Track hard fails (P0 failures)
-        if item.severity == Severity::P0 && result == ParityResult::Fail {
-            hard_fails.push(item.id.clone());
+        // Track hard fails (P0 failures) and P0 items that never reached a verdict
+        if item.severity == Severity::P0 {
+            match result {
+                ParityResult::Pass => {}
+                ParityResult::Fail => hard_fails.push(item.id.clone()),
+                ParityResult::Blocked | ParityResult::Skipped | ParityResult::NotTested => {
+                    p0_unfinished.push(item.id.clone())
+                }
+            }
         }
 
         add_to_category(&mut by_category, &scored);
@@ -400,8 +413,8 @@ pub fn calculate_parity_score(
 
     let percentage = score_percentage(total_score, max_possible);
 
-    // Parity ready = no hard fails and all P0 items pass
-    let parity_ready = hard_fails.is_empty();
+    // Parity ready = all P0 items pass: none failed, none blocked / skipped / untested
+    let parity_ready = hard_fails.is_empty() && p0_unfinished.is_empty();
 
     ParityScore {
         total_score,
@@ -411,6 +424,7 @@ pub fn calculate_parity_score(
         by_severity,
         items,
         hard_fails,
+        p0_unfinished,
         parity_ready,
     }
 }
