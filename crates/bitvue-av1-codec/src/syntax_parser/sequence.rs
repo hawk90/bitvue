@@ -3,10 +3,11 @@
 //! This module provides syntax tree generation for AV1 Sequence Headers,
 //! tracking exact bit ranges for Tri-sync functionality.
 //!
-//! **Phase 0 Scope**: Parses essential fields only (~25-30 syntax nodes)
-//! - Core fields: profile, dimensions, level, key feature flags
-//! - Simplified sub-structures: color_config basics, operating points
-//! - Deferred: Inter flags, screen content tools, advanced color config
+//! Shows the essential fields as syntax nodes (~25-30): profile, dimensions, level, the key
+//! feature flags, operating points and the colour config. Fields without a node (the inter tool
+//! switches, screen content tools, decoder model details, ...) are read or skipped so that every
+//! later field sits at its spec bit position; `random_headers_read_like_the_oracle_checked_parser`
+//! checks that against `sequence::parse_sequence_header` on 30,000 random headers (#218).
 //!
 //! # AV1 Specification Reference
 //! - Section 5.5: Sequence Header OBU
