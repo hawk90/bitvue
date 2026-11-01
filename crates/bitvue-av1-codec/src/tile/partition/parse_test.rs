@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::symbol::SymbolDecoder;
-use crate::tile::{MvPredictorContext, TileContext};
+use crate::tile::TileContext;
 
 fn noise(seed: u64, len: usize) -> Vec<u8> {
     let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
@@ -44,7 +44,6 @@ struct Walk<'a> {
 fn walk(data: &[u8], root: BlockSize, (mi_rows, mi_cols): (u32, u32)) -> Walk<'_> {
     let mut state = TileState {
         decoder: SymbolDecoder::new(data).unwrap(),
-        mv_ctx: MvPredictorContext::new(1, 1),
         tile_ctx: TileContext::new(64, 64),
     };
     let mut leaves = Vec::new();
@@ -143,7 +142,6 @@ fn a_split_just_below_the_depth_limit_fails_in_its_children() {
         let data = noise(seed, 64);
         let mut state = TileState {
             decoder: SymbolDecoder::new(&data).unwrap(),
-            mv_ctx: MvPredictorContext::new(1, 1),
             tile_ctx: TileContext::new(64, 64),
         };
         let result = parse_partition_recursive(

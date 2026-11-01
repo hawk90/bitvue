@@ -214,10 +214,9 @@ mod tests {
         (mi_rows, mi_cols): (u32, u32),
         depth: u8,
     ) -> bitvue_engine::Result<Option<PartitionNode>> {
-        use crate::tile::{MvPredictorContext, TileContext, TileState};
+        use crate::tile::{TileContext, TileState};
         let mut state = TileState {
             decoder: crate::symbol::SymbolDecoder::new(data).unwrap(),
-            mv_ctx: MvPredictorContext::new(1, 1),
             tile_ctx: TileContext::new(64, 64),
         };
         parse_partition_recursive(

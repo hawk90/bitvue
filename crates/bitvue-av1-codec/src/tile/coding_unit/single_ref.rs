@@ -121,7 +121,7 @@ fn read_new_mv(
     // DRL (spec 7.10.2.10's real `drl_idx` selection, single-ref only) -- real per-context
     // CDF + adaptation, see `SymbolDecoder::read_drl_bit`'s doc for the desync this closes
     // (this crate previously never read any DRL bits at all, always implicitly using
-    // index 0 -- `MvPredictorContext::predict_nearest_mv`'s single-neighbor heuristic).
+    // index 0 -- the old single-neighbour heuristic placeholder, removed in #215).
     // Not read for GLOBALMV (real spec: no DRL for that mode at all).
     let (stack, n_mvs) =
         tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0, use_ref_frame_mvs);

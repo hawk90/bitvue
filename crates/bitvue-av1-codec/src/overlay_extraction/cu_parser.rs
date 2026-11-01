@@ -284,8 +284,6 @@ fn start_tile_state<'a>(
     temporal: Option<(&crate::tile::ProjectedMotionField, [i32; 7])>,
 ) -> Result<crate::tile::TileState<'a>, BitvueError> {
     let sb_size = parsed.dimensions.sb_size;
-    let sb_cols = parsed.dimensions.sb_cols;
-    let sb_rows = parsed.dimensions.sb_rows;
     let decoder = crate::SymbolDecoder::with_cdf_context(bytes, initial_cdf.clone())?;
     let mut tile_ctx = tile_context_for(parsed);
     let sb_4x4 = sb_size / 4;
@@ -300,11 +298,7 @@ fn start_tile_state<'a>(
         tile_ctx.set_mv_precision(parsed.allow_high_precision_mv, parsed.force_integer_mv);
     }
     #[cfg_attr(not(test), allow(unused_mut))]
-    let mut state = crate::tile::TileState {
-        decoder,
-        mv_ctx: crate::tile::MvPredictorContext::new(sb_cols, sb_rows),
-        tile_ctx,
-    };
+    let mut state = crate::tile::TileState { decoder, tile_ctx };
     #[cfg(test)]
     {
         state.decoder.decoder.range_trace = Some(Vec::new());

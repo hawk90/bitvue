@@ -16,7 +16,7 @@
 
 use bitvue_av1_codec::{
     parse_all_obus, parse_frame_header_basic, parse_superblock,
-    tile::{MvPredictorContext, TileContext, TileState},
+    tile::{TileContext, TileState},
     FrameType, SymbolDecoder,
 };
 
@@ -118,7 +118,6 @@ fn test_mv_extraction_with_spec_cdfs() {
         let sb_size = 64;
         let mut state = TileState {
             decoder,
-            mv_ctx: MvPredictorContext::new(30, 17), // Typical 1920x1080 frame in 64x64 superblocks
             tile_ctx: TileContext::new(30 * sb_size / 4, 17 * sb_size / 4),
         };
         // MiRows/MiCols (spec 5.9.5) for a 1920x1080 frame, matching the comment above.

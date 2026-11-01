@@ -53,7 +53,7 @@ pub(super) fn read_compound_mode_info(
         // Real compound DRL (spec 7.10.2.10, joint L0/L1 candidate stack) -- see
         // `SpatialRefContext::compound_mv_stack`'s doc for the real weighted
         // spatial+temporal search this replaces (previously: independent, zero-fallback
-        // per-direction lookups via `MvPredictorContext`, and no DRL bits read at all --
+        // per-direction lookups via the old placeholder predictor (removed in #215), and no DRL bits read at all --
         // a real desync for any compound CU whose candidate list has more than 1 entry,
         // not a rare edge case). Real spec's exact 3-way branch (dav1d
         // `decode.c:1502-1532`): `NewNewMv` reads up to 2 bits from `stack[0]`/`[1]`;
