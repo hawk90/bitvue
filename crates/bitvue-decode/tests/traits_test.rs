@@ -1,336 +1,235 @@
-#![allow(hidden_glob_reexports)]
-#![allow(unreachable_code)]
-#![allow(non_camel_case_types)]
-#![allow(unused_assignments)]
-#![allow(unused_parens)]
-#![allow(unused_imports)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_comparisons)]
-#![allow(unused_doc_comments)]
-//! Tests for Decoder Traits
+//! The decoder abstraction through the public API: `DecoderFactory`, `CodecRegistry` and the
+//! default methods of the `Decoder` trait. (This file used to hold ten tests that defined their own
+//! structs and asserted on literals they had just written, #386.)
 
-#[test]
-fn test_decoder_trait() {
-    trait VideoDecoder {
-        fn initialize(&mut self) -> Result<(), String>;
-        fn decode_frame(&mut self, data: &[u8]) -> Result<Vec<u8>, String>;
-        fn flush(&mut self) -> Result<Vec<Vec<u8>>, String>;
-        fn reset(&mut self);
+use bitvue_decode::decoder::{ChromaFormat, DecodeError, DecodedFrame, FrameType};
+use bitvue_decode::traits::{
+    CodecRegistry, CodecType, Decoder, DecoderCapabilities, DecoderFactory,
+};
+
+fn clip() -> Vec<u8> {
+    std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../test_data/av1_aomenc_testsrc2.ivf"
+    ))
+    .unwrap()
+}
+
+fn blank_frame(timestamp: i64) -> DecodedFrame {
+    DecodedFrame {
+        width: 2,
+        height: 2,
+        bit_depth: 8,
+        y_plane: vec![0u8; 4].into_boxed_slice().into(),
+        y_stride: 2,
+        u_plane: None,
+        u_stride: 0,
+        v_plane: None,
+        v_stride: 0,
+        timestamp,
+        frame_type: FrameType::Key,
+        qp_avg: None,
+        chroma_format: ChromaFormat::Monochrome,
     }
+}
 
-    struct MockDecoder {
-        initialized: bool,
-    }
+/// A decoder that hands out scripted results from `get_frame`.
+struct Scripted {
+    script: Vec<Result<DecodedFrame, DecodeError>>,
+    sent: Vec<(usize, Option<i64>)>,
+    resets: usize,
+}
 
-    impl VideoDecoder for MockDecoder {
-        fn initialize(&mut self) -> Result<(), String> {
-            self.initialized = true;
-            Ok(())
-        }
-
-        fn decode_frame(&mut self, data: &[u8]) -> Result<Vec<u8>, String> {
-            if !self.initialized {
-                return Err("Not initialized".to_string());
-            }
-            Ok(data.to_vec())
-        }
-
-        fn flush(&mut self) -> Result<Vec<Vec<u8>>, String> {
-            Ok(vec![])
-        }
-
-        fn reset(&mut self) {
-            self.initialized = false;
+impl Scripted {
+    fn new(script: Vec<Result<DecodedFrame, DecodeError>>) -> Self {
+        script.iter().for_each(|_| ());
+        Self {
+            script: script.into_iter().rev().collect(),
+            sent: Vec::new(),
+            resets: 0,
         }
     }
+}
 
-    let mut decoder = MockDecoder { initialized: false };
-    assert!(decoder.initialize().is_ok());
-    assert!(decoder.decode_frame(&[1, 2, 3]).is_ok());
+impl Decoder for Scripted {
+    fn codec_type(&self) -> CodecType {
+        CodecType::VP9
+    }
+    fn capabilities(&self) -> DecoderCapabilities {
+        DecoderCapabilities {
+            codec: CodecType::VP9,
+            max_width: 64,
+            max_height: 64,
+            supported_bit_depths: vec![8],
+            hw_accel: false,
+        }
+    }
+    fn send_data(&mut self, data: &[u8], timestamp: Option<i64>) -> Result<(), DecodeError> {
+        self.sent.push((data.len(), timestamp));
+        Ok(())
+    }
+    fn get_frame(&mut self) -> Result<DecodedFrame, DecodeError> {
+        self.script.pop().unwrap_or(Err(DecodeError::NoFrame))
+    }
+    fn flush(&mut self) {}
+    fn reset(&mut self) -> Result<(), DecodeError> {
+        self.resets += 1;
+        Ok(())
+    }
 }
 
 #[test]
-fn test_frame_sink_trait() {
-    trait FrameSink {
-        fn accept_frame(&mut self, frame: Vec<u8>) -> bool;
-        fn frame_count(&self) -> usize;
-    }
+fn the_factory_builds_an_av1_decoder_that_decodes_a_real_clip_twice() {
+    let mut decoder = DecoderFactory::create(CodecType::AV1).unwrap();
+    assert_eq!(decoder.codec_type(), CodecType::AV1);
+    let caps = decoder.capabilities();
+    assert_eq!(caps.codec, CodecType::AV1);
+    assert!(caps.supported_bit_depths.contains(&8));
+    assert!(caps.max_width >= 320 && caps.max_height >= 240, "{caps:?}");
 
-    struct FrameCollector {
-        frames: Vec<Vec<u8>>,
-    }
-
-    impl FrameSink for FrameCollector {
-        fn accept_frame(&mut self, frame: Vec<u8>) -> bool {
-            self.frames.push(frame);
-            true
-        }
-
-        fn frame_count(&self) -> usize {
-            self.frames.len()
-        }
-    }
-
-    let mut collector = FrameCollector { frames: vec![] };
-    assert!(collector.accept_frame(vec![1, 2, 3]));
-    assert_eq!(collector.frame_count(), 1);
+    let data = clip();
+    let first = decoder.decode_all(&data).unwrap();
+    assert_eq!(first.len(), 12);
+    assert!(first.iter().all(|f| (f.width, f.height) == (320, 240)));
+    decoder.reset().unwrap();
+    let second = decoder.decode_all(&data).unwrap();
+    assert_eq!(second.len(), 12, "a reset decoder decodes the clip again");
+    assert_eq!(first[5].y_plane, second[5].y_plane);
 }
 
 #[test]
-fn test_codec_info_trait() {
-    trait CodecInfo {
-        fn codec_name(&self) -> &str;
-        fn supports_resolution(&self, width: usize, height: usize) -> bool;
-        fn max_bit_depth(&self) -> u8;
-    }
-
-    struct AV1Info;
-
-    impl CodecInfo for AV1Info {
-        fn codec_name(&self) -> &str {
-            "AV1"
-        }
-
-        fn supports_resolution(&self, width: usize, height: usize) -> bool {
-            width <= 7680 && height <= 4320
-        }
-
-        fn max_bit_depth(&self) -> u8 {
-            12
-        }
-    }
-
-    let info = AV1Info;
-    assert_eq!(info.codec_name(), "AV1");
-    assert!(info.supports_resolution(1920, 1080));
-    assert_eq!(info.max_bit_depth(), 12);
-}
-
-#[test]
-fn test_frame_allocator_trait() {
-    trait FrameAllocator {
-        fn allocate(&mut self, width: usize, height: usize) -> Option<usize>;
-        fn deallocate(&mut self, id: usize);
-    }
-
-    struct SimpleAllocator {
-        next_id: usize,
-        allocated: Vec<usize>,
-    }
-
-    impl FrameAllocator for SimpleAllocator {
-        fn allocate(&mut self, _width: usize, _height: usize) -> Option<usize> {
-            let id = self.next_id;
-            self.next_id += 1;
-            self.allocated.push(id);
-            Some(id)
-        }
-
-        fn deallocate(&mut self, id: usize) {
-            if let Some(pos) = self.allocated.iter().position(|&x| x == id) {
-                self.allocated.remove(pos);
-            }
-        }
-    }
-
-    let mut allocator = SimpleAllocator {
-        next_id: 0,
-        allocated: vec![],
+fn codecs_that_need_a_feature_name_it_when_it_is_off() {
+    let message = |codec| match DecoderFactory::create(codec) {
+        Ok(_) => String::new(),
+        Err(DecodeError::Init(m)) => m,
+        Err(other) => panic!("{codec}: {other:?}"),
     };
-
-    let id = allocator.allocate(1920, 1080).unwrap();
-    assert_eq!(id, 0);
-    allocator.deallocate(id);
-    assert!(allocator.allocated.is_empty());
+    #[cfg(not(feature = "ffmpeg"))]
+    for codec in [CodecType::H264, CodecType::H265, CodecType::VP9] {
+        assert!(message(codec).contains("--features ffmpeg"), "{codec}");
+    }
+    #[cfg(not(feature = "vvdec"))]
+    assert!(message(CodecType::H266).contains("--features vvdec"));
+    let _ = message;
 }
 
 #[test]
-fn test_error_handler_trait() {
-    trait ErrorHandler {
-        fn on_error(&mut self, error: String);
-        fn error_count(&self) -> usize;
+fn available_codecs_always_has_av1_and_matches_what_the_factory_can_build() {
+    let available = DecoderFactory::available_codecs();
+    assert!(available.contains(&CodecType::AV1));
+    for codec in [
+        CodecType::AV1,
+        CodecType::H264,
+        CodecType::H265,
+        CodecType::H266,
+        CodecType::VP9,
+    ] {
+        assert_eq!(
+            available.contains(&codec),
+            DecoderFactory::create(codec).is_ok(),
+            "{codec}"
+        );
     }
-
-    struct ErrorCollector {
-        errors: Vec<String>,
-    }
-
-    impl ErrorHandler for ErrorCollector {
-        fn on_error(&mut self, error: String) {
-            self.errors.push(error);
-        }
-
-        fn error_count(&self) -> usize {
-            self.errors.len()
-        }
-    }
-
-    let mut handler = ErrorCollector { errors: vec![] };
-    handler.on_error("Decode failed".to_string());
-    assert_eq!(handler.error_count(), 1);
 }
 
 #[test]
-fn test_decoder_factory_trait() {
-    trait DecoderFactory {
-        fn create_decoder(&self, codec: &str) -> Option<String>;
-        fn supported_codecs(&self) -> Vec<String>;
+fn codec_names_are_the_display_strings() {
+    for (codec, name) in [
+        (CodecType::AV1, "AV1"),
+        (CodecType::H264, "H.264/AVC"),
+        (CodecType::H265, "H.265/HEVC"),
+        (CodecType::H266, "H.266/VVC"),
+        (CodecType::VP9, "VP9"),
+    ] {
+        assert_eq!(codec.to_string(), name);
     }
-
-    struct StandardFactory;
-
-    impl DecoderFactory for StandardFactory {
-        fn create_decoder(&self, codec: &str) -> Option<String> {
-            let supported = ["av1", "hevc", "avc"];
-            if supported.contains(&codec) {
-                Some(format!("{}_decoder", codec))
-            } else {
-                None
-            }
-        }
-
-        fn supported_codecs(&self) -> Vec<String> {
-            vec!["av1".to_string(), "hevc".to_string(), "avc".to_string()]
-        }
-    }
-
-    let factory = StandardFactory;
-    assert!(factory.create_decoder("av1").is_some());
-    assert_eq!(factory.supported_codecs().len(), 3);
 }
 
 #[test]
-fn test_pixel_format_converter_trait() {
-    trait PixelFormatConverter {
-        fn convert(&self, src: &[u8], src_format: &str, dst_format: &str) -> Vec<u8>;
-        fn supports_conversion(&self, src: &str, dst: &str) -> bool;
+fn a_registry_registers_a_codec_once_and_builds_from_it() {
+    let mut registry = CodecRegistry::default();
+    assert!(!registry.is_registered(CodecType::VP9));
+    assert!(registry.registered_codecs().is_empty());
+    match registry.create(CodecType::VP9) {
+        Err(DecodeError::Init(m)) => assert!(m.contains("No decoder registered"), "{m}"),
+        other => panic!("{:?}", other.map(|_| ())),
     }
 
-    struct SimpleConverter;
-
-    impl PixelFormatConverter for SimpleConverter {
-        fn convert(&self, src: &[u8], _src_format: &str, _dst_format: &str) -> Vec<u8> {
-            src.to_vec()
-        }
-
-        fn supports_conversion(&self, src: &str, dst: &str) -> bool {
-            src == "yuv420p" && dst == "rgb24"
-        }
-    }
-
-    let converter = SimpleConverter;
-    assert!(converter.supports_conversion("yuv420p", "rgb24"));
+    registry
+        .register(
+            CodecType::VP9,
+            Box::new(|| Ok(Box::new(Scripted::new(vec![])) as Box<dyn Decoder>)),
+        )
+        .unwrap();
+    assert!(registry.is_registered(CodecType::VP9));
+    assert_eq!(registry.registered_codecs(), vec![CodecType::VP9]);
+    assert_eq!(
+        registry.create(CodecType::VP9).unwrap().codec_type(),
+        CodecType::VP9
+    );
+    // a second factory for the same codec is refused and the first one stays
+    let err = registry
+        .register(
+            CodecType::VP9,
+            Box::new(|| Err(DecodeError::Init("second".into()))),
+        )
+        .unwrap_err();
+    assert!(err.contains("already registered"), "{err}");
+    assert!(registry.create(CodecType::VP9).is_ok());
 }
 
 #[test]
-fn test_frame_callback_trait() {
-    trait FrameCallback {
-        fn on_frame_decoded(&mut self, frame_index: usize, data: &[u8]);
+fn a_failing_factory_reports_its_own_error() {
+    let mut registry = CodecRegistry::default();
+    registry
+        .register(
+            CodecType::H265,
+            Box::new(|| Err(DecodeError::Init("no hardware".into()))),
+        )
+        .unwrap();
+    match registry.create(CodecType::H265) {
+        Err(DecodeError::Init(m)) => assert_eq!(m, "no hardware"),
+        other => panic!("{:?}", other.map(|_| ())),
     }
-
-    struct FrameCounter {
-        count: usize,
-    }
-
-    impl FrameCallback for FrameCounter {
-        fn on_frame_decoded(&mut self, _frame_index: usize, _data: &[u8]) {
-            self.count += 1;
-        }
-    }
-
-    let mut counter = FrameCounter { count: 0 };
-    counter.on_frame_decoded(0, &[1, 2, 3]);
-    assert_eq!(counter.count, 1);
 }
 
 #[test]
-fn test_decoder_stats_trait() {
-    trait DecoderStats {
-        fn frames_decoded(&self) -> usize;
-        fn errors_encountered(&self) -> usize;
-        fn average_decode_time_ms(&self) -> f64;
-    }
-
-    struct SimpleStats {
-        frames: usize,
-        errors: usize,
-        total_time_ms: u64,
-    }
-
-    impl DecoderStats for SimpleStats {
-        fn frames_decoded(&self) -> usize {
-            self.frames
-        }
-
-        fn errors_encountered(&self) -> usize {
-            self.errors
-        }
-
-        fn average_decode_time_ms(&self) -> f64 {
-            if self.frames == 0 {
-                0.0
-            } else {
-                self.total_time_ms as f64 / self.frames as f64
-            }
-        }
-    }
-
-    let stats = SimpleStats {
-        frames: 10,
-        errors: 1,
-        total_time_ms: 150,
-    };
-
-    assert_eq!(stats.frames_decoded(), 10);
-    assert_eq!(stats.average_decode_time_ms(), 15.0);
+fn decode_all_sends_the_data_once_and_collects_frames_until_none_is_left() {
+    let mut d = Scripted::new(vec![
+        Ok(blank_frame(0)),
+        Ok(blank_frame(1)),
+        Ok(blank_frame(2)),
+        Err(DecodeError::NoFrame),
+        Ok(blank_frame(99)), // never reached
+    ]);
+    let frames = d.decode_all(&[1, 2, 3]).unwrap();
+    assert_eq!(
+        frames.iter().map(|f| f.timestamp).collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert_eq!(d.sent, vec![(3, None)]);
 }
 
 #[test]
-fn test_resource_manager_trait() {
-    trait ResourceManager {
-        fn acquire(&mut self) -> Option<usize>;
-        fn release(&mut self, id: usize);
-        fn available_count(&self) -> usize;
+fn collect_frames_stops_quietly_on_a_decode_error_but_passes_other_errors_on() {
+    // a Decode error ends the collection and keeps the frames so far
+    let mut d = Scripted::new(vec![
+        Ok(blank_frame(0)),
+        Err(DecodeError::Decode("bad packet".into())),
+        Ok(blank_frame(1)),
+    ]);
+    assert_eq!(d.collect_frames().unwrap().len(), 1);
+    // any other error is returned
+    let mut d = Scripted::new(vec![
+        Ok(blank_frame(0)),
+        Err(DecodeError::Init("lost the device".into())),
+    ]);
+    match d.collect_frames() {
+        Err(DecodeError::Init(m)) => assert_eq!(m, "lost the device"),
+        other => panic!("{:?}", other.map(|f| f.len())),
     }
-
-    struct PoolManager {
-        available: Vec<usize>,
-        in_use: Vec<usize>,
-    }
-
-    impl ResourceManager for PoolManager {
-        fn acquire(&mut self) -> Option<usize> {
-            if let Some(id) = self.available.pop() {
-                self.in_use.push(id);
-                Some(id)
-            } else {
-                None
-            }
-        }
-
-        fn release(&mut self, id: usize) {
-            if let Some(pos) = self.in_use.iter().position(|&x| x == id) {
-                self.in_use.remove(pos);
-                self.available.push(id);
-            }
-        }
-
-        fn available_count(&self) -> usize {
-            self.available.len()
-        }
-    }
-
-    let mut manager = PoolManager {
-        available: vec![0, 1, 2],
-        in_use: vec![],
-    };
-
-    let id = manager.acquire().unwrap();
-    assert_eq!(manager.available_count(), 2);
-    manager.release(id);
-    assert_eq!(manager.available_count(), 3);
+    // nothing decoded is an empty list, not an error
+    assert!(Scripted::new(vec![]).collect_frames().unwrap().is_empty());
 }
 
 bitvue_test_alloc::install!();
