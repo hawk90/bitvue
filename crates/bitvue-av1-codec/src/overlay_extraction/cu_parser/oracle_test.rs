@@ -35,10 +35,6 @@ fn frame_0_blocks_are_decoded_between_partition_symbols_like_dav1d() {
     let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
     let mut state = crate::tile::TileState {
         decoder: crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat).unwrap(),
-        mv_ctx: crate::tile::MvPredictorContext::new(
-            parsed.dimensions.sb_cols,
-            parsed.dimensions.sb_rows,
-        ),
         tile_ctx: crate::tile::TileContext::new(
             (parsed.dimensions.sb_cols * parsed.dimensions.sb_size).div_ceil(4),
             (parsed.dimensions.sb_rows * parsed.dimensions.sb_size).div_ceil(4),
@@ -117,10 +113,6 @@ fn frame_0_first_block_matches_the_dav1d_trace_through_its_end_of_block_token() 
     let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
     let mut state = crate::tile::TileState {
         decoder: crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat).unwrap(),
-        mv_ctx: crate::tile::MvPredictorContext::new(
-            parsed.dimensions.sb_cols,
-            parsed.dimensions.sb_rows,
-        ),
         tile_ctx: crate::tile::TileContext::new(
             (parsed.dimensions.sb_cols * parsed.dimensions.sb_size).div_ceil(4),
             (parsed.dimensions.sb_rows * parsed.dimensions.sb_size).div_ceil(4),
@@ -210,7 +202,6 @@ fn frame_0_decodes_bit_exactly_like_dav1d() {
     let dims = &parsed.dimensions;
     let mut state = crate::tile::TileState {
         decoder: crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat).unwrap(),
-        mv_ctx: crate::tile::MvPredictorContext::new(dims.sb_cols, dims.sb_rows),
         tile_ctx: crate::tile::TileContext::new(
             (dims.sb_cols * dims.sb_size).div_ceil(4),
             (dims.sb_rows * dims.sb_size).div_ceil(4),

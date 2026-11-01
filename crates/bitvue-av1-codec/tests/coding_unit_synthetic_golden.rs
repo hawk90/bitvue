@@ -11,7 +11,7 @@
 use bitvue_av1_codec::frame_header::TxfmMode;
 use bitvue_av1_codec::frame_header_full::SegmentationInfo;
 use bitvue_av1_codec::tile::{
-    FrameCodingParams, InterModeFlags, MvPredictorContext, TileContext, TileState, TxTypeFrameFlags,
+    FrameCodingParams, InterModeFlags, TileContext, TileState, TxTypeFrameFlags,
 };
 use bitvue_av1_codec::{parse_superblock, SymbolDecoder};
 
@@ -289,7 +289,6 @@ fn digest(params: &FrameCodingParams, sb_size: u32, seeds: std::ops::Range<u64>)
         let data = tile_bytes(seed);
         let mut state = TileState {
             decoder: SymbolDecoder::new(&data).unwrap(),
-            mv_ctx: MvPredictorContext::new(2, 2),
             tile_ctx: TileContext::new(FRAME_PX / 4, FRAME_PX / 4),
         };
         let mut qp = 128i16;
@@ -374,7 +373,6 @@ fn synthetic_matrix_reaches_the_untested_syntax() {
             let data = tile_bytes(seed);
             let mut state = TileState {
                 decoder: SymbolDecoder::new(&data).unwrap(),
-                mv_ctx: MvPredictorContext::new(2, 2),
                 tile_ctx: TileContext::new(FRAME_PX / 4, FRAME_PX / 4),
             };
             let mut qp = 128i16;
@@ -465,7 +463,6 @@ fn deep_streams_reach_the_rare_syntax() {
             let data = tile_bytes(seed);
             let mut state = TileState {
                 decoder: SymbolDecoder::new(&data).unwrap(),
-                mv_ctx: MvPredictorContext::new(2, 2),
                 tile_ctx: TileContext::new(FRAME_PX / 4, FRAME_PX / 4),
             };
             if let Ok((s, _)) = parse_superblock(&mut state, 0, 0, sb, &p, 128) {

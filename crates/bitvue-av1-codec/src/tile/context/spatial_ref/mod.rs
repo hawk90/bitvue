@@ -31,8 +31,7 @@ use super::drl::{CompoundMvStackEntry, MvStackEntry};
 /// 5.11.23/5.11.24's `newmv_ctx`/`refmv_ctx`/`compound_mode`'s CDF index). Source: rav1d
 /// `RefMvsBlock` (`memorysafety/rav1d`, BSD-2-Clause, `src/refmvs.rs`), reduced to only the
 /// fields `rav1d_refmvs_find`'s context derivation (not its motion-vector CANDIDATE LIST, which
-/// this crate doesn't replicate -- see `crate::tile::mv_prediction::MvPredictorContext` for
-/// Bitvue's separate, simpler MV-value predictor) actually reads: whether a decoded block's
+/// this crate doesn't replicate) actually reads: whether a decoded block's
 /// stored ref matches the current block's ref (any block width works, since a wider block just
 /// repeats the same ref/mode across its own footprint -- see `SpatialRefContext`'s doc for why
 /// per-4x4-cell scanning doesn't need rav1d's block-width-aware step optimization at all).

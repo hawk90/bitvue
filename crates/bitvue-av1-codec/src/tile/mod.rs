@@ -26,7 +26,6 @@ pub mod context;
 pub mod frame_params;
 pub mod layout;
 pub mod motion_field;
-pub mod mv_prediction;
 pub mod partition;
 pub mod position;
 pub mod restoration;
@@ -43,7 +42,6 @@ pub use motion_field::{
     add_temporal_candidates, project_motion_field, select_motion_field_sources, store_motion_field,
     MfmvSource, MotionFieldGrid, MotionFieldState, ProjectedMotionField, ProjectedMv, SavedMv,
 };
-pub use mv_prediction::MvPredictorContext;
 pub use partition::{BlockSize, PartitionNode, PartitionType};
 pub use position::{BlockRect, MiRect, SuperblockCtx};
 pub use restoration::{RestorationParams, RestorationRef};
@@ -219,7 +217,6 @@ mod tests {
                 .collect();
             let mut state = TileState {
                 decoder: crate::SymbolDecoder::new(&data).unwrap(),
-                mv_ctx: MvPredictorContext::new(2, 2),
                 tile_ctx: TileContext::new(32, 32),
             };
             let Ok((sb, _)) = crate::parse_superblock(&mut state, 0, 0, 64, &params, 100) else {

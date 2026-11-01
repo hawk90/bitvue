@@ -95,11 +95,7 @@ pub fn parse_coding_unit(
         width,
         height,
     } = rect;
-    let TileState {
-        decoder,
-        mv_ctx,
-        tile_ctx,
-    } = state;
+    let TileState { decoder, tile_ctx } = state;
     let FrameCodingParams {
         is_key_frame,
         segmentation,
@@ -164,10 +160,6 @@ pub fn parse_coding_unit(
     };
 
     block_modes::record_neighbour_contexts(tile_ctx, &cu, rect, mi, is_inter);
-
-    // Add this CU to the MV predictor context for future blocks
-    // Now uses zero-copy reference instead of cloning the entire CU
-    mv_ctx.add_cu(&cu);
 
     // Read residual() for every transform block tiling this CU -- required for correct bitstream
     // alignment whenever skip == false, not just for producing residual statistics. See this
