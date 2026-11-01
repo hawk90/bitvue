@@ -44,7 +44,10 @@ pub fn extract_energy_grid_from_parsed(parsed: &ParsedFrame) -> Result<EnergyGri
         BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
     })? as usize;
 
-    if !parsed.has_tile_data() || parsed.tile_data.len() <= 10 {
+    // Any tile that exists is decoded: a small one can still hold residual (a 10-byte guess here
+    // reported 0.0 for tiles of 4 and 9 bytes that decode to non-zero energy, #239). The other
+    // extractors use `provenance::has_decodable_tile` for the same reason.
+    if !parsed.has_tile_data() {
         return Ok(EnergyGrid {
             grid_w,
             grid_h,
@@ -128,6 +131,40 @@ mod tests {
         assert_eq!(grid.grid_w, grid.energy_bpp.len() as u32 / grid.grid_h);
         assert!(!grid.energy_bpp.is_empty());
         assert!(grid.energy_bpp.iter().all(|&v| v == 0.0));
+    }
+
+    /// One-frame aomenc clips (`--end-usage=q --cq-level=63`) of a 16x16 and a 32x32 gradient,
+    /// generated for this test (temporal delimiter, sequence header, frame OBU): their tiles are
+    /// 4 and 5 bytes and hold one coding unit with a non-zero residual.
+    const TINY_16X16: [u8; 24] = [
+        0x12, 0x00, 0x0a, 0x06, 0x18, 0x0c, 0xff, 0xdb, 0x00, 0x80, 0x32, 0x0c, 0x1f, 0xf0, 0x00,
+        0x00, 0x58, 0x10, 0x00, 0x40, 0x22, 0xaa, 0x99, 0xb0,
+    ];
+    const TINY_32X32: [u8; 25] = [
+        0x12, 0x00, 0x0a, 0x06, 0x18, 0x11, 0x3f, 0xf6, 0xc0, 0x20, 0x32, 0x0d, 0x47, 0xfc, 0x00,
+        0x00, 0x16, 0x5c, 0x00, 0x00, 0x03, 0x75, 0x1a, 0xb4, 0xf2,
+    ];
+
+    #[test]
+    fn a_tile_of_ten_bytes_or_fewer_is_decoded_not_reported_as_zero_energy() {
+        for (name, packet, expected_tile_bytes) in
+            [("16x16", &TINY_16X16[..], 4), ("32x32", &TINY_32X32[..], 5)]
+        {
+            let parsed = ParsedFrame::parse(packet).unwrap();
+            assert_eq!(parsed.tile_data.len(), expected_tile_bytes, "{name}");
+            let units = parse_all_coding_units(&parsed).unwrap();
+            assert_eq!(units.len(), 1, "{name}");
+            let unit = &units[0];
+            let sum = unit
+                .residual
+                .expect("the unit has a residual")
+                .sum_abs_level;
+            assert!(sum > 0, "{name}: the clip must carry residual");
+            let expected = sum as f64 / (unit.width as f64 * unit.height as f64);
+
+            let grid = extract_energy_grid_from_parsed(&parsed).unwrap();
+            assert_eq!(grid.energy_bpp, vec![expected], "{name}");
+        }
     }
 
     // ---- extract_energy_grid_from_parsed over synthetic decoded coding units ----
