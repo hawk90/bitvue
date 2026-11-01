@@ -15,7 +15,7 @@
     },
     "packageManager": {
       "name": "npm",
-      "version": "^12.2.0",
+      "version": ">=11.0.0 <13",
       "onFail": "error"
     }
   },
