@@ -223,7 +223,7 @@ impl YuvConversionStrategy for ScalarStrategy {
 
 /// Read a sample from plane data, handling 8/10/12bit
 #[inline]
-fn read_sample(plane: &[u8], idx: usize, bit_depth: u8) -> u8 {
+pub(super) fn read_sample(plane: &[u8], idx: usize, bit_depth: u8) -> u8 {
     if bit_depth > 8 {
         // 10/12bit: read 16-bit sample and normalize to 8-bit
         let byte_idx = idx * 2;
@@ -270,7 +270,7 @@ fn yuv_to_rgb_pixel(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
 /// This is a convenience wrapper that takes u8 values directly,
 /// subtracting 128 from U and V as needed.
 #[inline]
-fn yuv_to_rgb_pixel_u8(y: u8, u: u8, v: u8) -> (u8, u8, u8) {
+pub(super) fn yuv_to_rgb_pixel_u8(y: u8, u: u8, v: u8) -> (u8, u8, u8) {
     let y_i = y as i32;
     let u_i = (u as i32) - 128; // Center U around 0
     let v_i = (v as i32) - 128; // Center V around 0
