@@ -5,6 +5,7 @@
 
 #![cfg(feature = "ffmpeg")]
 
+use bitvue_decode::annex_b::{split_access_units, AnnexBCodec};
 use bitvue_decode::decoder::{validate_frame, ChromaFormat};
 use bitvue_decode::traits::{CodecType, Decoder, DecoderFactory};
 use bitvue_decode::{H264Decoder, HevcDecoder, Vp9Decoder};
@@ -93,7 +94,41 @@ fn h264_and_hevc_streams_decode_every_picture() {
             assert_eq!(frame.chroma_format, ChromaFormat::Yuv420, "{file} #{i}");
             validate_frame(frame).unwrap_or_else(|e| panic!("{file} #{i}: {e}"));
         }
+        // A bare Annex B stream carries no times: frames are numbered in display order (#415).
+        let stamps: Vec<i64> = frames.iter().map(|f| f.timestamp).collect();
+        assert_eq!(stamps, (0..pictures as i64).collect::<Vec<_>>(), "{file}");
     }
+}
+
+#[test]
+fn timestamps_sent_with_the_data_each_come_back_once() {
+    // sample_h264.264 has B-frames, so frames leave in a different order than they were sent and
+    // each keeps the time of the packet it was decoded from, as a container's times would.
+    let data = clip("sample_h264.264");
+    let mut decoder = H264Decoder::new().unwrap();
+    let mut frames = Vec::new();
+    for (i, unit) in split_access_units(AnnexBCodec::H264, &data)
+        .into_iter()
+        .enumerate()
+    {
+        decoder.send_data(unit, Some(1000 + 10 * i as i64)).unwrap();
+        frames.extend(decoder.collect_frames().unwrap());
+    }
+    decoder.flush();
+    frames.extend(decoder.collect_frames().unwrap());
+    let mut stamps: Vec<i64> = frames.iter().map(|f| f.timestamp).collect();
+    assert_ne!(
+        stamps,
+        stamps
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>(),
+        "the clip reorders pictures, so output order is not send order"
+    );
+    stamps.sort_unstable();
+    assert_eq!(stamps, (0..60).map(|i| 1000 + 10 * i).collect::<Vec<i64>>());
 }
 
 #[test]
