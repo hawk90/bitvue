@@ -372,8 +372,9 @@ fn test_parse_nal_units_start_code_in_payload() {
     let result = parse_nal_units(&data);
     assert!(result.is_ok());
     let nal_units = result.unwrap();
-    // Should find 2 NAL units (not 3)
-    assert!(nal_units.len() <= 3);
+    // `00 00 01` cannot occur inside a NAL unit, so it is a start code here: the stray `FF` after
+    // it is a 1-byte "NAL unit" without a header and is skipped, leaving the two real ones.
+    assert_eq!(nal_units.len(), 2);
 }
 
 // ============================================================================

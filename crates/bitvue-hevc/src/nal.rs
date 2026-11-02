@@ -367,17 +367,16 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
     while i < data.len() {
         // Look for start code: 0x000001 or 0x00000001
         if i + 2 < data.len() && data[i] == 0x00 && data[i + 1] == 0x00 {
-            let (start_code_len, nal_start) =
-                if i + 3 < data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
-                    // 4-byte start code
-                    (4, i + 4)
-                } else if data[i + 2] == 0x01 {
-                    // 3-byte start code
-                    (3, i + 3)
-                } else {
-                    i += 1;
-                    continue;
-                };
+            let nal_start = if i + 3 < data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
+                // 4-byte start code
+                i + 4
+            } else if data[i + 2] == 0x01 {
+                // 3-byte start code
+                i + 3
+            } else {
+                i += 1;
+                continue;
+            };
 
             // Find the end of this NAL unit (next start code or end of data)
             // Limit scan to prevent DoS via files with no subsequent start codes
@@ -412,7 +411,9 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
             }
 
             units.push((nal_start, nal_end));
-            i = nal_start + start_code_len;
+            // Resume at the end of this NAL unit: a NAL unit can be shorter than its start code
+            // (end of sequence is 2 bytes), and resuming inside it skipped the next start code.
+            i = nal_end;
         } else {
             i += 1;
         }
@@ -427,7 +428,9 @@ pub fn parse_nal_units(data: &[u8]) -> Result<Vec<NalUnit>> {
     let mut units = Vec::with_capacity(positions.len());
 
     for (start, end) in positions {
-        if end <= start || start + 2 > data.len() {
+        // Shorter than the 2-byte header (a stray byte between start codes, or a header cut off
+        // by the end of the data): nothing to parse, skip it.
+        if end <= start || end - start < 2 {
             continue;
         }
 
@@ -453,6 +456,52 @@ pub fn parse_nal_units(data: &[u8]) -> Result<Vec<NalUnit>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Streams built from NAL units of 1..=9 bytes (no zero bytes inside) behind 3- and 4-byte
+    /// start codes: every one of them comes back with its exact range (#421).
+    #[test]
+    fn built_streams_give_back_every_nal_unit_range() {
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for _ in 0..2000 {
+            let (mut data, mut want) = (Vec::new(), Vec::new());
+            for _ in 0..1 + next() % 8 {
+                data.extend_from_slice(if next() % 2 == 0 {
+                    &[0, 0, 1][..]
+                } else {
+                    &[0, 0, 0, 1][..]
+                });
+                let start = data.len();
+                for _ in 0..1 + next() % 9 {
+                    data.push(1 + (next() % 255) as u8);
+                }
+                want.push((start, data.len()));
+            }
+            assert_eq!(find_nal_units(&data), want, "{data:?}");
+        }
+    }
+
+    /// A NAL unit shorter than its start code (end of sequence: 2 bytes, access unit delimiter: 3)
+    /// must not hide the NAL unit after it (#421).
+    #[test]
+    fn a_short_nal_unit_does_not_swallow_the_next_start_code() {
+        // 4-byte start code, 2-byte end-of-sequence NAL, 4-byte start code, 3-byte slice
+        let eos_then_idr = [0u8, 0, 0, 1, 0x48, 0x01, 0, 0, 0, 1, 0x26, 0x01, 0xAF];
+        assert_eq!(find_nal_units(&eos_then_idr), vec![(4, 6), (10, 13)]);
+        // 3-byte access unit delimiter followed by a 3-byte start code
+        let aud_then_idr = [0u8, 0, 0, 1, 0x46, 0x01, 0x50, 0, 0, 1, 0x26, 0x01, 0xAF];
+        assert_eq!(find_nal_units(&aud_then_idr), vec![(4, 7), (10, 13)]);
+        // a chain of them: every NAL unit is found
+        let chain = [
+            0u8, 0, 0, 1, 0x48, 0x01, 0, 0, 1, 0x46, 0x01, 0x50, 0, 0, 0, 1, 0x26, 0x01, 0xAF,
+        ];
+        assert_eq!(find_nal_units(&chain), vec![(4, 6), (9, 12), (16, 19)]);
+    }
 
     #[test]
     fn test_nal_type_properties() {
