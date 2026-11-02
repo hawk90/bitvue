@@ -127,6 +127,17 @@ impl<'a> SymbolDecoder<'a> {
         self.read_bidirectional_compound_refs(tile_ctx, x4, y4)
     }
 
+    /// One binary decision of the reference-frame tree: reads the symbol with the CDF `cdf_of`
+    /// picks for `ctx` and reports whether it is 1.
+    fn read_ref_bit(
+        &mut self,
+        ctx: u8,
+        cdf_of: fn(&mut CdfContext, u8) -> &mut [u16],
+    ) -> Result<bool> {
+        let cdf = cdf_of(&mut self.cdf_context, ctx);
+        Ok(self.decoder.read_symbol_adaptive(cdf)? == 1)
+    }
+
     /// The reference of a block that does not use compound prediction.
     fn read_single_ref_frame(
         &mut self,
@@ -136,20 +147,23 @@ impl<'a> SymbolDecoder<'a> {
     ) -> Result<crate::tile::RefFrame> {
         use crate::tile::RefFrame;
 
-        let ctx = tile_ctx.single_ref_p1_context(x4, y4);
-        let cdf = self.cdf_context.get_single_ref_p1_cdf_mut(ctx);
-        let backward = self.decoder.read_symbol_adaptive(cdf)? == 1;
+        let backward = self.read_ref_bit(
+            tile_ctx.single_ref_p1_context(x4, y4),
+            CdfContext::get_single_ref_p1_cdf_mut,
+        )?;
 
         let ref0 = if backward {
-            let ctx = tile_ctx.single_ref_p2_context(x4, y4);
-            let cdf = self.cdf_context.get_single_ref_p2_cdf_mut(ctx);
-            let is_altref = self.decoder.read_symbol_adaptive(cdf)? == 1;
+            let is_altref = self.read_ref_bit(
+                tile_ctx.single_ref_p2_context(x4, y4),
+                CdfContext::get_single_ref_p2_cdf_mut,
+            )?;
             if is_altref {
                 RefFrame::AltRef
             } else {
-                let ctx = tile_ctx.single_ref_p6_context(x4, y4);
-                let cdf = self.cdf_context.get_single_ref_p6_cdf_mut(ctx);
-                let is_altref2 = self.decoder.read_symbol_adaptive(cdf)? == 1;
+                let is_altref2 = self.read_ref_bit(
+                    tile_ctx.single_ref_p6_context(x4, y4),
+                    CdfContext::get_single_ref_p6_cdf_mut,
+                )?;
                 if is_altref2 {
                     RefFrame::AltRef2
                 } else {
@@ -157,22 +171,25 @@ impl<'a> SymbolDecoder<'a> {
                 }
             }
         } else {
-            let ctx = tile_ctx.single_ref_p3_context(x4, y4);
-            let cdf = self.cdf_context.get_single_ref_p3_cdf_mut(ctx);
-            let last3_or_golden = self.decoder.read_symbol_adaptive(cdf)? == 1;
+            let last3_or_golden = self.read_ref_bit(
+                tile_ctx.single_ref_p3_context(x4, y4),
+                CdfContext::get_single_ref_p3_cdf_mut,
+            )?;
             if last3_or_golden {
-                let ctx = tile_ctx.single_ref_p5_context(x4, y4);
-                let cdf = self.cdf_context.get_single_ref_p5_cdf_mut(ctx);
-                let is_golden = self.decoder.read_symbol_adaptive(cdf)? == 1;
+                let is_golden = self.read_ref_bit(
+                    tile_ctx.single_ref_p5_context(x4, y4),
+                    CdfContext::get_single_ref_p5_cdf_mut,
+                )?;
                 if is_golden {
                     RefFrame::Golden
                 } else {
                     RefFrame::Last3
                 }
             } else {
-                let ctx = tile_ctx.single_ref_p4_context(x4, y4);
-                let cdf = self.cdf_context.get_single_ref_p4_cdf_mut(ctx);
-                let is_last2 = self.decoder.read_symbol_adaptive(cdf)? == 1;
+                let is_last2 = self.read_ref_bit(
+                    tile_ctx.single_ref_p4_context(x4, y4),
+                    CdfContext::get_single_ref_p4_cdf_mut,
+                )?;
                 if is_last2 {
                     RefFrame::Last2
                 } else {
@@ -197,21 +214,24 @@ impl<'a> SymbolDecoder<'a> {
         // functions are reused from the single-ref path (rav1d: `av1_get_ref_ctx` for
         // `uni_comp_ref`, `av1_get_uni_p1_ctx` for `uni_comp_ref_p1`, `av1_get_fwd_ref_2_ctx`
         // for `uni_comp_ref_p2`) even though the CDF storage is separate.
-        let ctx = tile_ctx.single_ref_p1_context(x4, y4);
-        let cdf = self.cdf_context.get_uni_comp_ref_cdf_mut(ctx);
-        let is_bwdref_altref = self.decoder.read_symbol_adaptive(cdf)? == 1;
+        let is_bwdref_altref = self.read_ref_bit(
+            tile_ctx.single_ref_p1_context(x4, y4),
+            CdfContext::get_uni_comp_ref_cdf_mut,
+        )?;
         if is_bwdref_altref {
             return Ok([RefFrame::BwdRef, RefFrame::AltRef]);
         }
-        let ctx = tile_ctx.uni_comp_ref_p1_context(x4, y4);
-        let cdf = self.cdf_context.get_uni_comp_ref_p1_cdf_mut(ctx);
-        let p1 = self.decoder.read_symbol_adaptive(cdf)? == 1;
+        let p1 = self.read_ref_bit(
+            tile_ctx.uni_comp_ref_p1_context(x4, y4),
+            CdfContext::get_uni_comp_ref_p1_cdf_mut,
+        )?;
         if !p1 {
             return Ok([RefFrame::Last, RefFrame::Last2]);
         }
-        let ctx = tile_ctx.single_ref_p5_context(x4, y4);
-        let cdf = self.cdf_context.get_uni_comp_ref_p2_cdf_mut(ctx);
-        let is_golden = self.decoder.read_symbol_adaptive(cdf)? == 1;
+        let is_golden = self.read_ref_bit(
+            tile_ctx.single_ref_p5_context(x4, y4),
+            CdfContext::get_uni_comp_ref_p2_cdf_mut,
+        )?;
         Ok([
             RefFrame::Last,
             if is_golden {
@@ -235,22 +255,25 @@ impl<'a> SymbolDecoder<'a> {
         // reused from the single-ref path (rav1d: `av1_get_fwd_ref_ctx`/`_1_ctx`/`_2_ctx` for
         // `comp_ref`/`comp_ref_p1`/`comp_ref_p2`, `av1_get_bwd_ref_ctx`/`_1_ctx` for
         // `comp_bwdref`/`comp_bwdref_p1`).
-        let ctx = tile_ctx.single_ref_p3_context(x4, y4);
-        let cdf = self.cdf_context.get_comp_ref_cdf_mut(ctx);
-        let fwd_group_b = self.decoder.read_symbol_adaptive(cdf)? == 1;
+        let fwd_group_b = self.read_ref_bit(
+            tile_ctx.single_ref_p3_context(x4, y4),
+            CdfContext::get_comp_ref_cdf_mut,
+        )?;
         let ref0 = if !fwd_group_b {
-            let ctx = tile_ctx.single_ref_p4_context(x4, y4);
-            let cdf = self.cdf_context.get_comp_ref_p1_cdf_mut(ctx);
-            let is_last2 = self.decoder.read_symbol_adaptive(cdf)? == 1;
+            let is_last2 = self.read_ref_bit(
+                tile_ctx.single_ref_p4_context(x4, y4),
+                CdfContext::get_comp_ref_p1_cdf_mut,
+            )?;
             if is_last2 {
                 RefFrame::Last2
             } else {
                 RefFrame::Last
             }
         } else {
-            let ctx = tile_ctx.single_ref_p5_context(x4, y4);
-            let cdf = self.cdf_context.get_comp_ref_p2_cdf_mut(ctx);
-            let is_golden = self.decoder.read_symbol_adaptive(cdf)? == 1;
+            let is_golden = self.read_ref_bit(
+                tile_ctx.single_ref_p5_context(x4, y4),
+                CdfContext::get_comp_ref_p2_cdf_mut,
+            )?;
             if is_golden {
                 RefFrame::Golden
             } else {
@@ -258,13 +281,15 @@ impl<'a> SymbolDecoder<'a> {
             }
         };
 
-        let ctx = tile_ctx.single_ref_p2_context(x4, y4);
-        let cdf = self.cdf_context.get_comp_bwdref_cdf_mut(ctx);
-        let bwd_group_b = self.decoder.read_symbol_adaptive(cdf)? == 1;
+        let bwd_group_b = self.read_ref_bit(
+            tile_ctx.single_ref_p2_context(x4, y4),
+            CdfContext::get_comp_bwdref_cdf_mut,
+        )?;
         let ref1 = if !bwd_group_b {
-            let ctx = tile_ctx.single_ref_p6_context(x4, y4);
-            let cdf = self.cdf_context.get_comp_bwdref_p1_cdf_mut(ctx);
-            let is_altref2 = self.decoder.read_symbol_adaptive(cdf)? == 1;
+            let is_altref2 = self.read_ref_bit(
+                tile_ctx.single_ref_p6_context(x4, y4),
+                CdfContext::get_comp_bwdref_p1_cdf_mut,
+            )?;
             if is_altref2 {
                 RefFrame::AltRef2
             } else {
