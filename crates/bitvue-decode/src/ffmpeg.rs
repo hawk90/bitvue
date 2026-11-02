@@ -60,6 +60,13 @@ pub struct FfmpegDecoder {
     frame_buffer: VecDeque<DecodedFrame>,
     /// Current timestamp
     timestamp: i64,
+    /// True once any `send_data` carried a caller timestamp: frames then keep the value libavcodec
+    /// hands back with them (it follows the packet through the reordering).
+    caller_stamped: bool,
+    /// Without caller timestamps (a bare Annex B stream has none) frames are numbered in output
+    /// order, which is display order. The packet numbers are decode order, so after B-frame
+    /// reordering they would come out shuffled, repeated or missing (#415).
+    next_output_timestamp: i64,
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -107,6 +114,8 @@ impl FfmpegDecoder {
             scaler: None,
             frame_buffer: VecDeque::with_capacity(MAX_FRAME_BUFFER_SIZE),
             timestamp: 0,
+            caller_stamped: false,
+            next_output_timestamp: 0,
         })
     }
 
@@ -148,6 +157,17 @@ impl FfmpegDecoder {
         }
 
         Ok(())
+    }
+
+    /// The timestamp for the next frame out of the decoder; `from_frame` is what libavcodec
+    /// returned with it.
+    fn output_timestamp(&mut self, from_frame: Option<i64>) -> i64 {
+        if self.caller_stamped {
+            return from_frame.unwrap_or(self.timestamp);
+        }
+        let t = self.next_output_timestamp;
+        self.next_output_timestamp += 1;
+        t
     }
 
     /// Convert FFmpeg video frame to DecodedFrame
@@ -243,7 +263,7 @@ impl FfmpegDecoder {
         };
 
         // Get timestamp
-        let timestamp = frame.timestamp().unwrap_or(self.timestamp);
+        let timestamp = self.output_timestamp(frame.timestamp());
 
         debug!(
             "Decoded {} frame: {}x{} {:?}",
@@ -302,7 +322,7 @@ impl FfmpegDecoder {
         };
 
         // Get timestamp
-        let timestamp = yuv.timestamp().unwrap_or(self.timestamp);
+        let timestamp = self.output_timestamp(yuv.timestamp());
 
         debug!(
             "Decoded {} frame (converted): {}x{} {:?}",
@@ -344,6 +364,7 @@ impl Decoder for FfmpegDecoder {
     }
 
     fn send_data(&mut self, data: &[u8], timestamp: Option<i64>) -> Result<()> {
+        self.caller_stamped |= timestamp.is_some();
         self.timestamp = timestamp.unwrap_or(self.timestamp + 1);
 
         // Create packet from data
