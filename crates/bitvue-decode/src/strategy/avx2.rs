@@ -163,7 +163,7 @@ unsafe fn kernel(
                 (l, _mm256_sub_epi32(u, c128), _mm256_sub_epi32(v, c128))
             };
             let scaled = _mm256_slli_epi32(luma, 7);
-            let r = _mm256_add_epi32(scaled, _mm256_mullo_epi32(v, _mm256_set1_epi32(181)));
+            let r = _mm256_add_epi32(scaled, _mm256_mullo_epi32(v, _mm256_set1_epi32(182)));
             let g = _mm256_sub_epi32(
                 _mm256_sub_epi32(scaled, _mm256_mullo_epi32(u, _mm256_set1_epi32(44))),
                 _mm256_mullo_epi32(v, _mm256_set1_epi32(91)),
