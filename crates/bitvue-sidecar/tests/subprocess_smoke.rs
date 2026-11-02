@@ -215,29 +215,46 @@ fn request_past_its_deadline_gets_an_error_and_the_sidecar_stays_alive() {
     );
     let _ = read_frame_blocking(&mut stdout);
 
-    write_request(
-        &mut stdin,
-        4,
-        "get_thumbnails",
-        serde_json::json!({"stream": "A", "frame_indices": (0..50).collect::<Vec<u32>>()}),
-    );
-    let (_, body) = read_frame_blocking(&mut stdout);
-    let response: Response = serde_json::from_slice(&body).unwrap();
-    assert_eq!(response.id, 4);
-    assert!(!response.ok, "expected a deadline error, got {response:?}");
-    let message = response.error.unwrap().message;
-    assert!(message.contains("deadline"), "unexpected error: {message}");
+    // The deadline applies to every request, `open_stream` and `index_stream` included, so on a
+    // slow machine they can be answered with a deadline error while their abandoned workers go on
+    // and finish later (#430). Until then `get_thumbnails` finds the stream not open or not
+    // indexed. Retry until the deadline error itself comes back; the 50-frame decode cannot finish
+    // in 1 ms once the stream is ready.
+    let started = std::time::Instant::now();
+    let mut id = 4;
+    loop {
+        write_request(
+            &mut stdin,
+            id,
+            "get_thumbnails",
+            serde_json::json!({"stream": "A", "frame_indices": (0..50).collect::<Vec<u32>>()}),
+        );
+        let (_, body) = read_frame_blocking(&mut stdout);
+        let response: Response = serde_json::from_slice(&body).unwrap();
+        assert_eq!(response.id, id);
+        assert!(!response.ok, "expected a deadline error, got {response:?}");
+        let last = response.error.unwrap().message;
+        id += 1;
+        if last.contains("deadline") {
+            break;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(30),
+            "no deadline error within 30 s, last error: {last}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 
     // Still alive and answering.
     write_request(
         &mut stdin,
-        5,
+        id,
         "cancel_request",
         serde_json::json!({"target_id": 999}),
     );
     let (_, body) = read_frame_blocking(&mut stdout);
     let response: Response = serde_json::from_slice(&body).unwrap();
-    assert_eq!(response.id, 5);
+    assert_eq!(response.id, id);
     assert!(response.ok, "{response:?}");
 
     drop(stdin);
