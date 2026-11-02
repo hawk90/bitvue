@@ -1391,7 +1391,7 @@ fn test_parse_nal_units_multiple_nals() {
     data.extend_from_slice(&[0x00; 8]);
 
     // Third NAL: AUD (Access Unit Delimiter)
-    data.extend_from_slice(&[0x00, 0x00, 0x01, 0x46]); // NAL header
+    data.extend_from_slice(&[0x00, 0x00, 0x01, 0x46, 0x01]); // NAL header (temporal_id_plus1 = 1)
     data.extend_from_slice(&[0x00; 8]);
 
     let result = parse_nal_units(&data);

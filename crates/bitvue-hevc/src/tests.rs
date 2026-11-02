@@ -321,6 +321,7 @@ fn test_parse_hevc_quick() {
     data[1] = 0x00;
     data[2] = 0x01;
     data[3] = 0x42; // SPS
+    data[4] = 0x01; // layer_id = 0, temporal_id_plus1 = 1 (0 is not allowed there)
 
     let result = parse_hevc_quick(&data);
     assert!(result.is_ok());

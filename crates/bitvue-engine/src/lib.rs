@@ -8,6 +8,7 @@
 
 #![allow(ambiguous_glob_reexports)]
 
+pub mod annex_b;
 pub mod bitreader;
 pub mod codec_error;
 pub mod error;
