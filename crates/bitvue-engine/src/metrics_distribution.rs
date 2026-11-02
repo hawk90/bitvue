@@ -705,37 +705,7 @@ impl MetricCalculator {
             return None;
         }
 
-        let n = reference.len() as f64;
-
-        // Calculate means
-        let mean_r: f64 = reference.iter().map(|&x| x as f64).sum::<f64>() / n;
-        let mean_d: f64 = distorted.iter().map(|&x| x as f64).sum::<f64>() / n;
-
-        // Calculate variances and covariance
-        let mut var_r = 0.0;
-        let mut var_d = 0.0;
-        let mut covar = 0.0;
-
-        for (&r, &d) in reference.iter().zip(distorted.iter()) {
-            let r_diff = r as f64 - mean_r;
-            let d_diff = d as f64 - mean_d;
-            var_r += r_diff * r_diff;
-            var_d += d_diff * d_diff;
-            covar += r_diff * d_diff;
-        }
-
-        var_r /= n - 1.0;
-        var_d /= n - 1.0;
-        covar /= n - 1.0;
-
-        // SSIM constants
-        let c1 = (0.01 * self.max_value as f64).powi(2);
-        let c2 = (0.03 * self.max_value as f64).powi(2);
-
-        let ssim = ((2.0 * mean_r * mean_d + c1) * (2.0 * covar + c2))
-            / ((mean_r.powi(2) + mean_d.powi(2) + c1) * (var_r + var_d + c2));
-
-        Some(ssim as f32)
+        Some(crate::block_metrics::global_ssim(reference, distorted, self.max_value) as f32)
     }
 
     /// Calculate all metrics for a frame

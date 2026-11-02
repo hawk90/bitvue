@@ -117,6 +117,26 @@ fn test_block_metrics_calculator_mse() {
     assert!((mse2 - 4.0).abs() < 0.001); // 2^2 = 4
 }
 
+/// Value computed independently (Python, textbook formula with sample variances).
+#[test]
+fn ssim_block_matches_an_independent_computation() {
+    let a = [10u8, 20, 30, 40, 50, 60, 70, 80, 90];
+    let b = [12u8, 18, 35, 38, 55, 58, 72, 85, 88];
+    let eight = BlockMetricsCalculator::new(16, 8).calculate_ssim_block(&a, &b);
+    let ten = BlockMetricsCalculator::new(16, 10).calculate_ssim_block(&a, &b);
+    assert!((eight - 0.992_884_8).abs() < 1e-6, "{eight}");
+    assert!((ten - 0.995_350_6).abs() < 1e-6, "{ten}");
+    // lengths that differ, or nothing at all, score 0
+    assert_eq!(
+        BlockMetricsCalculator::new(16, 8).calculate_ssim_block(&a, &b[..8]),
+        0.0
+    );
+    assert_eq!(
+        BlockMetricsCalculator::new(16, 8).calculate_ssim_block(&[], &[]),
+        0.0
+    );
+}
+
 #[test]
 fn test_block_metrics_calculator_ssim() {
     let calc = BlockMetricsCalculator::new(16, 8);

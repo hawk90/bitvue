@@ -382,37 +382,7 @@ impl BlockMetricsCalculator {
             return 0.0;
         }
 
-        let n = src.len() as f64;
-
-        // Calculate means
-        let mean_s: f64 = src.iter().map(|&x| x as f64).sum::<f64>() / n;
-        let mean_r: f64 = ref_block.iter().map(|&x| x as f64).sum::<f64>() / n;
-
-        // Calculate variances and covariance
-        let mut var_s = 0.0;
-        let mut var_r = 0.0;
-        let mut covar = 0.0;
-
-        for (&s, &r) in src.iter().zip(ref_block.iter()) {
-            let s_diff = s as f64 - mean_s;
-            let r_diff = r as f64 - mean_r;
-            var_s += s_diff * s_diff;
-            var_r += r_diff * r_diff;
-            covar += s_diff * r_diff;
-        }
-
-        var_s /= n - 1.0;
-        var_r /= n - 1.0;
-        covar /= n - 1.0;
-
-        // SSIM constants
-        let c1 = (0.01 * self.max_value as f64).powi(2);
-        let c2 = (0.03 * self.max_value as f64).powi(2);
-
-        let ssim = ((2.0 * mean_s * mean_r + c1) * (2.0 * covar + c2))
-            / ((mean_s.powi(2) + mean_r.powi(2) + c1) * (var_s + var_r + c2));
-
-        ssim as f32
+        global_ssim(src, ref_block, self.max_value) as f32
     }
 
     /// Calculate metric for a block
@@ -678,6 +648,34 @@ impl MultiFrameBlockMetrics {
             threshold,
         })
     }
+}
+
+/// Simplified (single-window) SSIM of two equally long, non-empty sample slices: means, sample
+/// variances and covariance over the whole slice, then the usual formula with `K1 = 0.01`,
+/// `K2 = 0.03` of `max_value`. One sample gives NaN (the sample variance divides by `n - 1`).
+pub(crate) fn global_ssim(a: &[u8], b: &[u8], max_value: f32) -> f64 {
+    let n = a.len() as f64;
+    let mean_a: f64 = a.iter().map(|&x| x as f64).sum::<f64>() / n;
+    let mean_b: f64 = b.iter().map(|&x| x as f64).sum::<f64>() / n;
+
+    let mut var_a = 0.0;
+    let mut var_b = 0.0;
+    let mut covar = 0.0;
+    for (&x, &y) in a.iter().zip(b.iter()) {
+        let dx = x as f64 - mean_a;
+        let dy = y as f64 - mean_b;
+        var_a += dx * dx;
+        var_b += dy * dy;
+        covar += dx * dy;
+    }
+    var_a /= n - 1.0;
+    var_b /= n - 1.0;
+    covar /= n - 1.0;
+
+    let c1 = (0.01 * max_value as f64).powi(2);
+    let c2 = (0.03 * max_value as f64).powi(2);
+    ((2.0 * mean_a * mean_b + c1) * (2.0 * covar + c2))
+        / ((mean_a.powi(2) + mean_b.powi(2) + c1) * (var_a + var_b + c2))
 }
 
 /// Comprehensive test suite with Arrange-Act-Assert pattern

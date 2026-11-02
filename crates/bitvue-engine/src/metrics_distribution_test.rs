@@ -889,6 +889,19 @@ mod metric_calculator_tests {
         assert_eq!(mse, 0.0);
     }
 
+    /// Value computed independently (Python, textbook formula with sample variances).
+    #[test]
+    fn ssim_y_matches_an_independent_computation() {
+        let a = [10u8, 20, 30, 40, 50, 60, 70, 80, 90];
+        let b = [12u8, 18, 35, 38, 55, 58, 72, 85, 88];
+        let eight = MetricCalculator::new(8).calculate_ssim_y(&a, &b).unwrap();
+        let ten = MetricCalculator::new(10).calculate_ssim_y(&a, &b).unwrap();
+        assert!((eight - 0.992_884_8).abs() < 1e-6, "{eight}");
+        assert!((ten - 0.995_350_6).abs() < 1e-6, "{ten}");
+        assert_eq!(MetricCalculator::new(8).calculate_ssim_y(&a, &b[..8]), None);
+        assert_eq!(MetricCalculator::new(8).calculate_ssim_y(&[], &[]), None);
+    }
+
     #[test]
     fn test_metric_calculator_calculate_ssim_y_perfect() {
         // Arrange
