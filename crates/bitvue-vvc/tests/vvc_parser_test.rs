@@ -102,7 +102,8 @@ fn test_vvc_parameter_set_detection() {
 #[test]
 fn test_vvc_trail_frame_detection() {
     // Test trailing picture (most common frame type)
-    let data = vec![0x00, 0x00, 0x00, 0x01, 0b00000000, 0x00]; // TRAIL_NUT (type 0)
+    // TRAIL_NUT (type 0); the header's last 3 bits (temporal_id_plus1) must not be 0
+    let data = vec![0x00, 0x00, 0x00, 0x01, 0b00000000, 0x01];
 
     let result = parse_nal_units(&data);
     assert!(result.is_ok());

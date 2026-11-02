@@ -352,74 +352,14 @@ pub fn parse_nal_header(data: &[u8]) -> Result<NalUnitHeader> {
     })
 }
 
-/// Find NAL unit start codes in data.
-/// Returns offsets of each NAL unit (after the start code).
-///
-/// Security: Limits scan distance to prevent DoS via malformed files.
+/// Find the NAL units of an Annex B byte stream: `(start, end)` byte ranges, `start` just past the
+/// start code, `end` before the zero bytes that precede the next one (see
+/// [`bitvue_engine::annex_b`] for the exact rule).
 pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
-    // Maximum scan distance to prevent O(n²) DoS attacks
-    // Most video files have NAL units every few KB to few MB
-    const MAX_SCAN_DISTANCE: usize = 100 * 1024 * 1024; // 100MB
-
-    let mut units = Vec::new();
-    let mut i = 0;
-
-    while i < data.len() {
-        // Look for start code: 0x000001 or 0x00000001
-        if i + 2 < data.len() && data[i] == 0x00 && data[i + 1] == 0x00 {
-            let nal_start = if i + 3 < data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
-                // 4-byte start code
-                i + 4
-            } else if data[i + 2] == 0x01 {
-                // 3-byte start code
-                i + 3
-            } else {
-                i += 1;
-                continue;
-            };
-
-            // Find the end of this NAL unit (next start code or end of data)
-            // Limit scan to prevent DoS via files with no subsequent start codes
-            let max_scan = (nal_start + MAX_SCAN_DISTANCE).min(data.len());
-            let mut nal_end = max_scan; // Default to max scan distance if no next NAL found
-            let mut j = nal_start;
-
-            while j + 2 < max_scan {
-                if data[j] == 0x00
-                    && data[j + 1] == 0x00
-                    && ((j + 2 < max_scan && data[j + 2] == 0x01)
-                        || (j + 3 < max_scan && data[j + 2] == 0x00 && data[j + 3] == 0x01))
-                {
-                    nal_end = j;
-                    break;
-                }
-                j += 1;
-            }
-
-            // Validate NAL unit range before adding
-            // Defense in depth: nal_start should be < nal_end <= data.len()
-            if nal_start >= data.len() || nal_end > data.len() || nal_end <= nal_start {
-                abseil::vlog!(
-                    1,
-                    "Invalid NAL unit range: start={}, end={}, data_len={}",
-                    nal_start,
-                    nal_end,
-                    data.len()
-                );
-                i += 1;
-                continue;
-            }
-
-            units.push((nal_start, nal_end));
-            // Resume at the end of this NAL unit: a NAL unit can be shorter than its start code
-            // (end of sequence is 2 bytes), and resuming inside it skipped the next start code.
-            i = nal_end;
-        } else {
-            i += 1;
-        }
-    }
-
-    units
+    bitvue_engine::annex_b::find_nal_ranges(data)
+        .into_iter()
+        .map(|unit| (unit.start, unit.end))
+        .collect()
 }
 
 /// Parse all NAL units from Annex B byte stream.
