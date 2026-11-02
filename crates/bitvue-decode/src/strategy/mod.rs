@@ -67,7 +67,7 @@ impl StrategyCapabilities {
     /// Supports 8, 10, and 12-bit video with SIMD acceleration.
     pub const fn avx2() -> Self {
         Self {
-            speedup_factor: 1.0, // converts with the scalar code for now, see strategy/avx2.rs
+            speedup_factor: 1.0, // exact-match kernel, speed not measured yet (strategy/avx2.rs)
             supports_10bit: true,
             supports_12bit: true,
             max_resolution: (7680, 4320),
