@@ -15,6 +15,7 @@ and exits. **Read the PNG** (Read tool) -- a blank or wrong frame is a failure.
 ```bash
 cargo build -p bitvue-sidecar                       # sidecar the app spawns (target/debug/bitvue-sidecar)
 cd bitvue-desktop && npm run build:electron         # tsc + copy; frontend/dist must exist (cd frontend && npm run build)
+BITVUE_ELECTRON_OFFSCREEN=1 \                       # always: see Gotchas (a visible window gets your real mouse/keys)
 BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH=$PWD/../test_data/av1_aomenc_testsrc2.ivf \
 BITVUE_ELECTRON_SCREENSHOT=/tmp/shot.png \
   npx electron .                                     # exit 0 and "[screenshot] saved to" = captured
@@ -55,9 +56,13 @@ AV1 has F1 Coding Flow ... F5 Loop Filter, F6 CDEF, F10 YUV and overlays HM/BT/E
 
 ## Gotchas
 
-- **The capture races with key/click hooks (#447).** About 1 in 8 runs shows the state before the key was applied
-  (or fails with `UnknownVizError`). Take the same shot at least 3 times and compare file sizes or `cmp` before
-  concluding anything from a difference.
+- **Use `BITVUE_ELECTRON_OFFSCREEN=1`.** In the default window mode the window really appears on screen, so your own
+  mouse and keyboard land in it: hover tooltips get captured and the current frame can change by itself (#447). With
+  offscreen the same shot came out byte-identical every time. Still take each shot twice and compare sizes.
+- **Moving to a frame:** use `KEY=ArrowRight,ArrowRight,...` (works). `CLICK_SELECTOR` on a thumbnail only moves the
+  timeline cursor, not the player frame. Keys run in order, so `KEY=ArrowRight,ArrowRight,F2` = frame 2 in Predictions.
+- **Tab labels are the DOM text, not what you see:** CSS shows `REFS` but the text is `Refs`, so use
+  `CLICK_TAB=Refs` / `Stats` / `Search` / `Frame`. A wrong label aborts the capture ("tab not found").
 - A clip the decoder refuses (for example a stream with its sequence header removed) opens with every frame
   failing to load; the screenshot proves nothing about data in that case.
 - Native menu items are not DOM elements: use `DISPATCH`, not `CLICK_TAB`.
