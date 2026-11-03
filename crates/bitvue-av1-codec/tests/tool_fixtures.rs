@@ -23,6 +23,7 @@ const SEGMENTATION_PALETTE: &[u8] =
 const SKIPMODE_PALETTE: &[u8] =
     include_bytes!("../../../test_data/av1_aomenc_skipmode_palette.ivf");
 const INTRABC_ALLOWED: &[u8] = include_bytes!("../../../test_data/av1_svtav1_intrabc_allowed.ivf");
+const INTRABC_GLYPHS: &[u8] = include_bytes!("../../../test_data/av1_aomenc_intrabc_glyphs.ivf");
 const LOSSLESS_TILED: &[u8] = include_bytes!("../../../test_data/av1_aomenc_lossless_tiled.ivf");
 const LOSSLESS_TESTSRC2: &[u8] =
     include_bytes!("../../../test_data/av1_aomenc_lossless_testsrc2.ivf");
@@ -155,8 +156,7 @@ fn skip_mode_is_decoded_in_step_on_a_verified_inter_frame() {
 
 /// SVT-AV1 `--scm 1 --enable-intrabc 1`: the key frame sets `allow_intrabc` (so `use_intrabc` is
 /// read for every block and the loop filters, cdef and loop restoration are off) and is verified.
-/// No block of the clip actually uses intra block copy: no available encoder produced one for
-/// the synthetic sources tried, so the copy itself is still untested on a real stream.
+/// No block of this clip uses intra block copy; `INTRABC_GLYPHS` below has the ones that do.
 #[test]
 fn a_frame_that_allows_intrabc_is_decoded_in_step() {
     let f = frames(INTRABC_ALLOWED);
@@ -170,6 +170,40 @@ fn a_frame_that_allows_intrabc_is_decoded_in_step() {
         5
     );
     check_digest("intrabc_allowed", &f, 15559747495860676135);
+}
+
+/// aomenc `--tune-content=screen` on a synthetic text page (a handful of 8x8 glyphs repeated on a flat
+/// background): both key frames pick intra block copy for most blocks (231 of 243). Each block's
+/// displacement vector is read through the intrabc reference stack and clipped to the decoded area,
+/// and the frames are verified, so those reads are in step with the encoder's.
+#[test]
+fn blocks_that_copy_from_the_decoded_area_are_read_in_step() {
+    let f = frames(INTRABC_GLYPHS);
+    assert_eq!(f.len(), 2);
+    assert_eq!(verified(&f), vec![0, 1]);
+    let (width, height) = (320, 192);
+    for (i, frame) in f.iter().enumerate() {
+        assert!(frame.parsed.allow_intrabc, "frame {i}");
+        assert_eq!(frame.units.len(), 243, "frame {i}");
+        let copies: Vec<_> = frame.units.iter().filter(|u| u.use_intrabc).collect();
+        assert_eq!(copies.len(), 231, "frame {i}");
+        for u in copies {
+            let v = u.mv[0];
+            // Whole-sample vectors (1/8 units) whose source lies inside the frame and is already
+            // decoded: entirely above the block or entirely to its left.
+            assert!(v.x % 8 == 0 && v.y % 8 == 0, "frame {i}: {u:?}");
+            let (sx, sy) = (u.x as i32 + v.x / 8, u.y as i32 + v.y / 8);
+            assert!(sx >= 0 && sy >= 0, "frame {i}: {u:?}");
+            assert!(
+                sx + u.width as i32 <= width && sy + u.height as i32 <= height,
+                "frame {i}: {u:?}"
+            );
+            let above = sy + u.height as i32 <= u.y as i32;
+            let left = sx + u.width as i32 <= u.x as i32;
+            assert!(above || left, "frame {i}: {u:?}");
+        }
+    }
+    check_digest("intrabc_glyphs", &f, 1098898197756232468);
 }
 
 /// aomenc `--lossless=1` (CodedLossless: 4x4 Walsh-Hadamard transforms in every plane). Chroma used

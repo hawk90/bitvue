@@ -55,7 +55,8 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 | `av1_aomenc_114x136_palette.ivf` | aomenc 3.15.2, 114x136, 2 frames of `testsrc2`, palette on and most other tools off: blocks reaching past the right edge (`oracle_test.rs`) | commands below |
 | `av1_aomenc_segmentation_palette.ivf` | aomenc, 128x128, 8 frames of `testsrc2`, `--aq-mode=1`: segmentation on every frame (78 key-frame blocks outside segment 0) and 63 palette blocks on the key frame (`tests/tool_fixtures.rs`) | commands below |
 | `av1_aomenc_skipmode_palette.ivf` | aomenc, 128x128, 8 frames of a 4x4 tiling of a 32x32 `testsrc2` crop, `--tune-content=screen`: 8 palette blocks on the key frame, `skip_mode_present` on frame 4 with 4 skip-mode blocks (`tests/tool_fixtures.rs`) | commands below |
-| `av1_svtav1_intrabc_allowed.ivf` | SVT-AV1 4.2.0, 128x128, 3 frames of the same tiling, `--scm 1 --enable-intrabc 1`: the key frame sets `allow_intrabc` (no block uses it) (`tests/tool_fixtures.rs`) | commands below |
+| `av1_svtav1_intrabc_allowed.ivf` | SVT-AV1 4.2.0, 128x128, 3 frames of the same tiling, `--scm 1 --enable-intrabc 1`: the key frame sets `allow_intrabc` (no block uses it; the copy itself is covered by `av1_aomenc_intrabc_glyphs.ivf`) (`tests/tool_fixtures.rs`) | commands below |
+| `av1_aomenc_intrabc_glyphs.ivf` | aomenc 3.15.2, 320x192, 2 key frames of a synthetic text page (12 random 8x8 two-level glyphs repeated on a flat background), `--tune-content=screen`: 231 of 243 blocks per frame use intra block copy, both frames `Verified` (the only clip with blocks that use it; `tests/tool_fixtures.rs`) | commands below |
 | `av1_aomenc_lossless_tiled.ivf`, `av1_aomenc_lossless_testsrc2.ivf` | aomenc, 128x128, 3 frames, `--lossless=1` (CodedLossless): the tiled pattern (504 bytes) and `testsrc2` (11 KB), 64x64 superblocks. Regression for #388 (chroma cut into 4x4 transform blocks); every frame decodes as `Verified` (`tests/tool_fixtures.rs`) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |
 | `avc_test.h264`, `hevc_test.hevc`, `vp9_test.ivf` | 320x240 | x264 / x265 / libvpx; content and command not recorded |
@@ -131,7 +132,31 @@ aomenc src.y4m --ivf -o av1_aomenc_lossless_testsrc2.ivf --limit=3 --cpu-used=1 
 
 (`src.y4m` here is the 128x128 `testsrc2` source of the commands above.)
 
-No encoder tried produced a block that actually uses intra block copy from these sources (the flag is set, no block uses it).
+`av1_aomenc_intrabc_glyphs.ivf` (the sources above never made an encoder pick intra block copy; a text-like page of repeated glyphs does):
+
+```bash
+python3 - <<'PY'
+import random
+random.seed(1)
+W, H = 320, 192
+glyphs = [[[random.choice([40, 215]) for _ in range(8)] for _ in range(8)] for _ in range(12)]
+Y = [[235] * W for _ in range(H)]
+for r in range(0, H, 16):
+    for c in range(0, W, 8):
+        if random.random() < 0.8:
+            g = random.choice(glyphs)
+            for y in range(8):
+                for x in range(8):
+                    Y[r + 4 + y][c + x] = g[y][x]
+with open('doc.y4m', 'wb') as f:
+    f.write(f"YUV4MPEG2 W{W} H{H} F30:1 Ip A1:1 C420jpeg\n".encode())
+    for _ in range(2):
+        f.write(b"FRAME\n")
+        f.write(bytes(v for row in Y for v in row))
+        f.write(bytes([128]) * (W * H // 2))
+PY
+aomenc doc.y4m --ivf -o av1_aomenc_intrabc_glyphs.ivf --limit=2 --cpu-used=2 --tune-content=screen --enable-intrabc=1 --end-usage=q --cq-level=20 --lag-in-frames=0 --kf-max-dist=0
+```
 
 The dav1d digests in `oracle_test.rs` come from a dav1d build whose `ctx_norm` in `src/msac.c` prints
 `rng cnt dif` after every symbol (C path, `-Denable_asm=false`), reduced per frame to the symbol count
