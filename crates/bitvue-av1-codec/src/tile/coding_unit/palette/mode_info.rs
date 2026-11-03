@@ -26,48 +26,32 @@ pub(super) fn build_pal_cache(
 ) -> ([u16; 16], usize) {
     let mut cache = [0u16; 16];
     let mut n_cache = 0usize;
-    let (mut li, mut lc) = (0usize, left_count as usize);
-    let (mut ai, mut ac) = (0usize, above_count as usize);
+    // Appends `color` unless it repeats the last entry (both lists are ascending, so equal colours
+    // from the two neighbours arrive next to each other).
+    let mut push = |color: u16| {
+        if n_cache == 0 || cache[n_cache - 1] != color {
+            cache[n_cache] = color;
+            n_cache += 1;
+        }
+    };
 
-    while lc > 0 && ac > 0 {
-        let (lv, av) = (left_colors[li], above_colors[ai]);
+    let mut left = &left_colors[..left_count as usize];
+    let mut above = &above_colors[..above_count as usize];
+    while let (Some(&lv), Some(&av)) = (left.first(), above.first()) {
         if lv < av {
-            if n_cache == 0 || cache[n_cache - 1] != lv {
-                cache[n_cache] = lv;
-                n_cache += 1;
-            }
-            li += 1;
-            lc -= 1;
+            push(lv);
+            left = &left[1..];
         } else {
             if av == lv {
-                li += 1;
-                lc -= 1;
+                left = &left[1..];
             }
-            if n_cache == 0 || cache[n_cache - 1] != av {
-                cache[n_cache] = av;
-                n_cache += 1;
-            }
-            ai += 1;
-            ac -= 1;
+            push(av);
+            above = &above[1..];
         }
     }
-    while lc > 0 {
-        let lv = left_colors[li];
-        if n_cache == 0 || cache[n_cache - 1] != lv {
-            cache[n_cache] = lv;
-            n_cache += 1;
-        }
-        li += 1;
-        lc -= 1;
-    }
-    while ac > 0 {
-        let av = above_colors[ai];
-        if n_cache == 0 || cache[n_cache - 1] != av {
-            cache[n_cache] = av;
-            n_cache += 1;
-        }
-        ai += 1;
-        ac -= 1;
+    // One list is used up; the rest of the other follows.
+    for &color in left.iter().chain(above) {
+        push(color);
     }
 
     (cache, n_cache)
