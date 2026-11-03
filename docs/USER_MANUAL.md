@@ -7,7 +7,7 @@
 |---|---|
 | 기준 | VQ Analyzer User Guide v7.10.0 (https://cdn.vicuesoft.com/vqAnalyzer/docs/VQAnalyzerUserGuide.html), 2026-11-04 열람. 의도와 동작을 맞추고 픽셀 디자인은 맞추지 않는다(`UX_PARITY_MATRIX.md` §0) |
 | 범위 | AV1 (IVF). 다른 코덱은 아직 쓰지 않았다 |
-| 확인 방법 | 데스크톱 앱을 직접 띄워 캡처 (`.claude/skills/run-desktop/SKILL.md`). 같은 조건 2~3회, 결과가 같은 것만 채택(#447) |
+| 확인 방법 | 데스크톱 앱을 `BITVUE_ELECTRON_OFFSCREEN=1`로 띄워 캡처 (`.claude/skills/run-desktop/SKILL.md`). 같은 조건 2회 이상 크기가 같은 것만 채택. 창 모드는 실제 마우스/키보드가 섞여 결과가 흔들림(#447) |
 | 확인 클립 | `test_data/av1_aomenc_testsrc2.ivf` 프레임 0 (아래 §0 기준값) |
 | 표기 | **확인**: 앱에서 직접 봄 · **미확인**: 아직 안 봄 · **차이**: 기준과 다름(이슈 번호) · 가이드 용어는 원문 그대로 |
 
@@ -41,7 +41,8 @@
 | 프레임 타입 값 | 화면 타입 | 0, 2, 5, 8번이 빨강(I). 2, 5, 8번은 실제 Inter | **차이 #454** |
 | 레이블 | 디코드/표시 순서 번호, 타입, POC, 레이어 | 썸네일에 `D:n`, `C:n` 배지와 타입 글자 | 확인(구성) |
 | 현재 픽처 | 빨간 테두리 | 현재 프레임이 흰 테두리 | 확인(표시 방식이 다름) |
-| 클릭 | 픽처를 디코딩하고 현재로 만듦 | 썸네일 클릭 시 타임라인은 바뀌는데 플레이어는 이전 프레임에 머무는 경우가 있음 | 미확정 (#447에 기록) |
+| 클릭 | 픽처를 디코딩하고 현재로 만듦 | 하네스의 합성 클릭은 타임라인 커서만 옮김. 사람이 직접 클릭했을 때는 프레임 전체가 이동한 것으로 보임(창 모드 캡처에서 우연히 관찰, 직접 확인은 안 함) | 미확인 (#447) |
+| 참조 화살표 | 현재 프레임에서 참조 프레임으로 초록 화살표 | 현재가 P일 때 필름스트립에 `REF0`~`REF6` 레이블의 화살표(`REF0`~`REF5`는 빨간 선 하나로 묶여 프레임 0을, `REF6`은 초록 선으로 프레임 1을 가리킴. 빨강/초록의 의미는 미확인) | 확인 |
 | Run full stream analysis | 파란 둥근 버튼. 통계, 평균 블록 QP, 프레임 오류를 채움 | 캡처 화면에서는 보이지 않음(메뉴와 다른 창은 안 봄) | 미확인 |
 | Buffer view | 프레임 크기 막대 + 평균 QP(오른쪽 축) | | 미확인 |
 | Hierarchy / Metric view | B-피라미드 / PSNR·SSIM | | 미확인 |
@@ -51,7 +52,7 @@
 | 키 | 모드 | 기준: 화면에 나와야 하는 것 | 앱에서 확인 (프레임 0) | 상태 |
 |---|---|---|---|---|
 | F1 | Coding Flow | 슈퍼블록 디코드 순서(노랑), 파티션 경계(파랑), 타일 경계(굵은 초록), 세그먼트별 색. 상세 모드 없음 | 파티션 경계, `Blocks: 311`, `SB: 128px`. 노란 번호와 타일선은 보이지 않음. 영상 없음 | 부분 확인. 영상 **#456** |
-| F2 | Predictions | 블록 분할, 인트라/인터 모드, MV(1/8 pel, L/G/A), 필터 종류 | 블록 격자를 인트라 모드별 색으로 칠함(범례 D45/SmoothV/Paeth/CFL), `Blocks: 300`, `Modes: 7`. MV 없음(키 프레임). 영상 없음 | 부분 확인. 클릭/상세 미확인 |
+| F2 | Predictions | 블록 분할, 인트라/인터 모드, MV(1/8 pel, L/G/A), 필터 종류 | 프레임 0: 블록 격자를 인트라 모드별 색으로 칠함(범례 D45/SmoothV/Paeth/CFL), `Blocks: 300`, `Modes: 7`. 프레임 3(P): 인터 모드 색(범례 NewMV/NearMV/Near/`Inter69`), `Modes: 5`. 영상 없음 | 부분 확인. 이름 없는 모드 **#460**. 클릭/상세/MV 화살표 미확인 |
 | F3 | Transform | 블록·변환 경계, "Skip", `Pic`으로 잔차 영상 | 변환 크기별 색 격자(범례 8x8 (78), 16x16 (27), 32x32 (78), 64x64 (88)), `Types: 5`. Skip·잔차 없음 | 부분 확인 |
 | F4 | Reconstruction | 루프 필터 전 복원 샘플, 블록 경계, "Skip" | **검은 화면** | **차이 #456** |
 | F5 | Loop Filter | 처리된 경계를 1샘플 두께로: 초록 16-tap, 노랑 8-tap, 주황 4-tap, 빨강 필터링 안 됨 | 영상 위가 아니라 숫자 패널 "Deblocking Filter Analysis"(Strong BS 2 / Weak BS 1 등 HEVC 용어). 값은 0(이 프레임은 필터 없음) | **차이 #457** |
@@ -80,8 +81,9 @@
 |---|---|---|---|
 | Syntax Info: OBU | 단위 목록(`Pos`, `Unit Type`, `LId`, `TID`, `Size`), 접기/펼치기로 신택스 값과 비트 수 | SYNTAX DETAIL > FRAME에 `Frame: 0`, `Type: I`, `obu_0` 트리 | 미확인 (내용 비교 전) |
 | Syntax Info: Header(Frame) | 프레임 헤더의 모든 신택스, 헤더 크기 | | 미확인 |
-| Syntax Info: Refs | 8칸 참조 풀(Last/Golden/AltRef, refresh_frame_flags), 세그멘테이션, 컨텍스트 4칸, 루프 필터 delta | `REFS` 탭 | 미확인 |
-| Syntax Info: Stats | 픽처 통계, 디지털, min/max/평균 QP·MV, 파이 차트 | `STATS` 탭, 하단 STATS의 Frame Types | 부분: Frame Types가 `P: 8` (실제 P 11개) → #454 |
+| Syntax Info: Refs | 8칸 참조 풀(Last/Golden/AltRef, refresh_frame_flags), 세그멘테이션, 컨텍스트 4칸, 루프 필터 delta | `REFS` 탭: 프레임 0에서 "데이터 없음" 아이콘만 표시(4/4). 인터 프레임은 미확인 | 부분 확인 |
+| Syntax Info: Stats | 픽처 통계, 디지털, min/max/평균 QP·MV, 파이 차트 | `STATS` 탭: `Current Frame` 아래 `Index`부터 시작(펼쳐진 영역이 좁아 두세 줄만 보임). 하단 STATS의 Frame Types는 `P: 8` (실제 P 11개) | 부분 확인. 타입 집계 **#454** |
+| Syntax Info: Search | (가이드에 대응 항목 없음) | `SEARCH` 탭: 입력창 "Search by frame type, number, or PTS..." | 확인(구성). 동작 미확인 |
 | Selection Info | 프레임 크기, 타일/슈퍼블록 위치, 세그먼트, 블록 좌표, 분할/예측 모드, 변환 크기·종류, MV | | 미확인 |
 | Unit Info / HEX View | 선택 단위의 원시 바이트, `B`로 16진/2진 | | 미확인 |
 | Status / Errors | 진행·경고, 오류 시 빨강, 더블클릭하면 해당 블록 강조 | DIAGNOSTICS: `All (0)`, 오류/경고/정보 0, 체크 표시 | 확인(0건일 때) |
