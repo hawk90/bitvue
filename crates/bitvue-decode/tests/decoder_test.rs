@@ -103,6 +103,44 @@ fn the_frame_type_is_the_shown_frames_and_unknown_when_the_packet_does_not_say()
     assert_eq!(types, TESTSRC2_SHOWN_TYPES);
 }
 
+/// `base_q_idx` of the shown frame of each packet of `av1_aomenc_testsrc2.ivf` (read with
+/// `parse_frame_header_basic`; the same parser as the types above). Packets 1 and 6 start with
+/// hidden frames whose own `base_q_idx` (128, 112) must not be reported; packets 2, 5 and 8
+/// repeat a frame and carry no quantiser.
+const TESTSRC2_SHOWN_QPS: [Option<u8>; 12] = [
+    Some(128),
+    Some(209),
+    None,
+    Some(129),
+    Some(129),
+    None,
+    Some(217),
+    Some(233),
+    None,
+    Some(177),
+    Some(17),
+    Some(225),
+];
+
+#[test]
+fn qp_avg_is_the_shown_frames_not_a_hidden_frame_sent_before_it() {
+    let data = ivf("av1_aomenc_testsrc2.ivf");
+    let mut decoder = Av1Decoder::new().unwrap();
+    let mut frames = Vec::new();
+    for (i, packet) in packets(&data).iter().enumerate() {
+        decoder.send_data(packet, i as i64).unwrap();
+        drain(&mut decoder, &mut frames);
+    }
+    decoder.flush();
+    drain(&mut decoder, &mut frames);
+    let qps: Vec<_> = frames.iter().map(|f| f.qp_avg).collect();
+    assert_eq!(qps, TESTSRC2_SHOWN_QPS);
+
+    let whole = Av1Decoder::new().unwrap().decode_all(&data).unwrap();
+    let qps: Vec<_> = whole.iter().map(|f| f.qp_avg).collect();
+    assert_eq!(qps, TESTSRC2_SHOWN_QPS);
+}
+
 #[test]
 fn packet_by_packet_and_whole_file_decoding_give_the_same_pixels() {
     let data = ivf("av1_aomenc_testsrc2.ivf");

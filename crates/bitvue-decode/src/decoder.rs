@@ -269,32 +269,15 @@ impl crate::traits::Decoder for Av1Decoder {
 
 /// Extract `base_q_idx` from raw AV1 OBU data.
 ///
-/// Searches the OBU stream for a Frame or FrameHeader OBU and returns
-/// `base_q_idx` as a `u8`. Returns `None` if no frame header is found or if
-/// parsing fails. This is a best-effort operation; callers must handle the
-/// `None` case.
-fn extract_qp_from_obu_data(obu_data: &[u8]) -> Option<u8> {
-    use bitvue_av1_codec::{parse_all_obus, ObuType};
-
-    let obus = parse_all_obus(obu_data).ok()?;
-    for obu in &obus {
-        if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
-            if let Ok(fh) = bitvue_av1_codec::parse_frame_header_basic(&obu.payload) {
-                return fh.base_q_idx;
-            }
-        }
-    }
-    None
-}
-
-/// The type of the picture a packet makes visible, from the packet's own frame headers.
+/// The frame header of the picture a packet makes visible.
 ///
 /// Known only when the packet names exactly one frame that is shown (`show_frame` set, not a
 /// `show_existing_frame`): then that frame is the picture dav1d returns, whatever hidden frames
 /// came before it in the same packet. `None` when the packet repeats an earlier frame
-/// (`show_existing_frame`: the headers carry no type for it, and the parser's placeholder `Key`
-/// must not be passed on), shows no frame or several (spatial layers), or does not parse.
-fn shown_frame_type(obu_data: &[u8]) -> Option<FrameType> {
+/// (`show_existing_frame`: the header carries no type or quantiser for it, and the parser's
+/// placeholder `Key` must not be passed on), shows no frame or several (spatial layers), or does
+/// not parse.
+fn shown_frame_header(obu_data: &[u8]) -> Option<bitvue_av1_codec::FrameHeader> {
     use bitvue_av1_codec::{parse_all_obus, ObuType};
 
     let obus = parse_all_obus(obu_data).ok()?;
@@ -311,10 +294,15 @@ fn shown_frame_type(obu_data: &[u8]) -> Option<FrameType> {
             if shown.is_some() {
                 return None;
             }
-            shown = Some(fh.frame_type);
+            shown = Some(fh);
         }
     }
-    match shown? {
+    shown
+}
+
+/// The type of the shown frame (see `shown_frame_header`), in this crate's terms.
+fn shown_frame_type(obu_data: &[u8]) -> Option<FrameType> {
+    match shown_frame_header(obu_data)?.frame_type {
         bitvue_engine::FrameType::Key => Some(FrameType::Key),
         bitvue_engine::FrameType::IntraOnly => Some(FrameType::Intra),
         // A switch frame is predicted from references like an inter frame.
@@ -324,6 +312,11 @@ fn shown_frame_type(obu_data: &[u8]) -> Option<FrameType> {
         // Not frame types AV1 has.
         _ => None,
     }
+}
+
+/// `base_q_idx` of the shown frame (see `shown_frame_header`).
+fn shown_frame_qp(obu_data: &[u8]) -> Option<u8> {
+    shown_frame_header(obu_data)?.base_q_idx
 }
 
 /// IVF frame header with data offset for frame extraction
@@ -553,16 +546,9 @@ impl Av1Decoder {
             v_plane.as_deref(),
         );
 
-        // Extract base_q_idx from the last sent OBU data using the AV1 bitstream
-        // parser. dav1d's Rust bindings do not expose the quantisation parameter
-        // from Picture, so we parse the frame header ourselves.
-        //
-        // The result is best-effort: if no OBU data is available or parsing
-        // fails the field is left as None rather than returning an error.
-        let qp_avg = self
-            .last_obu_data
-            .as_deref()
-            .and_then(extract_qp_from_obu_data);
+        // dav1d's Rust bindings do not expose the quantiser either, so base_q_idx is read from the
+        // packet that was sent (see `shown_frame_header`); `None` when that cannot say.
+        let qp_avg = self.last_obu_data.as_deref().and_then(shown_frame_qp);
 
         Ok(DecodedFrame {
             width,
@@ -1273,6 +1259,20 @@ mod tests {
         let mut packet = obu(true, key);
         packet.extend(obu(true, &hidden_inter));
         assert_eq!(shown_frame_type(&packet), Some(FrameType::Key));
+    }
+
+    #[test]
+    fn the_quantiser_is_the_shown_frames_even_after_hidden_frames_with_another_one() {
+        // packet 1 of the clip: three hidden frames (base_q_idx 128 first), then the shown one (209)
+        let mut packet = Vec::new();
+        for (is_frame, payload) in frame_obus(1) {
+            packet.extend(obu(is_frame, &payload));
+        }
+        assert_eq!(shown_frame_qp(&packet), Some(209));
+        assert_eq!(shown_frame_type(&packet), Some(FrameType::Inter));
+        // a repeated frame has none
+        let (is_frame, payload) = frame_obus(2).remove(0);
+        assert_eq!(shown_frame_qp(&obu(is_frame, &payload)), None);
     }
 
     #[test]
