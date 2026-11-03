@@ -190,6 +190,44 @@ mod tests {
     }
 
     #[test]
+    fn a_source_past_the_right_edge_moves_left_to_the_block_aligned_border() {
+        // 4x4-unit block at (240, 128), tile ends at column 78 (312 samples) so the border is the
+        // block-aligned 80 columns = 320 samples. Source: 100 right and 64 up -> x 340..356.
+        // Moved left by 36 to 304..320, a vector of (304 - 240) * 8.
+        let mut g = geometry(60, 32, 4, 4);
+        g.col_end = 78;
+        let got = clip_to_decoded_area(MotionVector::new(800, -512), &g).unwrap();
+        assert_eq!(got, MotionVector::new(512, -512));
+    }
+
+    #[test]
+    fn a_source_that_just_fits_above_moves_up_before_trying_left() {
+        // 64x64 block at (64, 64), zero vector: the room above (64 rows) equals the block height
+        // and the room to the left (64 columns) equals its width; moving up is tried first.
+        let g = geometry(16, 16, 16, 16);
+        let got = clip_to_decoded_area(MotionVector::zero(), &g).unwrap();
+        assert_eq!(got, MotionVector::new(0, -64 * 8));
+    }
+
+    #[test]
+    fn a_source_that_just_fits_to_the_left_is_moved_there_in_the_first_row() {
+        // 64x64 block at (64, 0), zero vector: nothing above, and exactly its width (64 columns)
+        // is free to the left of the superblock.
+        let g = geometry(16, 0, 16, 16);
+        let got = clip_to_decoded_area(MotionVector::zero(), &g).unwrap();
+        assert_eq!(got, MotionVector::new(-64 * 8, 0));
+    }
+
+    #[test]
+    fn an_overlapping_source_in_the_first_row_moves_left_by_its_overlap_with_the_superblock() {
+        // 16x16 block at (128, 0): nothing above, so the zero vector moves left until the source
+        // ends where the superblock starts (the overlap is the block's 16 columns).
+        let g = geometry(32, 0, 4, 4);
+        let got = clip_to_decoded_area(MotionVector::zero(), &g).unwrap();
+        assert_eq!(got, MotionVector::new(-16 * 8, 0));
+    }
+
+    #[test]
     fn an_overlapping_source_moves_up_into_the_previous_superblock_row_when_it_fits() {
         // Block at (0,64), 16x16: the zero vector overlaps its own superblock (rows 64..80), so
         // the source moves up by exactly its height, to rows 48..64 of the previous superblock.
