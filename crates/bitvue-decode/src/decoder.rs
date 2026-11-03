@@ -2,6 +2,7 @@
 
 use crate::av1_headers::{shown_header, PacketHeaders};
 use crate::plane_utils;
+use crate::ref_slots::{HeaderEvent, RefSlotTypes};
 use bitvue_engine::limits::{MAX_FILE_SIZE, MAX_FRAMES_PER_FILE, MAX_FRAME_SIZE};
 use dav1d::{Decoder, PlanarImageComponent};
 use std::path::{Path, PathBuf};
@@ -223,6 +224,8 @@ pub struct Av1Decoder {
     /// `av1_headers`): dav1d's Rust bindings expose neither the frame type nor the quantiser of
     /// a picture.
     headers: PacketHeaders,
+    /// The frame type each reference slot holds, so that a repeated frame can be typed.
+    ref_slots: RefSlotTypes,
     /// Type and `base_q_idx` of the picture the most recent packet shows; `None` where the
     /// packet does not say.
     shown_type: Option<FrameType>,
@@ -284,6 +287,27 @@ fn from_av1_frame_type(frame_type: bitvue_engine::FrameType) -> Option<FrameType
     }
 }
 
+/// The reference-slot events of a packet's headers; `None` when a header has no usable type or
+/// slot, in which case the slots can no longer be followed.
+fn header_events(headers: &[bitvue_av1_codec::FrameHeader]) -> Option<Vec<HeaderEvent>> {
+    headers
+        .iter()
+        .map(|fh| {
+            if fh.show_existing_frame {
+                Some(HeaderEvent::ShowExisting {
+                    slot: fh.frame_to_show_map_idx?,
+                })
+            } else {
+                Some(HeaderEvent::Coded {
+                    frame_type: from_av1_frame_type(fh.frame_type)?,
+                    shown: fh.show_frame,
+                    refresh: fh.refresh_frame_flags,
+                })
+            }
+        })
+        .collect()
+}
+
 /// IVF frame header with data offset for frame extraction
 #[derive(Debug, Clone)]
 struct IvfFrameHeaderWithOffset {
@@ -318,6 +342,7 @@ impl Av1Decoder {
         Ok(Self {
             decoder,
             headers: PacketHeaders::new(),
+            ref_slots: RefSlotTypes::default(),
             shown_type: None,
             shown_qp: None,
         })
@@ -365,12 +390,20 @@ impl Av1Decoder {
             // dav1d dropped this data, so the reference state no longer matches its own.
             self.headers.lose();
         }
-        let shown = headers
+        let headers = headers.filter(|_| sent.is_ok());
+        let events = headers.as_deref().and_then(header_events);
+        // The slots follow only packets dav1d took and whose headers were all read.
+        self.shown_type = match events {
+            Some(events) => self.ref_slots.apply(&events),
+            None => {
+                self.ref_slots.forget();
+                None
+            }
+        };
+        self.shown_qp = headers
             .as_deref()
-            .filter(|_| sent.is_ok())
-            .and_then(shown_header);
-        self.shown_type = shown.and_then(|h| from_av1_frame_type(h.frame_type));
-        self.shown_qp = shown.and_then(|h| h.base_q_idx);
+            .and_then(shown_header)
+            .and_then(|h| h.base_q_idx);
         sent
     }
 
@@ -1004,6 +1037,7 @@ impl Av1Decoder {
         self.decoder.flush();
         // dav1d drops its references on a flush; the next frame to trust is a key frame.
         self.headers.lose();
+        self.ref_slots.forget();
         self.shown_type = None;
         self.shown_qp = None;
     }
