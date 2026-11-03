@@ -3,6 +3,7 @@
 //! A `skip_mode` block reads none of it -- the whole tail is derived with zero bits.
 
 use super::contexts::wedge_ctx;
+use super::drl::read_drl_idx;
 use super::read_explicit_mv;
 use super::types::{CodingUnit, MotionVector, MvKind, PredictionMode};
 use crate::symbol::SymbolDecoder;
@@ -166,35 +167,14 @@ fn read_compound_drl_idx(
     l0_kind: Option<MvKind>,
     l1_kind: Option<MvKind>,
 ) -> Result<usize> {
-    let mut drl_idx = 0usize;
+    let ctx = |i| crate::tile::context::get_compound_drl_context(stack, i);
     if l0_kind == Some(MvKind::New) && l1_kind == Some(MvKind::New) {
-        if n_mvs > 1 {
-            if decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(stack, 0))? {
-                drl_idx += 1;
-            }
-            if drl_idx == 1
-                && n_mvs > 2
-                && decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(stack, 1))?
-            {
-                drl_idx += 1;
-            }
-        }
+        read_drl_idx(decoder, 0, n_mvs, ctx)
     } else if l0_kind == Some(MvKind::Near) || l1_kind == Some(MvKind::Near) {
-        drl_idx = 1;
-        if n_mvs > 2
-            && decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(stack, 1))?
-        {
-            drl_idx += 1;
-        }
-        // NEAR can still be refined to NEARISH by one more bit when the list is long enough.
-        if drl_idx == 2
-            && n_mvs > 3
-            && decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(stack, 2))?
-        {
-            drl_idx += 1;
-        }
+        read_drl_idx(decoder, 1, n_mvs, ctx)
+    } else {
+        Ok(0)
     }
-    Ok(drl_idx)
 }
 
 /// `compound_type()`: the symbols after the motion vectors. Returns `comp_type`.
