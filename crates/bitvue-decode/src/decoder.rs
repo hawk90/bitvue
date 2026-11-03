@@ -1292,6 +1292,18 @@ mod tests {
         let mut packet = obu(true, &hidden);
         packet.extend(obu(is_frame, &payload));
         assert_eq!(shown_frame_type(&packet), None);
+        // a shown frame and a repeated one are two pictures, so no single type
+        let mut packet = obu(true, &frame_obus(3)[0].1);
+        packet.extend(obu(is_frame, &payload));
+        assert_eq!(shown_frame_type(&packet), None);
+    }
+
+    #[test]
+    fn a_frame_header_that_does_not_parse_makes_the_whole_packet_unreadable() {
+        let mut packet = obu(true, &frame_obus(3)[0].1);
+        assert_eq!(shown_frame_type(&packet), Some(FrameType::Inter));
+        packet.extend(obu(true, &[]));
+        assert_eq!(shown_frame_type(&packet), None);
     }
 
     #[test]
