@@ -37,6 +37,9 @@ Window is 1280x800 (2560x1600 PNG on retina); `BITVUE_ELECTRON_WINDOW_SIZE=900x6
 `BITVUE_SIDECAR_BIN=<path>` runs a different sidecar build: copy the binary before and after a change and take the
 same shot with each to compare.
 
+Expected behavior per panel and mode, and what has been verified so far, is in `docs/USER_MANUAL.md`: compare the screenshot
+against it, and fill in or correct the cell you checked.
+
 ## What exists per area
 
 | Area | Where to look | Source of truth |
