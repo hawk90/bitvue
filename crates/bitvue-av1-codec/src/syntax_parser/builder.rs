@@ -1,6 +1,8 @@
 //! `SyntaxBuilder`: assembles the `SyntaxModel` tree while the OBU parsers run.
 
+use super::TrackedBitReader;
 use bitvue_engine::types::{BitRange, SyntaxModel, SyntaxNode, SyntaxNodeId};
+use bitvue_engine::Result;
 
 /// Builder for constructing SyntaxModel trees during parsing
 ///
@@ -56,6 +58,14 @@ impl SyntaxBuilder {
             model,
             parent_stack: vec![root_id],
         }
+    }
+
+    /// Reads one flag bit from `reader` and adds it as a field `field_name` valued "0" or "1".
+    /// Returns the flag.
+    pub fn add_flag(&mut self, reader: &mut TrackedBitReader, field_name: &str) -> Result<bool> {
+        let (value, range) = reader.read_bit_tracked()?;
+        self.add_field(field_name, range, format!("{}", value as u8));
+        Ok(value)
     }
 
     /// Add a leaf field node

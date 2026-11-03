@@ -60,12 +60,7 @@ pub fn parse_frame_header_syntax(
     builder.push_container("frame_header", start);
 
     // show_existing_frame (1 bit) - AV1 Spec 5.9.2
-    let (show_existing, range) = reader.read_bit_tracked()?;
-    builder.add_field(
-        "show_existing_frame",
-        range,
-        format!("{}", show_existing as u8),
-    );
+    let show_existing = builder.add_flag(reader, "show_existing_frame")?;
 
     if show_existing {
         // frame_to_show_map_idx (3 bits) - AV1 Spec 5.9.3
@@ -89,14 +84,12 @@ pub fn parse_frame_header_syntax(
     );
 
     // show_frame (1 bit) - AV1 Spec 5.9.6
-    let (show_frame, range) = reader.read_bit_tracked()?;
-    builder.add_field("show_frame", range, format!("{}", show_frame as u8));
+    let show_frame = builder.add_flag(reader, "show_frame")?;
 
     // showable_frame (1 bit) - AV1 Spec 5.9.7
     // Conditional: only if !show_frame
     if !show_frame {
-        let (showable, range) = reader.read_bit_tracked()?;
-        builder.add_field("showable_frame", range, format!("{}", showable as u8));
+        builder.add_flag(reader, "showable_frame")?;
     }
 
     // error_resilient_mode (1 bit) - AV1 Spec 5.9.8
@@ -113,15 +106,7 @@ pub fn parse_frame_header_syntax(
             true
         }
         // Explicit bit in bitstream for other cases
-        _ => {
-            let (err_resilient, range) = reader.read_bit_tracked()?;
-            builder.add_field(
-                "error_resilient_mode",
-                range,
-                format!("{}", err_resilient as u8),
-            );
-            err_resilient
-        }
+        _ => builder.add_flag(reader, "error_resilient_mode")?,
     };
 
     // Phase 0: Stop here
