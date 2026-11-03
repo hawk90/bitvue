@@ -361,7 +361,92 @@ Encoder: `dnxhd` through `ffmpeg`.
 | Nitris compatibility | `-nitris_compat` | File size and compression ID are identical to the default clip, so the effect is not confirmed | No item |
 | Containers | `-f mxf`, `-f mov` | `.mxf` and `.mov` files generated (`AVdn` for DNxHD, `AVdh` for DNxHR in MOV) | CONT-007 todo (MXF), CONT-002 partial (MOV) |
 
-<!-- Sections for VVC, AVS3 and JPEG XS are added when their research is finished. -->
+### VVC (H.266)
+
+Modes in the reference guide: Dual Tree, Coding Flow, Predictions (with a detail mode), Transform (detail mode), Reconstruction (detail mode), Inverse Map (detail mode), Loop Filter (detail mode), SAO (detail mode), Adaptive Filter (detail mode), YUV, Info overlays (Heat Map, QP Map, Inter Memory Reads), Simple Motion. The guide's `Reconstruction`, `Inverse Map`, `Heat Map`, `QP Map` and `Simple Motion` chapters are headings without body text.
+Encoder: `vvencapp` (vvenc 1.14). Two things differ from the other codecs:
+
+- `vvencapp --fullhelp` lists no coding-tool options. All of them are passed as `--additional Name=Value:Name=Value`. The names below were taken from the encoder library and each one was confirmed by actually encoding (an unknown name is rejected, for example `GPM=1` is an error and the accepted name is `GEO=1`).
+- Neither FFmpeg's `trace_headers` nor `vvdecapp` prints tool flags for VVC. The "In the stream" column therefore comes from an SPS/PPS parser written for this research, checked against the encoder (for example `ISP=1` versus `ISP=0` changes only the `isp` flag). It means **the SPS/PPS flag is set, not that a coding unit actually uses the tool**.
+
+| Tool | Encoder option (`--additional`) | In the stream (SPS/PPS flag) | Shown in the analyzer | Bitvue status |
+|---|---|---|---|---|
+| Dual tree | `DualITree=0/1` | `dual_tree` 0 or 1 | `Dual Tree` mode (luma/chroma switch); selection info (CU tree type) | OVL-029 partial, CODEC-020 partial, QA-006 todo |
+| CTU size | `CTUSize=128` / `32` | `ctb` 128 / 32 (default 64) | Coding Flow (CTB grid); selection info | CODEC-012 partial |
+| Quadtree and multi-type tree splits | `MaxMTTDepthISliceL`, `MaxMTTDepth`, `MinQTLumaISlice` | Depth 3 gives `mtt_intra_l=3`, `mtt_inter=3` (0 when off) | Predictions (CU splits); selection info | OVL-018 partial, CODEC-024 partial |
+| MIP | `MIP=1` | `mip=1` | Prediction detail mode (`mip_flag`) | No per-tool item |
+| ISP | `ISP=1` | `isp=1` | Transform (ISP CUs labelled `ISP`) | No per-tool item |
+| MRL | `MRL=1` | `mrl=1` | Prediction detail mode (reference lines) | CODEC-020 partial |
+| CCLM | `LMChroma=0/1` | `cclm` 0 or 1 (default 1) | Prediction detail mode | CODEC-020 partial, QA-006 todo |
+| IBC | `IBC=0/1/2` (2 = automatic) | `ibc` 1 / 0; automatic gave 1 on `testsrc2` | Prediction detail mode (block vectors) | CODEC-020 partial |
+| Palette | No option found (`Palette`, `PLT` rejected) | `palette=0` only | Not covered | No per-tool item |
+| Transform skip, BDPCM | `TransformSkip=1:BDPCM=2` (`BDPCM=1` alone is an error) | `transform_skip=1`, `bdpcm=1` | Transform (BDPCM CUs marked in white) | No per-tool item |
+| Affine, PROF | `Affine=1:AffineType=1:PROF=1` | `affine=1`, `affine6=1`, `prof=1` | Predictions (affine motion vectors) | No per-tool item |
+| SbTMVP | `SbTMVP=1` | `sbtmvp=1` | Predictions | No per-tool item |
+| GPM (geometric merge) | `GEO=1` | `gpm=1` | Predictions (split line drawn dashed) | No per-tool item |
+| MMVD, CIIP | `MMVD=1`, `CIIP=1` | `mmvd=1`, `ciip=1` | Predictions | No per-tool item |
+| BCW | `BCW=1` | `bcw=1` | Prediction detail mode | No per-tool item |
+| SMVD, AMVR, BDOF, SBT | `SMVD=1`, `AMVR=1`, `BDOF=1`, `SBT=1` | `smvd=1`, `amvr=1`, `bdof=1`, `sbt=1` | Not covered in the guide's VVC chapter | No per-tool item |
+| DMVR | `DMVR=0/1` (default 1) | `dmvr=0` when off | Prediction detail mode (motion buffer) | No per-tool item |
+| TMVP | `TMVPMode=0/1/2` | `tmvp=0` when off | Not covered | No per-tool item |
+| MTS | `MTS=1` | `mts=1`; `MTS=1` to `4` all gave `mts_intra_explicit=1`, `mts_inter_explicit=0` in the `faster` preset | Transform and Transform detail (transform types) | No per-tool item |
+| LFNST | `LFNST=1` | `lfnst=1` | Transform detail (LFNST ID) | No per-tool item |
+| Joint Cb-Cr coding | `JointCbCr=1` | `jcbcr=1` | Transform detail | No per-tool item |
+| Dependent quantization | `DepQuant=1:SignHideFlag=0` (cannot be combined with sign hiding) | `dep_quant=1` | Transform detail | No per-tool item |
+| Sign data hiding | `DepQuant=0:SignHideFlag=1` | `sdh=1` | Not covered | No per-tool item |
+| Deblocking | `LoopFilterDisable=1`, `LoopFilterBetaOffset_div2`, `LoopFilterTcOffset_div2` | PPS `dbf_disabled_in_pps=1` | Loop Filter (green large, yellow strong, orange weak, red no filter) | OVL-020 partial |
+| SAO | `SAO=0/1` | `sao=0` when off (default 1) | `SAO` mode | OVL-021 todo |
+| ALF | `ALF=0/1`, `ALFSpeed`, `ALFUnitSize` | `alf` | Adaptive Filter | OVL-029 partial, SYN-010 partial, QA-006 todo |
+| CC-ALF | `CCALF=0/1` | `ccalf=0` when off | Adaptive Filter detail | OVL-029 partial |
+| LMCS | `LMCS=1` | `lmcs=1` | `Inverse Map` (guide: heading only) | OVL-029 partial, CODEC-020 partial, QA-006 todo |
+| Tiles | `--tiles 2x1 --level 4.0` (without the level it fails at 320x240) | PPS `no_pic_partition=0` | Coding Flow (tile boundaries in thick green) | No per-tool item |
+| Wavefront (WPP) | `WaveFrontSynchro=1` | `wpp=1` | Coding Flow (substream) | No per-tool item |
+| Slices | No option found (`Slices` rejected) | Not verified | Coding Flow (slice boundaries in thick red) | No per-tool item |
+| Sub-pictures | Not supported by the encoder library | Not testable | Coding Flow (beige boundaries) | CODEC-020 partial |
+| Weighted prediction | No option found (`WeightedPred` rejected) | Not verified | `Ref Lists` tab (`W Y`, `O Y`, ... columns) | SYN-006 partial |
+| Scaling list | No option found (`ScalingList` rejected) | `scaling_list=0` only | Not covered | SYN-010 partial |
+| Virtual boundaries | Option not found | Not verified | Coding Flow (thin light-blue lines) | No per-tool item |
+
+Analyzer modes that are not coding tools: `Reconstruction` (OVL-019 todo) and `Inter Memory Reads` (OVL-030 todo). Whether `Reconstruction` and `SAO` are shown for VVC is a parity gap, because the guide documents both modes for VVC and AVS3 while Bitvue lists them as todo for every codec.
+
+### AVS3
+
+Modes in the reference guide: Prediction (detail), Transform (detail), Reconstruction (detail), Loop Filter (detail), SAO (detail), ESAO (detail), CCSAO (detail), Adaptive Filter (detail), YUV, Info Overlays (Heat, QpY, CoeffsY, PSNR, SSIM, Statistics). In the guide, the `QpY`, `PSNR` and `SSIM` sections are marked as to-be-written.
+**No AVS3 encoder or decoder is installed on the test machine** (FFmpeg has only the raw demuxer `avs3`), so no test clip could be made and there is no "encoder option" or "in the stream" column.
+
+| Tool or screen | Shown in the analyzer | Bitvue status |
+|---|---|---|
+| Stream structure | Syntax Info tabs `NAL`, `Sequence`, `Picture`, `Ref Lists`, `Block`, `Stats` | CODEC-014 partial, SYN-011 todo |
+| CU partition (LCU quadtree) | `Prediction` (LCU splits in blue) | CODEC-031 todo |
+| Angular intra, SAWP | `Prediction` (labels) | No per-tool item |
+| IPF, IIP | `Prediction` (dark-green labels) | No per-tool item |
+| IBC, ISC | `Prediction` (cyan labels) | No per-tool item |
+| Inter sub-types (Skip, Inter, Direct, affine) | `Prediction` (L0 vectors orange, L1 purple) | No per-tool item |
+| Inter refinement and filters (BGC, IPF, IPC, DMVR, ASR) | `Prediction` (dark-cyan labels) | No per-tool item |
+| AMVR | `Prediction` details (AMVR index) | No per-tool item |
+| Transform, residual | `Transform` (CU blue, TU yellow, QP at the bottom left) | CODEC-031 todo |
+| Reconstruction | `Reconstruction` (picture, tile and block grids) | OVL-019 todo |
+| Deblocking | `Loop Filter` (red none, green large, yellow strong, orange weak) | OVL-020 partial |
+| SAO | `SAO` and its detail mode | OVL-021 todo |
+| ESAO, CCSAO | `ESAO`, `CCSAO` and their detail modes | OVL-031 partial |
+| Adaptive filter (ALF) | `Adaptive Filter` | OVL-031 partial |
+| Info overlays | `Heat`, `QpY`, `CoeffsY`, `PSNR`, `SSIM`, `Statistics` | OVL-031 partial (`QpY`, `CoeffsY`), OVL-022 partial (`Heat`) |
+| Plain picture | `YUV` | OVL-035 partial |
+
+### JPEG XS
+
+Modes in the reference guide: Precinct, Dequant, Transform, MCT, NLT, YUV (each with a detail mode). The guide has no info overlays or heat map for JPEG XS. Syntax Info tabs: NAL, Picture, Markers, Slice, Precinct. Selection info: Profile, Level, Chroma format, Bitdepth, Slice and more.
+**No JPEG XS encoder or decoder is installed on the test machine** (FFmpeg has only the pipe demuxer `jpegxs_pipe`), so no test clip could be made.
+
+| Tool or screen | Shown in the analyzer | Bitvue status |
+|---|---|---|
+| Codestream structure | Syntax Info tabs (picture header, markers, slices, precincts); selection info | CODEC-015 partial |
+| Precinct and slice | `Precinct` (blocks of 16x16 pixels, slice boundaries) | OVL-032 partial |
+| Dequantization | `Dequant` and its detail mode (type of inverse quantization) | OVL-032 partial |
+| Wavelet transform | `Transform` and its detail mode (inverse transform per band) | OVL-032 partial |
+| Multiple-component transform (MCT) | `MCT` and its detail mode | OVL-032 partial |
+| Non-linear transform (NLT) | `NLT` and its detail mode (output scaling and level shift) | OVL-032 partial |
+| Plain picture | `YUV` | OVL-035 partial (whether it covers JPEG XS is not stated) |
 
 ## Known issues
 
