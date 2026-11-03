@@ -45,8 +45,11 @@
 | 클릭 | 픽처를 디코딩하고 현재로 만듦 | 하네스의 합성 클릭은 타임라인 커서만 옮김. 사람이 직접 클릭했을 때는 프레임 전체가 이동한 것으로 보임(창 모드 캡처에서 우연히 관찰, 직접 확인은 안 함) | 미확인 (#447) |
 | 참조 화살표 | 현재 프레임에서 참조 프레임으로 초록 화살표 | 현재가 P일 때 필름스트립에 `REF0`~`REF6` 레이블의 화살표(`REF0`~`REF5`는 빨간 선 하나로 묶여 프레임 0을, `REF6`은 초록 선으로 프레임 1을 가리킴. 빨강/초록의 의미는 미확인) | 확인 |
 | Run full stream analysis | 파란 둥근 버튼. 통계, 평균 블록 QP, 프레임 오류를 채움 | 캡처 화면에서는 보이지 않음(메뉴와 다른 창은 안 봄) | 미확인 |
-| Buffer view | 프레임 크기 막대 + 평균 QP(오른쪽 축) | | 미확인 |
-| Hierarchy / Metric view | B-피라미드 / PSNR·SSIM | | 미확인 |
+| 보기 전환 | Thumbnails / Bars / Buffer(Frame sizes) / Hierarchy / Metric | 필름스트립 우상단 드롭다운: `Thumbnails`, `Frame Sizes`, `B-Pyramid`, `HRD Buffer`, `Enhanced`. `Bars`와 `Metric`에 해당하는 항목은 없음 | 확인(목록). Metric은 참조 YUV가 필요해 미확인 |
+| Buffer view (`Frame Sizes`) | 프레임 크기 막대(타입별 색), 오른쪽 축 평균 QP, 호버 툴팁, 클릭 시 해당 프레임, 휠 줌/드래그 이동, 범례 클릭으로 시리즈 토글, `Moving average` 창 크기 | 막대 12개(0번 빨강 I, 나머지 초록, 2/5/8번은 거의 0), 왼쪽 `BITRATE` 축(0, 3 KB, 6 KB), 오른쪽 `QP` 축 0/26/51, 시리즈 팝업 `Bitrate Bar`, `Bitrate Curve`, `Avg Size`, `Min Size`, `Max Size`, `Moving Avg`, `Block Min QP`, `Block Max QP`. 호버/줌/클릭은 미확인 | 부분 확인. QP 축 **차이 #462** |
+| HRD (`HRD Buffer`) | HRD 파라미터가 없으면 비활성(회색). 일반 모드/도착 시각 모드, 파란 점선=최종 도착, 장밋빛 선=제거 시각 | `BUFFER: 50.2%`, `AVG BITRATE (EST.): 0.35 Mbps`, 977KB/488KB/약 120KB 선. 이 클립은 HRD 정보가 없음 | **차이 #461** |
+| Hierarchy (`B-Pyramid`) | B-피라미드: 단계별 참조 관계, 디코드/표시 번호, 타입 색, 클릭 시 참조 강조 | `L0` 한 줄에 점 12개(빨강: 0, 2, 5, 8번 / 초록: 나머지), `Show All Refs` 버튼. 클릭 동작은 미확인 | 부분 확인. 빨강 4개는 #454와 같은 원인 |
+| `Enhanced` | (가이드에 대응 항목 없음) | `GOP: ← I`, `GOP 1/2f`, `I →`, `SCENE: ← SC`, `1 changes`, `SC →` 도구줄. 프레임 5 앞에 장면 전환 표시(번개 아이콘)와 GOP 경계선. 표시의 의미와 근거는 미확인 | 확인(구성) |
 
 ## 3. 모드 (메인 패널, AV1)
 
