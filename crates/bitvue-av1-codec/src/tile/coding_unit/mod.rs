@@ -42,6 +42,7 @@ mod block_modes;
 mod compound;
 mod contexts;
 mod delta;
+mod drl;
 mod interp_filter;
 mod intra;
 mod intrabc;

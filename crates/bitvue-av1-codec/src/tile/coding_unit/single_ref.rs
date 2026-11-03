@@ -2,6 +2,7 @@
 //! and `motion_mode`/OBMC (spec 5.11.23-5.11.29). The compound counterpart lives in `compound`.
 
 use super::contexts::{wedge_ctx, y_mode_size_context};
+use super::drl::read_drl_idx;
 use super::motion_mode::read_motion_mode_info;
 use super::read_explicit_mv;
 use super::types::{CodingUnit, MotionVector, PredictionMode};
@@ -125,18 +126,9 @@ fn read_new_mv(
     // Not read for GLOBALMV (real spec: no DRL for that mode at all).
     let (stack, n_mvs) =
         tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0, use_ref_frame_mvs);
-    let mut drl_idx = 0usize;
-    if n_mvs > 1 {
-        if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 0))? {
-            drl_idx += 1;
-        }
-        if drl_idx == 1
-            && n_mvs > 2
-            && decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 1))?
-        {
-            drl_idx += 1;
-        }
-    }
+    let drl_idx = read_drl_idx(decoder, 0, n_mvs, |i| {
+        crate::tile::context::get_drl_context(&stack, i)
+    })?;
     // The difference is read after the DRL bits (dav1d: `Post-intermode` precedes
     // `Post-residualmv`).
     let explicit_mv = read_explicit_mv(decoder, inter_mode_flags.mv_precision())?;
@@ -177,22 +169,13 @@ fn read_near_mv(
     } = *frame;
     let (stack, n_mvs) =
         tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0, use_ref_frame_mvs);
-    let mut drl_idx = if cu.mode == PredictionMode::NearMv {
-        1usize
+    let drl_idx = if cu.mode == PredictionMode::NearMv {
+        read_drl_idx(decoder, 1, n_mvs, |i| {
+            crate::tile::context::get_drl_context(&stack, i)
+        })?
     } else {
         0
     };
-    if cu.mode == PredictionMode::NearMv && n_mvs > 2 {
-        if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 1))? {
-            drl_idx += 1;
-        }
-        if drl_idx == 2
-            && n_mvs > 3
-            && decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 2))?
-        {
-            drl_idx += 1;
-        }
-    }
     cu.mv = [stack[drl_idx].mv, MotionVector::zero()];
 
     tracing::debug!(
