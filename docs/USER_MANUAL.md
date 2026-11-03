@@ -21,6 +21,7 @@
 | 화면 타입 (패킷 순서) | 0번 Key, 나머지 11개 Inter (2, 5, 8번 패킷은 `show_existing_frame`: 이전에 디코딩한 Inter 프레임을 다시 보여 줌) |
 | 보이는 프레임의 `base_q_idx` | 14, 85, (반복), 85, 86, (반복), 88, 89, (반복), 90, 91, 92 |
 | 프레임 0 헤더 | `allow_screen_content_tools=1`, `delta_q_present=1`(블록별 QP 13~17), `base_q_idx=14`, loop filter/CDEF/restoration 필드 없음(intrabc 사용으로 추정, Block Type 오버레이에 `INTRA_BC` 영역이 보임) |
+| 프레임 3 (패킷 3, 7번째 프레임 헤더) | `base_q_idx=85`, `loop_filter_level=[1 2 1 8]`(Y 세로/가로 1/2, U 1, V 8), `sharpness=0`, `loop_filter_delta_enabled=1`, `cdef_damping_minus_3=1`, `cdef_y_pri=0`, `cdef_y_sec=1`, `cdef_uv_pri=1`, `cdef_uv_sec=1`, `lr_type=[0 0 0]` |
 | 시퀀스 | `enable_cdef=1`, `enable_restoration=1`, `enable_superres=0`, `film_grain_params_present=0` |
 
 ## 1. 화면 구성
@@ -55,10 +56,10 @@
 | F2 | Predictions | 블록 분할, 인트라/인터 모드, MV(1/8 pel, L/G/A), 필터 종류 | 프레임 0: 블록 격자를 인트라 모드별 색으로 칠함(범례 D45/SmoothV/Paeth/CFL), `Blocks: 300`, `Modes: 7`. 프레임 3(P): 인터 모드 색(범례 NewMV/NearMV/Near/`Inter69`), `Modes: 5`. 영상 없음 | 부분 확인. 이름 없는 모드 **#460**. 클릭/상세/MV 화살표 미확인 |
 | F3 | Transform | 블록·변환 경계, "Skip", `Pic`으로 잔차 영상 | 변환 크기별 색 격자(범례 8x8 (78), 16x16 (27), 32x32 (78), 64x64 (88)), `Types: 5`. Skip·잔차 없음 | 부분 확인 |
 | F4 | Reconstruction | 루프 필터 전 복원 샘플, 블록 경계, "Skip" | **검은 화면** | **차이 #456** |
-| F5 | Loop Filter | 처리된 경계를 1샘플 두께로: 초록 16-tap, 노랑 8-tap, 주황 4-tap, 빨강 필터링 안 됨 | 영상 위가 아니라 숫자 패널 "Deblocking Filter Analysis"(Strong BS 2 / Weak BS 1 등 HEVC 용어). 값은 0(이 프레임은 필터 없음) | **차이 #457** |
-| F6 | CDEF Filter | 블록별 level/strength/방향 | `CDEF: disabled` | 이 프레임은 필터 생략이라 맞음(추정). 인터 프레임 미확인 |
+| F5 | Loop Filter | 처리된 경계를 1샘플 두께로: 초록 16-tap, 노랑 8-tap, 주황 4-tap, 빨강 필터링 안 됨 | 영상 위가 아니라 숫자 패널 "Deblocking Filter Analysis"(Strong BS 2 / Weak BS 1 등 HEVC 용어). 프레임 0은 0(필터 없음). 프레임 3은 `Level 1/2`, `U/V 1/8`, `Sharpness 0`, `Ref/Mode Deltas Enabled`로 헤더와 **일치**. 아래 "Block Boundary Visualization"은 잘려 안 보임 | 값 확인, 표현 **차이 #457** |
+| F6 | CDEF Filter | 블록별 level/strength/방향 | 프레임 0: `CDEF: disabled`. 프레임 3: 8x8 격자와 범례(`CDEF Y-Primary: 0`, `Y-Secondary: 1`, `Damping: 4`, `Arrows = filter direction`) | 값 확인(헤더 일치). 프레임 0은 필터 생략이라 맞음(추정). 블록별 방향 화살표는 미확인 |
 | F7 | SuperRes Filter | superres가 켜진 경우에만. 배율 | `SuperRes: disabled` | 맞음 (`enable_superres=0`) |
-| F8 | Loop Restoration | 블록별 필터 종류와 크기 | `Loop Restoration: disabled` | 이 프레임은 필터 생략이라 맞음(추정). 인터 프레임 미확인 |
+| F8 | Loop Restoration | 블록별 필터 종류와 크기 | 프레임 0, 3 모두 `Loop Restoration: disabled` | 확인(프레임 3은 `lr_type=[0 0 0]`로 헤더 일치). 켜진 프레임은 이 클립에 없어 미확인 |
 | F9 | Film Grain Pixels | film grain이 켜진 경우에만 | `Film Grain: disabled` | 맞음 (`film_grain_params_present=0`) |
 | F10 | YUV | 오버레이 없는 최종 디코딩 화면 | **검은 화면** (로그에는 YUV 변환 성공) | **차이 #456** |
 
