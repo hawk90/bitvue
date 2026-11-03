@@ -200,44 +200,4 @@ impl SpatialRefContext {
             len = step.max(u32::from(cand.height_4x4).max(1));
         }
     }
-
-    /// `walk_row` feeding the single-reference candidate stack.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn scan_row_weighted(
-        &self,
-        stack: &mut [MvStackEntry; 8],
-        cnt: &mut usize,
-        ref0: i8,
-        gmv: Option<crate::tile::coding_unit::MotionVector>,
-        row_y4: u32,
-        x4: u32,
-        bw4: u32,
-        w4: u32,
-        max_rows: i32,
-        step: u32,
-    ) -> u32 {
-        self.walk_row(row_y4, x4, bw4, w4, max_rows, step, &mut |cell, weight| {
-            Self::add_spatial_candidate(stack, cnt, weight, cell, ref0, gmv);
-        })
-    }
-
-    /// `walk_col` feeding the single-reference candidate stack.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn scan_col_weighted(
-        &self,
-        stack: &mut [MvStackEntry; 8],
-        cnt: &mut usize,
-        ref0: i8,
-        gmv: Option<crate::tile::coding_unit::MotionVector>,
-        col_x4: u32,
-        y4: u32,
-        bh4: u32,
-        h4: u32,
-        max_cols: i32,
-        step: u32,
-    ) -> u32 {
-        self.walk_col(col_x4, y4, bh4, h4, max_cols, step, &mut |cell, weight| {
-            Self::add_spatial_candidate(stack, cnt, weight, cell, ref0, gmv);
-        })
-    }
 }

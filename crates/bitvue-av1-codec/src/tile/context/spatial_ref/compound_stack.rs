@@ -1,6 +1,6 @@
 //! The compound candidate stack (dav1d `refmvs_find`, compound branch).
 
-use super::mode_context::{ScanExtent, ScanQuery};
+use super::neighbour_scan::{ScanExtent, ScanQuery};
 use super::*;
 
 type Stack = [CompoundMvStackEntry; 8];
@@ -39,7 +39,9 @@ impl SpatialRefContext {
         let mut cnt = 0usize;
 
         let (mut n_rows, mut n_cols) =
-            self.scan_compound_primary(&query, &extent, &mut stack, &mut cnt);
+            self.scan_nearest(&query, &extent, &mut |cell, weight, _| {
+                Self::add_compound_neighbour(&query, &mut stack, &mut cnt, cell, weight)
+            });
 
         let nearest_cnt = cnt;
         for cand in &mut stack[..nearest_cnt] {
@@ -47,14 +49,17 @@ impl SpatialRefContext {
         }
 
         self.add_temporal_pairs(&mut stack, &mut cnt, &query, &extent, use_ref_frame_mvs);
-        self.scan_compound_top_left(&query, n_rows, n_cols, &mut stack, &mut cnt);
+        self.scan_above_left(&query, n_rows, n_cols, &mut |cell, weight, _| {
+            Self::add_compound_neighbour(&query, &mut stack, &mut cnt, cell, weight)
+        });
         self.scan_secondary(
             &query,
             &extent,
             &mut n_rows,
             &mut n_cols,
-            &mut stack,
-            &mut cnt,
+            &mut |cell, weight, _| {
+                Self::add_compound_neighbour(&query, &mut stack, &mut cnt, cell, weight)
+            },
         );
 
         // Sort the nearest group, then the rest (stable, descending).
@@ -78,7 +83,7 @@ impl SpatialRefContext {
             );
         }
 
-        self.clamp_compound_stack_to_frame(&mut stack, cnt, x4, y4, bw4, bh4);
+        self.clamp_compound_stack_to_frame(&mut stack, cnt, &query);
 
         (stack, cnt)
     }
@@ -98,64 +103,6 @@ impl SpatialRefContext {
                 }
             }
             Self::push_compound_mv_candidate(stack, cnt, weight, mv);
-        }
-    }
-
-    /// The nearest group: the row above, the column to the left and the top-right cell (only a
-    /// decoded cell can be there, dav1d's `EDGE_I444_TOP_HAS_RIGHT`). Returns `(n_rows, n_cols)`,
-    /// each `u32::MAX` while the row/column is outside the tile.
-    fn scan_compound_primary(
-        &self,
-        q: &ScanQuery,
-        extent: &ScanExtent,
-        stack: &mut Stack,
-        cnt: &mut usize,
-    ) -> (u32, u32) {
-        let mut n_rows = u32::MAX;
-        let mut n_cols = u32::MAX;
-        if q.y4 > self.row_start {
-            n_rows = self.walk_row(
-                q.y4 - 1,
-                q.x4,
-                q.bw4,
-                extent.w4,
-                extent.max_rows,
-                if q.bw4 >= 16 { 4 } else { 1 },
-                &mut |cell, weight| Self::add_compound_neighbour(q, stack, cnt, cell, weight),
-            );
-        }
-        if q.x4 > self.col_start {
-            n_cols = self.walk_col(
-                q.x4 - 1,
-                q.y4,
-                q.bh4,
-                extent.h4,
-                extent.max_cols,
-                if q.bh4 >= 16 { 4 } else { 1 },
-                &mut |cell, weight| Self::add_compound_neighbour(q, stack, cnt, cell, weight),
-            );
-        }
-        if n_rows != u32::MAX && q.bw4.max(q.bh4) <= 16 && q.x4 + q.bw4 < self.col_end {
-            if let Some(cell) = self.cell(q.x4 + q.bw4, q.y4 - 1) {
-                Self::add_compound_neighbour(q, stack, cnt, cell, 4);
-            }
-        }
-        (n_rows, n_cols)
-    }
-
-    /// The top-left cell -- only where both the row above and the column to the left exist.
-    fn scan_compound_top_left(
-        &self,
-        q: &ScanQuery,
-        n_rows: u32,
-        n_cols: u32,
-        stack: &mut Stack,
-        cnt: &mut usize,
-    ) {
-        if n_rows != u32::MAX && n_cols != u32::MAX {
-            if let Some(cell) = self.cell(q.x4 - 1, q.y4 - 1) {
-                Self::add_compound_neighbour(q, stack, cnt, cell, 4);
-            }
         }
     }
 
@@ -199,57 +146,9 @@ impl SpatialRefContext {
         }
     }
 
-    /// The secondary rows/columns 3 and 5 units back, skipped where an earlier scan already
-    /// covered them; extends `n_rows`/`n_cols` by what they walked.
-    fn scan_secondary(
-        &self,
-        q: &ScanQuery,
-        extent: &ScanExtent,
-        n_rows: &mut u32,
-        n_cols: &mut u32,
-        stack: &mut Stack,
-        cnt: &mut usize,
-    ) {
-        for n in 2..=3u32 {
-            if n > *n_rows && n as i32 <= extent.max_rows {
-                *n_rows += self.walk_row(
-                    (q.y4 + 1 - 2 * n) | 1,
-                    q.x4 | 1,
-                    q.bw4,
-                    extent.w4,
-                    1 + extent.max_rows - n as i32,
-                    if q.bw4 >= 16 { 4 } else { 2 },
-                    &mut |cell, weight| Self::add_compound_neighbour(q, stack, cnt, cell, weight),
-                );
-            }
-            if n > *n_cols && n as i32 <= extent.max_cols {
-                *n_cols += self.walk_col(
-                    (q.x4 + 1 - 2 * n) | 1,
-                    q.y4 | 1,
-                    q.bh4,
-                    extent.h4,
-                    1 + extent.max_cols - n as i32,
-                    if q.bh4 >= 16 { 4 } else { 2 },
-                    &mut |cell, weight| Self::add_compound_neighbour(q, stack, cnt, cell, weight),
-                );
-            }
-        }
-    }
-
     /// Clamps every candidate to the frame.
-    fn clamp_compound_stack_to_frame(
-        &self,
-        stack: &mut [CompoundMvStackEntry; 8],
-        cnt: usize,
-        x4: u32,
-        y4: u32,
-        bw4: u32,
-        bh4: u32,
-    ) {
-        let left = -((x4 + bw4 + 4) as i32) * 32;
-        let right = (self.iw4 as i32 - x4 as i32 + 4) * 32;
-        let top = -((y4 + bh4 + 4) as i32) * 32;
-        let bottom = (self.ih4 as i32 - y4 as i32 + 4) * 32;
+    fn clamp_compound_stack_to_frame(&self, stack: &mut Stack, cnt: usize, q: &ScanQuery) {
+        let (left, right, top, bottom) = self.mv_clamp_bounds(q);
         for cand in &mut stack[..cnt] {
             for mv in &mut cand.mv {
                 mv.x = mv.x.clamp(left, right);
