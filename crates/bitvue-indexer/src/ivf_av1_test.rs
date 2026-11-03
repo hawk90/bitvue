@@ -149,7 +149,7 @@ fn the_corruption_sweep_reaches_diagnostics() {
 
 #[test]
 fn corrupted_clips_are_pinned() {
-    assert_eq!(corruption_sweep(CLIP, 1..=60).0, 5158674014903062216);
+    assert_eq!(corruption_sweep(CLIP, 1..=60).0, 14819150309747728694);
 }
 
 #[test]
@@ -165,4 +165,41 @@ fn a_cancel_flag_raised_later_is_noticed_per_frame() {
     let flag = AtomicBool::new(false);
     flag.store(true, Ordering::SeqCst);
     assert!(index_ivf_av1(CLIP, StreamId::A, &flag).unwrap().is_none());
+}
+
+/// Without a sequence header the full parser never runs, every frame falls back to
+/// `parse_frame_header_basic`, and that parser's `base_q_idx` is wrong on nearly every frame (the
+/// key frame reads 128 where the real value is 14, #444): no `qp_avg` is better than a wrong one.
+#[test]
+fn a_frame_read_by_the_basic_parser_reports_no_qp() {
+    let (td, seq) = (IVF_HEADER_SIZE + 12, IVF_HEADER_SIZE + 12 + 2);
+    assert_eq!(&CLIP[td..td + 2], [0x12, 0x00], "temporal delimiter");
+    assert_eq!(
+        &CLIP[seq..seq + 2],
+        [0x0a, 0x0b],
+        "an 11-byte sequence header"
+    );
+    let mut stripped = CLIP.to_vec();
+    stripped.drain(seq..seq + 13);
+    let size = u32::from_le_bytes(
+        stripped[IVF_HEADER_SIZE..IVF_HEADER_SIZE + 4]
+            .try_into()
+            .unwrap(),
+    );
+    stripped[IVF_HEADER_SIZE..IVF_HEADER_SIZE + 4].copy_from_slice(&(size - 13).to_le_bytes());
+
+    let (_, units, _) = index_ivf_av1(&stripped, StreamId::A, &AtomicBool::new(false))
+        .unwrap()
+        .unwrap();
+    assert!(units.len() > 10);
+    let frames: Vec<_> = units.iter().filter(|u| u.frame_type.is_some()).collect();
+    assert!(
+        !frames.is_empty(),
+        "the basic parser still types the frames"
+    );
+    assert!(
+        frames.iter().all(|u| u.qp_avg.is_none()),
+        "{:?}",
+        frames.iter().map(|u| u.qp_avg).collect::<Vec<_>>()
+    );
 }

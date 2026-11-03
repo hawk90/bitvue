@@ -675,8 +675,12 @@ fn frame_unit(
                 unit.ref_frames = Some(slots.frames_of(&ref_idx));
             }
         }
-        if let Some(qp) = fh.base_q_idx {
-            unit.qp_avg = Some(qp);
+        // Same rule for the quantiser: `parse_frame_header_basic` reads `base_q_idx` wrongly on
+        // nearly every frame (#444), so only the full parser's value is reported.
+        if parsed.used_full_parser {
+            if let Some(qp) = fh.base_q_idx {
+                unit.qp_avg = Some(qp);
+            }
         }
     }
     unit

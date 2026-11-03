@@ -158,6 +158,14 @@ fn show_existing_frame_header(reader: &BitReader, frame_to_show_map_idx: u8) -> 
 /// - `enable_cdef` = true
 /// - `enable_restoration` = true
 /// - `use_128x128_superblock` = false
+///
+/// # Which fields can be trusted
+///
+/// Only `frame_type` and `show_frame` (and `show_existing_frame`). Everything after them depends
+/// on the guessed layout above: `base_q_idx` and `refresh_frame_flags` are wrong on nearly every
+/// frame (the key frame of `av1_aomenc_testsrc2.ivf` reads 128 where FFmpeg's parser and
+/// [`parse_frame_header_full`](crate::frame_header_full::parse_frame_header_full) read 14). Use the
+/// full parser whenever a sequence header is at hand (#444).
 pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueError> {
     let mut reader = BitReader::new(payload);
 
