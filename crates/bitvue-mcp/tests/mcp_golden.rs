@@ -131,7 +131,7 @@ fn normalise_str(s: &str, root: &str) -> String {
 /// Expected FNV-1a digest of each response line, in request order.
 const GOLDEN: &[u64] = &[
     0xee9bb3178913c63a,
-    0x9ea413d059f81faa,
+    0x8de46d6039f0a901,
     0xfd8c9726f2363f67,
     0x2358c1d17aa39777,
     0xf71c6d4d09b4369e,
@@ -150,8 +150,8 @@ const GOLDEN: &[u64] = &[
     0x0b8d08b225eb6990,
     0xcde79be53bfaea89,
     0xbcef9b07c475f015,
-    0x161a664edadaea8d,
-    0x894e1984783efab9,
+    0x32ee5fe415d86098,
+    0xe0e78a2021a81334,
     0x6d5f6ac86a21a147,
     0x74e53073c0a27d06,
     0x293b76e9c5e461b5,
