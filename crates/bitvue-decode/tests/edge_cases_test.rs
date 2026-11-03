@@ -794,7 +794,7 @@ fn create_test_frame(width: u32, height: u32) -> DecodedFrame {
         v_plane: Some(Arc::from(vec![128u8; uv_size])),
         v_stride: (width / 2) as usize,
         timestamp: 0,
-        frame_type: bitvue_decode::decoder::FrameType::Key,
+        frame_type: Some(bitvue_decode::decoder::FrameType::Key),
         qp_avg: Some(25),
         chroma_format: bitvue_decode::decoder::ChromaFormat::Yuv420,
     }

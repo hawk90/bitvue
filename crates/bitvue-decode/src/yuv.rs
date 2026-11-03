@@ -503,7 +503,7 @@ mod tests {
             v_plane: None,
             v_stride: 0,
             timestamp: 0,
-            frame_type: FrameType::Key,
+            frame_type: Some(FrameType::Key),
             qp_avg: None,
             chroma_format: ChromaFormat::Monochrome,
         };
@@ -533,7 +533,7 @@ mod tests {
             v_plane: Some(vec![128, 128].into_boxed_slice().into()),
             v_stride: 1,
             timestamp: 0,
-            frame_type: FrameType::Key,
+            frame_type: Some(FrameType::Key),
             qp_avg: None,
             chroma_format: ChromaFormat::Yuv420,
         };
@@ -561,7 +561,7 @@ mod tests {
             v_plane: None,
             v_stride: 0,
             timestamp: 0,
-            frame_type: FrameType::Key,
+            frame_type: Some(FrameType::Key),
             qp_avg: None,
             chroma_format: ChromaFormat::Monochrome,
         };
@@ -635,7 +635,7 @@ mod tests {
             v_plane: Some(vec![128, 128].into_boxed_slice().into()),
             v_stride: 1,
             timestamp: 0,
-            frame_type: FrameType::Key,
+            frame_type: Some(FrameType::Key),
             qp_avg: None,
             chroma_format: ChromaFormat::Yuv420,
         };
@@ -658,7 +658,7 @@ mod tests {
             v_plane: Some(vec![128; 4].into_boxed_slice().into()),
             v_stride: 2,
             timestamp: 0,
-            frame_type: FrameType::Key,
+            frame_type: Some(FrameType::Key),
             qp_avg: None,
             chroma_format: ChromaFormat::Yuv422,
         };
@@ -680,7 +680,7 @@ mod tests {
             v_plane: Some(vec![128; 4].into_boxed_slice().into()),
             v_stride: 2,
             timestamp: 0,
-            frame_type: FrameType::Key,
+            frame_type: Some(FrameType::Key),
             qp_avg: None,
             chroma_format: ChromaFormat::Yuv444,
         };

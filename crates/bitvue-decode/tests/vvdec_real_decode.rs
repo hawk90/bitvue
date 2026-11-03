@@ -199,7 +199,7 @@ fn the_first_output_frame_is_the_idr_and_frame_types_are_sane() {
     let keys: Vec<usize> = frames
         .iter()
         .enumerate()
-        .filter(|(_, f)| f.frame_type == FrameType::Key)
+        .filter(|(_, f)| f.frame_type == Some(FrameType::Key))
         .map(|(i, _)| i)
         .collect();
     assert_eq!(
@@ -210,7 +210,7 @@ fn the_first_output_frame_is_the_idr_and_frame_types_are_sane() {
     assert!(
         frames
             .iter()
-            .filter(|f| f.frame_type == FrameType::Inter)
+            .filter(|f| f.frame_type == Some(FrameType::Inter))
             .count()
             >= 6
     );

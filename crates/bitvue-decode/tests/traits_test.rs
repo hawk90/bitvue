@@ -27,7 +27,7 @@ fn blank_frame(timestamp: i64) -> DecodedFrame {
         v_plane: None,
         v_stride: 0,
         timestamp,
-        frame_type: FrameType::Key,
+        frame_type: Some(FrameType::Key),
         qp_avg: None,
         chroma_format: ChromaFormat::Monochrome,
     }

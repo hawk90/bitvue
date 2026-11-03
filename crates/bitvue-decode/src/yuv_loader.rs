@@ -375,7 +375,7 @@ impl YuvLoader {
                 ChromaSubsampling::Mono => 0,
             },
             timestamp: self.current_frame as i64,
-            frame_type: crate::decoder::FrameType::Key, // Unknown for raw YUV
+            frame_type: None, // a raw YUV file carries no frame type
             qp_avg: None,
             chroma_format,
         };

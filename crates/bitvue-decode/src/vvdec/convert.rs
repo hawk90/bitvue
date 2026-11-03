@@ -119,9 +119,9 @@ pub(super) fn to_decoded_frame(picture: &Picture<'_>) -> Result<DecodedFrame> {
         v_stride,
         timestamp: picture.cts.unwrap_or(0),
         frame_type: match picture.kind {
-            PictureKind::RandomAccess => FrameType::Key,
-            PictureKind::GradualRefresh | PictureKind::Intra => FrameType::Intra,
-            PictureKind::Inter => FrameType::Inter,
+            PictureKind::RandomAccess => Some(FrameType::Key),
+            PictureKind::GradualRefresh | PictureKind::Intra => Some(FrameType::Intra),
+            PictureKind::Inter => Some(FrameType::Inter),
         },
         qp_avg: None, // vvdec does not expose QP
         chroma_format: picture.chroma,
@@ -294,7 +294,7 @@ mod tests {
         ] {
             let mut pic = picture(8, 4, 8, ChromaFormat::Yuv420, planes);
             pic.kind = kind;
-            assert_eq!(to_decoded_frame(&pic).unwrap().frame_type, want);
+            assert_eq!(to_decoded_frame(&pic).unwrap().frame_type, Some(want));
         }
     }
 
