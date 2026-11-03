@@ -103,23 +103,24 @@ fn the_frame_type_is_the_shown_frames_and_unknown_when_the_packet_does_not_say()
     assert_eq!(types, TESTSRC2_SHOWN_TYPES);
 }
 
-/// `base_q_idx` of the shown frame of each packet of `av1_aomenc_testsrc2.ivf` (read with
-/// `parse_frame_header_basic`; the same parser as the types above). Packets 1 and 6 start with
-/// hidden frames whose own `base_q_idx` (128, 112) must not be reported; packets 2, 5 and 8
-/// repeat a frame and carry no quantiser.
+/// `base_q_idx` of the shown frame of each packet of `av1_aomenc_testsrc2.ivf`, as FFmpeg's
+/// `trace_headers` bitstream filter prints it (`ffmpeg -i clip.ivf -c copy -bsf:v trace_headers
+/// -f null -`; an AV1 parser written independently of this repository's). Packets 1 and 6 start
+/// with hidden frames (base_q_idx 52, 69, 77 and 78) that must not be reported; packets 2, 5 and
+/// 8 repeat a frame and carry no quantiser.
 const TESTSRC2_SHOWN_QPS: [Option<u8>; 12] = [
-    Some(128),
-    Some(209),
+    Some(14),
+    Some(85),
     None,
-    Some(129),
-    Some(129),
+    Some(85),
+    Some(86),
     None,
-    Some(217),
-    Some(233),
+    Some(88),
+    Some(89),
     None,
-    Some(177),
-    Some(17),
-    Some(225),
+    Some(90),
+    Some(91),
+    Some(92),
 ];
 
 #[test]
