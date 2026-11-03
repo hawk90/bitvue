@@ -51,8 +51,9 @@ pub struct DecodedFrame {
     pub v_stride: usize,
     /// Frame timestamp
     pub timestamp: i64,
-    /// Frame type (key, inter, etc.)
-    pub frame_type: FrameType,
+    /// Frame type (key, inter, etc.). `None` when the decoder cannot tell: a raw YUV file has
+    /// none, and an AV1 packet that does not name exactly one shown frame leaves it open.
+    pub frame_type: Option<FrameType>,
     /// Average QP for the frame (0-255 for AV1, 0-51 for H.264/HEVC)
     /// None if QP information is not available
     pub qp_avg: Option<u8>,
@@ -286,6 +287,45 @@ fn extract_qp_from_obu_data(obu_data: &[u8]) -> Option<u8> {
     None
 }
 
+/// The type of the picture a packet makes visible, from the packet's own frame headers.
+///
+/// Known only when the packet names exactly one frame that is shown (`show_frame` set, not a
+/// `show_existing_frame`): then that frame is the picture dav1d returns, whatever hidden frames
+/// came before it in the same packet. `None` when the packet repeats an earlier frame
+/// (`show_existing_frame`: the headers carry no type for it, and the parser's placeholder `Key`
+/// must not be passed on), shows no frame or several (spatial layers), or does not parse.
+fn shown_frame_type(obu_data: &[u8]) -> Option<FrameType> {
+    use bitvue_av1_codec::{parse_all_obus, ObuType};
+
+    let obus = parse_all_obus(obu_data).ok()?;
+    let mut shown = None;
+    for obu in &obus {
+        if !matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
+            continue;
+        }
+        let fh = bitvue_av1_codec::parse_frame_header_basic(&obu.payload).ok()?;
+        if fh.show_existing_frame {
+            return None;
+        }
+        if fh.show_frame {
+            if shown.is_some() {
+                return None;
+            }
+            shown = Some(fh.frame_type);
+        }
+    }
+    match shown? {
+        bitvue_engine::FrameType::Key => Some(FrameType::Key),
+        bitvue_engine::FrameType::IntraOnly => Some(FrameType::Intra),
+        // A switch frame is predicted from references like an inter frame.
+        bitvue_engine::FrameType::Inter | bitvue_engine::FrameType::Switch => {
+            Some(FrameType::Inter)
+        }
+        // Not frame types AV1 has.
+        _ => None,
+    }
+}
+
 /// IVF frame header with data offset for frame extraction
 #[derive(Debug, Clone)]
 struct IvfFrameHeaderWithOffset {
@@ -500,14 +540,9 @@ impl Av1Decoder {
             (None, 0, None, 0)
         };
 
-        // Frame type detection based on picture properties
-        // Note: dav1d Rust bindings don't directly expose frame_type from Picture.
-        // The C API (dav1d.h) has Dav1dPictureParameters.frame_type but this isn't
-        // exposed through the dav1d Rust crate.
-        // For accurate frame type detection, use the bitstream parser in bitvue-av1
-        // which parses frame headers and can determine frame type.
-        // Defaulting to Inter as a safe assumption (non-keyframe behavior)
-        let frame_type = FrameType::Inter;
+        // The dav1d Rust binding does not expose the frame type of a picture, so it is read from
+        // the packet that was sent (see `shown_frame_type`); `None` when that cannot say.
+        let frame_type = self.last_obu_data.as_deref().and_then(shown_frame_type);
 
         // Detect chroma format once at frame creation
         let chroma_format = ChromaFormat::from_frame_data(
@@ -1161,5 +1196,131 @@ mod tests {
             "Height should be positive and reasonable"
         );
         assert_eq!(first.bit_depth, 8, "Bit depth should be 8");
+    }
+
+    // --- shown_frame_type: packets built from the frame headers of av1_aomenc_testsrc2.ivf ---
+
+    /// The frame-header OBUs `(is_frame_obu, payload)` of packet `n` of the testsrc2 clip.
+    fn frame_obus(n: usize) -> Vec<(bool, Vec<u8>)> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../test_data/av1_aomenc_testsrc2.ivf");
+        let data = std::fs::read(path).unwrap();
+        let (mut pos, mut i) = (32usize, 0);
+        loop {
+            let size = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+            if i == n {
+                let packet = &data[pos + 12..pos + 12 + size];
+                return bitvue_av1_codec::parse_all_obus(packet)
+                    .unwrap()
+                    .into_iter()
+                    .filter(|o| {
+                        matches!(
+                            o.header.obu_type,
+                            bitvue_av1_codec::ObuType::Frame
+                                | bitvue_av1_codec::ObuType::FrameHeader
+                        )
+                    })
+                    .map(|o| {
+                        (
+                            matches!(o.header.obu_type, bitvue_av1_codec::ObuType::Frame),
+                            o.payload.to_vec(),
+                        )
+                    })
+                    .collect();
+            }
+            pos += 12 + size;
+            i += 1;
+        }
+    }
+
+    /// One OBU with a size field: header byte (type, has_size_field), leb128 size, payload.
+    fn obu(is_frame_obu: bool, payload: &[u8]) -> Vec<u8> {
+        let obu_type: u8 = if is_frame_obu { 6 } else { 3 };
+        let mut out = vec![(obu_type << 3) | 0b10];
+        let mut len = payload.len();
+        loop {
+            let byte = (len & 0x7F) as u8;
+            len >>= 7;
+            out.push(if len > 0 { byte | 0x80 } else { byte });
+            if len == 0 {
+                break;
+            }
+        }
+        out.extend_from_slice(payload);
+        out
+    }
+
+    // Byte 0 of a frame header: show_existing_frame (bit 7), frame_type (bits 6-5), show_frame (bit 4).
+    const SHOW_FRAME: u8 = 0x10;
+    fn with_frame_type(payload: &[u8], frame_type_bits: u8) -> Vec<u8> {
+        let mut p = payload.to_vec();
+        p[0] = (p[0] & !0x60) | (frame_type_bits << 5);
+        p
+    }
+
+    #[test]
+    fn a_hidden_frame_before_the_shown_one_does_not_decide_the_type() {
+        let key = &frame_obus(0)[0].1; // key frame, shown
+        let inter = &frame_obus(3)[0].1; // inter frame, shown
+        let mut hidden_key = key.clone();
+        hidden_key[0] &= !SHOW_FRAME;
+        let mut packet = obu(true, &hidden_key);
+        packet.extend(obu(true, inter));
+        assert_eq!(shown_frame_type(&packet), Some(FrameType::Inter));
+        // and the other way round: a shown key frame followed by a hidden inter one
+        let mut hidden_inter = inter.clone();
+        hidden_inter[0] &= !SHOW_FRAME;
+        let mut packet = obu(true, key);
+        packet.extend(obu(true, &hidden_inter));
+        assert_eq!(shown_frame_type(&packet), Some(FrameType::Key));
+    }
+
+    #[test]
+    fn two_shown_frames_in_one_packet_leave_the_type_open() {
+        let mut packet = obu(true, &frame_obus(0)[0].1);
+        packet.extend(obu(true, &frame_obus(3)[0].1));
+        assert_eq!(shown_frame_type(&packet), None);
+    }
+
+    #[test]
+    fn a_repeated_frame_has_no_type_even_though_its_header_parses_as_key() {
+        let (is_frame, payload) = frame_obus(2).remove(0);
+        assert_eq!(shown_frame_type(&obu(is_frame, &payload)), None);
+        // also after a hidden frame in the same packet
+        let mut hidden = frame_obus(3).remove(0).1;
+        hidden[0] &= !SHOW_FRAME;
+        let mut packet = obu(true, &hidden);
+        packet.extend(obu(is_frame, &payload));
+        assert_eq!(shown_frame_type(&packet), None);
+    }
+
+    #[test]
+    fn intra_only_and_switch_frames_map_to_their_decode_types() {
+        let inter = &frame_obus(3)[0].1;
+        for (bits, want) in [
+            (0b00, Some(FrameType::Key)),
+            (0b01, Some(FrameType::Inter)),
+            (0b10, Some(FrameType::Intra)),
+            (0b11, Some(FrameType::Inter)),
+        ] {
+            let packet = obu(true, &with_frame_type(inter, bits));
+            assert_eq!(
+                shown_frame_type(&packet),
+                want,
+                "frame_type bits {bits:02b}"
+            );
+        }
+    }
+
+    #[test]
+    fn nothing_to_read_leaves_the_type_open() {
+        assert_eq!(shown_frame_type(&[]), None);
+        assert_eq!(shown_frame_type(&[0xFF, 0xFF, 0xFF]), None);
+        // a packet with no frame header at all (temporal delimiter only)
+        assert_eq!(shown_frame_type(&[0x12, 0x00]), None);
+        // a packet whose only frame is hidden shows nothing
+        let mut hidden = frame_obus(3).remove(0).1;
+        hidden[0] &= !SHOW_FRAME;
+        assert_eq!(shown_frame_type(&obu(true, &hidden)), None);
     }
 }

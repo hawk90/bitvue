@@ -27,7 +27,7 @@ fn frame(
         v_plane: v.map(|p| p.to_vec().into_boxed_slice().into()),
         v_stride: 0,
         timestamp: 0,
-        frame_type: FrameType::Key,
+        frame_type: Some(FrameType::Key),
         qp_avg: None,
         chroma_format: chroma,
     }

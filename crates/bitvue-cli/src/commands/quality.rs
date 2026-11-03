@@ -451,7 +451,7 @@ mod tests {
             v_plane: None,
             v_stride: 0,
             timestamp: 42,
-            frame_type: bitvue_decode::decoder::FrameType::Key,
+            frame_type: Some(bitvue_decode::decoder::FrameType::Key),
             qp_avg: None,
             chroma_format: bitvue_decode::decoder::ChromaFormat::Yuv420,
         };

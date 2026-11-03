@@ -257,9 +257,9 @@ impl FfmpegDecoder {
 
         // Detect frame type
         let frame_type = if frame.is_key() {
-            FrameType::Key
+            Some(FrameType::Key)
         } else {
-            FrameType::Inter
+            Some(FrameType::Inter)
         };
 
         // Get timestamp
@@ -316,9 +316,9 @@ impl FfmpegDecoder {
 
         // Detect frame type
         let frame_type = if yuv.is_key() {
-            FrameType::Key
+            Some(FrameType::Key)
         } else {
-            FrameType::Inter
+            Some(FrameType::Inter)
         };
 
         // Get timestamp

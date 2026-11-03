@@ -205,7 +205,7 @@ mod tests {
             v_plane: None,
             v_stride: 0,
             timestamp,
-            frame_type: FrameType::Inter,
+            frame_type: Some(FrameType::Inter),
             qp_avg: None,
             chroma_format: ChromaFormat::Monochrome,
         }

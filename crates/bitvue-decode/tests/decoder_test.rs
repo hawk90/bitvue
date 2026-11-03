@@ -2,7 +2,7 @@
 //! file entry point. (This file used to hold ten tests that defined their own structs and asserted
 //! on literals they had just written, #386.)
 
-use bitvue_decode::decoder::{validate_frame, DecodeError, DecodedFrame};
+use bitvue_decode::decoder::{validate_frame, DecodeError, DecodedFrame, FrameType};
 use bitvue_decode::Av1Decoder;
 use tempfile::TempDir;
 
@@ -62,6 +62,45 @@ fn packets_sent_one_by_one_come_back_with_their_timestamps() {
         assert_eq!((f.width, f.height, f.bit_depth), (320, 240, 8), "frame {i}");
         validate_frame(f).unwrap_or_else(|e| panic!("frame {i}: {e}"));
     }
+}
+
+/// What `av1_aomenc_testsrc2.ivf` shows, packet by packet (headers read with
+/// `parse_frame_header_basic`): packet 0 is the key frame; packets 1 and 6 hold hidden frames and
+/// then one shown inter frame; packets 2, 5 and 8 only repeat an earlier frame
+/// (`show_existing_frame`), so the packet does not say what type the picture is.
+const TESTSRC2_SHOWN_TYPES: [Option<FrameType>; 12] = [
+    Some(FrameType::Key),
+    Some(FrameType::Inter),
+    None,
+    Some(FrameType::Inter),
+    Some(FrameType::Inter),
+    None,
+    Some(FrameType::Inter),
+    Some(FrameType::Inter),
+    None,
+    Some(FrameType::Inter),
+    Some(FrameType::Inter),
+    Some(FrameType::Inter),
+];
+
+#[test]
+fn the_frame_type_is_the_shown_frames_and_unknown_when_the_packet_does_not_say() {
+    let data = ivf("av1_aomenc_testsrc2.ivf");
+    let mut decoder = Av1Decoder::new().unwrap();
+    let mut frames = Vec::new();
+    for (i, packet) in packets(&data).iter().enumerate() {
+        decoder.send_data(packet, i as i64).unwrap();
+        drain(&mut decoder, &mut frames);
+    }
+    decoder.flush();
+    drain(&mut decoder, &mut frames);
+    let types: Vec<_> = frames.iter().map(|f| f.frame_type).collect();
+    assert_eq!(types, TESTSRC2_SHOWN_TYPES);
+
+    // the file entry point goes packet by packet too
+    let whole = Av1Decoder::new().unwrap().decode_all(&data).unwrap();
+    let types: Vec<_> = whole.iter().map(|f| f.frame_type).collect();
+    assert_eq!(types, TESTSRC2_SHOWN_TYPES);
 }
 
 #[test]
