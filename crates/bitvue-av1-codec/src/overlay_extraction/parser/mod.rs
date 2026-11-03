@@ -154,8 +154,11 @@ mod tests {
 
         // `FrameIsIntra` covers KEY_FRAME too; `FrameType::is_intra_only` would not.
         assert!(frame.frame_type.is_intra_only);
-        assert_eq!(frame.frame_type.base_qp, header.base_q_idx);
-        assert_eq!(frame.delta_q_enabled, header.delta_q_present);
+        // Only the intra flag is carried over; the quantiser and delta-Q flag come after fields
+        // the approximate header guesses at (#444).
+        assert!(header.base_q_idx.is_some());
+        assert_eq!(frame.frame_type.base_qp, None);
+        assert!(!frame.delta_q_enabled);
     }
 
     #[test]
@@ -190,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_full_header_keeps_the_basic_base_qp_when_it_has_none() {
+    fn apply_full_header_leaves_base_qp_unset_when_it_has_none() {
         let (seq, payload) = first_frame();
         let basic = parse_frame_header_basic(&payload).unwrap();
         let mut full = parse_frame_header_full(&payload, &seq, &mut RefFrameState::new()).unwrap();
@@ -200,7 +203,9 @@ mod tests {
         frame.apply_basic_header(&basic);
         frame.apply_full_header(&full, &seq, &[0; 8]);
 
-        assert_eq!(frame.frame_type.base_qp, basic.base_q_idx);
+        // The approximate header's `base_q_idx` is wrong on nearly every frame (#444): it is
+        // never carried over, so a full header without one leaves the quantiser unset.
+        assert_eq!(frame.frame_type.base_qp, None);
         assert!(basic.base_q_idx.is_some());
     }
 
@@ -476,7 +481,10 @@ mod tests {
         assert!(frame.tile_groups.is_empty());
         assert!(!frame.key_frame);
         assert!(frame.frame_type.is_intra_only);
-        assert_eq!(frame.frame_type.base_qp, basic.base_q_idx);
+        assert_eq!(
+            frame.frame_type.base_qp, None,
+            "the approximate header's quantiser is not trusted (#444)"
+        );
         // Dimensions stay the default scaffold; the grid is recomputed from them.
         assert_eq!(
             (
@@ -869,7 +877,10 @@ mod tests {
             frame.frame_type.is_intra_only,
             "the approximate header was still applied"
         );
-        assert_eq!(frame.frame_type.base_qp, basic.base_q_idx);
+        assert_eq!(
+            frame.frame_type.base_qp, None,
+            "the approximate header's quantiser is not trusted (#444)"
+        );
         // One byte more and there is a tile byte.
         let mut data = td();
         data.extend(obu(
@@ -887,11 +898,13 @@ mod tests {
     fn a_frame_header_obu_without_a_sequence_header_applies_only_the_approximate_header() {
         let packets = packets();
         let (_, full) = key_header(&packets);
-        let basic = parse_frame_header_basic(&packets[0].frame).unwrap();
         let header = &packets[0].frame[..full.header_size_bytes];
         let frame = ParsedFrame::parse(&obu(ObuType::FrameHeader, header)).unwrap();
         assert!(frame.frame_type.is_intra_only);
-        assert_eq!(frame.frame_type.base_qp, basic.base_q_idx);
+        assert_eq!(
+            frame.frame_type.base_qp, None,
+            "the approximate header's quantiser is not trusted (#444)"
+        );
         assert!(
             !frame.key_frame,
             "key_frame comes from the exact header only"
