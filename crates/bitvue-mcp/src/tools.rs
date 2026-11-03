@@ -104,13 +104,6 @@ pub(crate) fn load_file(args: Value, state: &AppState) -> Result<String> {
                 frame_count,
             });
 
-            // Update loaded file state
-            let mut loaded = state
-                .loaded_file
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-            *loaded = Some(validated_path.clone());
-
             Ok(json!({
                 "success": true,
                 "path": path,
@@ -147,15 +140,10 @@ pub(crate) fn get_stream_model(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No data loaded for stream. Use load_file first."))?;
 
-    let loaded = state
-        .loaded_file
-        .lock()
-        .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-
-    let path = loaded
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No file loaded"))?
-        .clone();
+    let path = stream
+        .file_path
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("No file loaded for stream. Use load_file first."))?;
 
     Ok((units.clone(), path))
 }
@@ -569,11 +557,6 @@ pub(crate) fn search_syntax(args: Value, state: &AppState) -> Result<String> {
 }
 
 pub(crate) fn list_files(state: &AppState) -> Result<String> {
-    let loaded = state
-        .loaded_file
-        .lock()
-        .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-
     let core = state
         .core
         .lock()
@@ -588,6 +571,7 @@ pub(crate) fn list_files(state: &AppState) -> Result<String> {
     if let Some(units) = &stream_a.units {
         files.push(json!({
             "stream": "A",
+            "file": stream_a.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
             "frame_count": units.frame_count,
             "loaded": true
         }));
@@ -600,13 +584,13 @@ pub(crate) fn list_files(state: &AppState) -> Result<String> {
     if let Some(units) = &stream_b.units {
         files.push(json!({
             "stream": "B",
+            "file": stream_b.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
             "frame_count": units.frame_count,
             "loaded": true
         }));
     }
 
     Ok(json!({
-        "loaded_file": loaded.as_ref().map(|p| p.to_string_lossy().to_string()),
         "streams": files
     })
     .to_string())

@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 /// Shared application state
 pub(crate) struct AppState {
     pub(crate) core: Arc<Mutex<Core>>,
-    pub(crate) loaded_file: Arc<Mutex<Option<PathBuf>>>,
     /// Allowed base directories for file access (for security)
     pub(crate) allowed_paths: Vec<PathBuf>,
 }
@@ -61,7 +60,6 @@ impl AppState {
 
         Self {
             core: Arc::new(Mutex::new(Core::new())),
-            loaded_file: Arc::new(Mutex::new(None)),
             allowed_paths: vec![current_dir],
         }
     }

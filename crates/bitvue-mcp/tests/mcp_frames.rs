@@ -94,4 +94,72 @@ fn gop_structure_counts_one_key_frame_and_the_rest_inter() {
     assert_eq!(qps[0], 42, "key frame base_q_idx as parsed today");
 }
 
+/// Two different files in the two slots: every tool reports the file of the stream it was asked
+/// about, and the stream that was not loaded last keeps its own path (#360).
+#[test]
+fn each_stream_reports_its_own_file() {
+    let r = call(&[
+        tool(
+            0,
+            "load_file",
+            json!({"path": "test_data/av1_test.ivf", "stream": "A"}),
+        ),
+        tool(
+            1,
+            "load_file",
+            json!({"path": "test_data/vp9_test.ivf", "stream": "B"}),
+        ),
+        tool(2, "analyze_frame", json!({"frame_index": 0, "stream": "A"})),
+        tool(3, "analyze_frame", json!({"frame_index": 0, "stream": "B"})),
+        tool(4, "compare_streams", json!({"frame_index": 2})),
+        tool(5, "list_files", json!({})),
+        tool(6, "get_stream_info", json!({"stream": "A"})),
+        tool(7, "get_gop_structure", json!({"stream": "A"})),
+    ]);
+    // Windows reports `test_data\av1_test.ivf`; compare with one separator.
+    let ends = |v: &Value| v.as_str().unwrap().replace('\\', "/");
+    assert!(ends(&r[2]["file"]).ends_with("test_data/av1_test.ivf"));
+    assert!(ends(&r[3]["file"]).ends_with("test_data/vp9_test.ivf"));
+    assert!(ends(&r[4]["stream_a"]["file"]).ends_with("av1_test.ivf"));
+    assert!(ends(&r[4]["stream_b"]["file"]).ends_with("vp9_test.ivf"));
+    let streams = r[5]["streams"].as_array().unwrap();
+    assert!(ends(&streams[0]["file"]).ends_with("av1_test.ivf"));
+    assert!(ends(&streams[1]["file"]).ends_with("vp9_test.ivf"));
+    assert!(r[5].get("loaded_file").is_none());
+    assert!(ends(&r[6]["file"]).ends_with("av1_test.ivf"));
+    assert!(ends(&r[7]["file"]).ends_with("av1_test.ivf"));
+}
+
+/// Loading a stream again replaces that stream's path only.
+#[test]
+fn reloading_one_stream_leaves_the_other_alone() {
+    let r = call(&[
+        tool(
+            0,
+            "load_file",
+            json!({"path": "test_data/av1_test.ivf", "stream": "A"}),
+        ),
+        tool(
+            1,
+            "load_file",
+            json!({"path": "test_data/vp9_test.ivf", "stream": "B"}),
+        ),
+        tool(
+            2,
+            "load_file",
+            json!({"path": "test_data/vp9_test.ivf", "stream": "A"}),
+        ),
+        tool(3, "list_files", json!({})),
+    ]);
+    let streams = r[3]["streams"].as_array().unwrap();
+    assert!(streams[0]["file"]
+        .as_str()
+        .unwrap()
+        .ends_with("vp9_test.ivf"));
+    assert!(streams[1]["file"]
+        .as_str()
+        .unwrap()
+        .ends_with("vp9_test.ivf"));
+}
+
 bitvue_test_alloc::install!();

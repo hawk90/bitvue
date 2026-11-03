@@ -175,7 +175,7 @@ pub(crate) fn get_tools() -> Vec<Tool> {
         },
         Tool {
             name: "list_files".to_string(),
-            description: "List all currently loaded video files.".to_string(),
+            description: "List the loaded streams (A and B) with each stream's file path and frame count.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {}
