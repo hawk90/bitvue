@@ -152,8 +152,8 @@ impl ParsedFrame {
         // context work (`SymbolDecoder::read_intra_mode`) had zero real frames to
         // exercise it on.
         self.frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
-        self.frame_type.base_qp = frame_hdr.base_q_idx;
-        self.delta_q_enabled = frame_hdr.delta_q_present;
+        // `base_q_idx` and `delta_q_present` come after the fields the basic parser guesses at,
+        // so they are wrong on nearly every frame (#444): only the full header sets them.
     }
 
     /// Takes every value of a fully parsed frame header; `prev_ref_order_hint` is the reference
@@ -164,8 +164,6 @@ impl ParsedFrame {
         seq: &crate::SequenceHeader,
         prev_ref_order_hint: &[u32; 8],
     ) {
-        // The exact header parse wins over `parse_frame_header_basic`'s
-        // approximation for the two values it also supplied.
         self.delta_q_enabled = full_hdr.delta_q_present;
         // The coded frame size (spec 5.9.5: `FrameWidth`, already divided by the superres ratio),
         // not the sequence's maximum: the tile decode walks this grid.
@@ -351,8 +349,8 @@ impl ParsedFrame {
         // "compounding entropy desync" investigated over many sessions as a
         // coeff_base/coeff_br context-precision suspicion -- that suspicion was never
         // reached because the decoder was never even starting from real tile bytes for
-        // inter frames. `basic` is kept only for `is_intra_only`/`base_qp`/
-        // `delta_q_enabled` when `seq_header` isn't available yet (a Frame OBU can't
+        // inter frames. `basic` is kept only for `is_intra_only` and the
+        // tile cut when `seq_header` isn't available yet (a Frame OBU can't
         // spec-legally precede a Sequence Header, so this fallback path is defensive,
         // not a real-stream case).
         let sizes = self.absorb_frame_header(payload, seq, ref_state, tile_data);
