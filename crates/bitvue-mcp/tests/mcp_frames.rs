@@ -116,7 +116,8 @@ fn each_stream_reports_its_own_file() {
         tool(6, "get_stream_info", json!({"stream": "A"})),
         tool(7, "get_gop_structure", json!({"stream": "A"})),
     ]);
-    let ends = |v: &Value| v.as_str().unwrap().to_string();
+    // Windows reports `test_data\av1_test.ivf`; compare with one separator.
+    let ends = |v: &Value| v.as_str().unwrap().replace('\\', "/");
     assert!(ends(&r[2]["file"]).ends_with("test_data/av1_test.ivf"));
     assert!(ends(&r[3]["file"]).ends_with("test_data/vp9_test.ivf"));
     assert!(ends(&r[4]["stream_a"]["file"]).ends_with("av1_test.ivf"));
