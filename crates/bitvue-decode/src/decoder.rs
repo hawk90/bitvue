@@ -1179,4 +1179,71 @@ mod tests {
             assert_eq!(from_av1_frame_type(other), None, "{other:?}");
         }
     }
+
+    /// The packets of a clip below `test_data`.
+    fn clip_packets(name: &str) -> Vec<Vec<u8>> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../test_data")
+            .join(name);
+        let data = std::fs::read(path).unwrap();
+        let (mut pos, mut out) = (32usize, Vec::new());
+        while pos + 12 <= data.len() {
+            let size = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+            out.push(data[pos + 12..pos + 12 + size].to_vec());
+            pos += 12 + size;
+        }
+        out
+    }
+
+    /// `av1_fuzz_dav1d_frame_thread_hang.ivf` has a packet dav1d refuses (the fourth) among
+    /// packets it decodes. Once the reference state has diverged from dav1d's, no frame type or
+    /// quantiser is reported for what follows, although dav1d keeps returning pictures.
+    #[test]
+    fn after_a_packet_dav1d_refuses_no_type_or_quantiser_is_reported() {
+        let mut decoder = Av1Decoder::new().unwrap();
+        let mut refused = false;
+        let mut after = 0;
+        for (i, packet) in clip_packets("av1_fuzz_dav1d_frame_thread_hang.ivf")
+            .into_iter()
+            .enumerate()
+        {
+            let sent = decoder.send_data_owned(packet, i as i64);
+            let mut pictures = 0;
+            while decoder.get_frame().is_ok() {
+                pictures += 1;
+            }
+            refused |= sent.is_err();
+            if refused {
+                assert_eq!(
+                    (decoder.shown_type, decoder.shown_qp),
+                    (None, None),
+                    "packet {i}"
+                );
+                after += pictures;
+            }
+        }
+        assert!(refused, "the clip should hold a refused packet");
+        assert!(
+            after > 0,
+            "dav1d should have kept returning pictures after it"
+        );
+    }
+
+    /// After a flush nothing is known about the slots either, whatever dav1d does next.
+    #[test]
+    fn a_flush_forgets_the_reference_state() {
+        let packets = clip_packets("av1_aomenc_testsrc2.ivf");
+        let mut decoder = Av1Decoder::new().unwrap();
+        decoder.send_data_owned(packets[0].clone(), 0).unwrap();
+        assert_eq!(decoder.shown_type, Some(FrameType::Key));
+        decoder.flush();
+        assert_eq!((decoder.shown_type, decoder.shown_qp), (None, None));
+        // an inter packet right after the flush: its picture type is not trusted ...
+        let _ = decoder.send_data_owned(packets[3].clone(), 1);
+        assert_eq!(decoder.shown_type, None);
+        // ... until a key frame starts the state afresh
+        decoder.send_data_owned(packets[0].clone(), 2).unwrap();
+        assert_eq!(decoder.shown_type, Some(FrameType::Key));
+        assert_eq!(decoder.shown_qp, Some(14));
+    }
 }
