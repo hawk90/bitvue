@@ -57,16 +57,13 @@ pub fn parse_obu_header_syntax(
     );
 
     // obu_extension_flag (1 bit)
-    let (has_ext, range) = reader.read_bit_tracked()?;
-    builder.add_field("obu_extension_flag", range, format!("{}", has_ext as u8));
+    let has_ext = builder.add_flag(reader, "obu_extension_flag")?;
 
     // obu_has_size_field (1 bit)
-    let (has_size, range) = reader.read_bit_tracked()?;
-    builder.add_field("obu_has_size_field", range, format!("{}", has_size as u8));
+    let has_size = builder.add_flag(reader, "obu_has_size_field")?;
 
     // obu_reserved_1bit (1 bit) - must be 0
-    let (reserved, range) = reader.read_bit_tracked()?;
-    builder.add_field("obu_reserved_1bit", range, format!("{}", reserved as u8));
+    builder.add_flag(reader, "obu_reserved_1bit")?;
 
     // Conditional: extension header
     if has_ext {
@@ -287,6 +284,30 @@ mod tests {
             .unwrap();
         assert_eq!(spatial.bit_range, BitRange::new(11, 13));
         assert_eq!(spatial.value.as_ref().unwrap(), "1");
+    }
+
+    #[test]
+    fn every_flag_of_the_header_byte_is_reported_under_its_own_name_and_bit() {
+        // 0b0_0010_0_1_1: forbidden 0, type 2, extension 0, has_size 1, reserved 1 -- distinct
+        // values so a flag reported under another flag's name or bit shows up.
+        let data = [0b0001_0011];
+        let mut reader = TrackedBitReader::new(&data, 0);
+        let mut builder = SyntaxBuilder::new("obu[0]".to_string(), "obu_0".to_string());
+        parse_obu_header_syntax(&mut reader, &mut builder).unwrap();
+        let model = builder.build();
+
+        for (name, bit, value) in [
+            ("obu_forbidden_bit", 0, "0"),
+            ("obu_extension_flag", 5, "0"),
+            ("obu_has_size_field", 6, "1"),
+            ("obu_reserved_1bit", 7, "1"),
+        ] {
+            let node = model
+                .get_node(&format!("obu[0].obu_header.{name}"))
+                .unwrap_or_else(|| panic!("missing node {name}"));
+            assert_eq!(node.bit_range, BitRange::new(bit, bit + 1), "{name}");
+            assert_eq!(node.value.as_deref(), Some(value), "{name}");
+        }
     }
 
     #[test]

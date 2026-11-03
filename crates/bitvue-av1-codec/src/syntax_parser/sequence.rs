@@ -68,16 +68,10 @@ pub fn parse_sequence_header_syntax(
     );
 
     // still_picture (1 bit) - AV1 Spec 5.5.2
-    let (still, range) = reader.read_bit_tracked()?;
-    builder.add_field("still_picture", range, format!("{}", still as u8));
+    builder.add_flag(reader, "still_picture")?;
 
     // reduced_still_picture_header (1 bit) - AV1 Spec 5.5.3
-    let (reduced, range) = reader.read_bit_tracked()?;
-    builder.add_field(
-        "reduced_still_picture_header",
-        range,
-        format!("{}", reduced as u8),
-    );
+    let reduced = builder.add_flag(reader, "reduced_still_picture_header")?;
 
     if reduced {
         // Simplified path for still pictures - AV1 Spec 5.5.4
@@ -102,8 +96,7 @@ pub fn parse_sequence_header_syntax(
     }
 
     // film_grain_params_present (1 bit) - AV1 Spec 5.5.26
-    let (val, range) = reader.read_bit_tracked()?;
-    builder.add_field("film_grain_params_present", range, format!("{}", val as u8));
+    builder.add_flag(reader, "film_grain_params_present")?;
 
     let end = reader.position();
     builder.pop_container(end);
@@ -117,24 +110,14 @@ fn parse_non_reduced_path(
     _profile: u8,
 ) -> Result<()> {
     // timing_info_present_flag (1 bit) - AV1 Spec 5.5.5
-    let (timing_present, range) = reader.read_bit_tracked()?;
-    builder.add_field(
-        "timing_info_present_flag",
-        range,
-        format!("{}", timing_present as u8),
-    );
+    let timing_present = builder.add_flag(reader, "timing_info_present_flag")?;
 
     // buffer_delay_length_minus_1 of the decoder model info, when there is one
     let decoder_model_delay_bits = if timing_present {
         parse_timing_info_simplified(reader, builder)?;
 
         // decoder_model_info_present_flag (1 bit) - AV1 Spec 5.5.7
-        let (decoder_present, range) = reader.read_bit_tracked()?;
-        builder.add_field(
-            "decoder_model_info_present_flag",
-            range,
-            format!("{}", decoder_present as u8),
-        );
+        let decoder_present = builder.add_flag(reader, "decoder_model_info_present_flag")?;
 
         if decoder_present {
             // decoder_model_info details are not shown as nodes; its first field is needed to
@@ -148,12 +131,7 @@ fn parse_non_reduced_path(
     };
 
     // initial_display_delay_present_flag (1 bit) - AV1 Spec 5.5.8
-    let (display_delay, range) = reader.read_bit_tracked()?;
-    builder.add_field(
-        "initial_display_delay_present_flag",
-        range,
-        format!("{}", display_delay as u8),
-    );
+    let display_delay = builder.add_flag(reader, "initial_display_delay_present_flag")?;
 
     // Parse operating points array
     parse_operating_points_simplified(reader, builder, decoder_model_delay_bits, display_delay)?;
@@ -180,8 +158,7 @@ fn parse_timing_info_simplified(
     builder.add_field("time_scale", range, format!("{}", val));
 
     // equal_picture_interval (1 bit)
-    let (equal, range) = reader.read_bit_tracked()?;
-    builder.add_field("equal_picture_interval", range, format!("{}", equal as u8));
+    let equal = builder.add_flag(reader, "equal_picture_interval")?;
 
     if equal {
         // num_ticks_per_picture_minus_1 (uvlc) - Variable length
@@ -240,8 +217,7 @@ fn parse_operating_points_simplified(
 
         // seq_tier (1 bit) - Conditional on level > 7 - AV1 Spec 5.5.12
         if level > 7 {
-            let (tier, range) = reader.read_bit_tracked()?;
-            builder.add_field("seq_tier", range, format!("{}", tier as u8));
+            builder.add_flag(reader, "seq_tier")?;
         }
 
         // decoder_model_present_for_this_op (only when decoder_model_info is present)
@@ -310,12 +286,7 @@ fn parse_feature_flags(
 ) -> Result<()> {
     if !reduced {
         // Frame ID fields (conditional) - AV1 Spec 5.5.19-21
-        let (frame_ids, range) = reader.read_bit_tracked()?;
-        builder.add_field(
-            "frame_id_numbers_present_flag",
-            range,
-            format!("{}", frame_ids as u8),
-        );
+        let frame_ids = builder.add_flag(reader, "frame_id_numbers_present_flag")?;
 
         if frame_ids {
             // Phase 0: Skip delta_frame_id_length_minus_2 (4 bits)
@@ -325,16 +296,13 @@ fn parse_feature_flags(
     }
 
     // use_128x128_superblock (1 bit) - AV1 Spec 5.5.22
-    let (val, range) = reader.read_bit_tracked()?;
-    builder.add_field("use_128x128_superblock", range, format!("{}", val as u8));
+    builder.add_flag(reader, "use_128x128_superblock")?;
 
     // enable_filter_intra (1 bit) - AV1 Spec 5.5.23
-    let (val, range) = reader.read_bit_tracked()?;
-    builder.add_field("enable_filter_intra", range, format!("{}", val as u8));
+    builder.add_flag(reader, "enable_filter_intra")?;
 
     // enable_intra_edge_filter (1 bit) - AV1 Spec 5.5.24
-    let (val, range) = reader.read_bit_tracked()?;
-    builder.add_field("enable_intra_edge_filter", range, format!("{}", val as u8));
+    builder.add_flag(reader, "enable_intra_edge_filter")?;
 
     if !reduced {
         // Phase 0: Parse inter/compound flags to properly track bit positions
@@ -348,12 +316,7 @@ fn parse_feature_flags(
         reader.skip_bits(1)?;
 
         // enable_order_hint (1 bit) - Parse this since it affects skip logic
-        let (enable_order_hint, range) = reader.read_bit_tracked()?;
-        builder.add_field(
-            "enable_order_hint",
-            range,
-            format!("{}", enable_order_hint as u8),
-        );
+        let enable_order_hint = builder.add_flag(reader, "enable_order_hint")?;
 
         if enable_order_hint {
             // enable_jnt_comp (1 bit)
@@ -387,16 +350,13 @@ fn parse_feature_flags(
     }
 
     // enable_superres (1 bit) - AV1 Spec 5.5.25
-    let (val, range) = reader.read_bit_tracked()?;
-    builder.add_field("enable_superres", range, format!("{}", val as u8));
+    builder.add_flag(reader, "enable_superres")?;
 
     // enable_cdef (1 bit)
-    let (val, range) = reader.read_bit_tracked()?;
-    builder.add_field("enable_cdef", range, format!("{}", val as u8));
+    builder.add_flag(reader, "enable_cdef")?;
 
     // enable_restoration (1 bit)
-    let (val, range) = reader.read_bit_tracked()?;
-    builder.add_field("enable_restoration", range, format!("{}", val as u8));
+    builder.add_flag(reader, "enable_restoration")?;
 
     Ok(())
 }
@@ -415,33 +375,24 @@ fn parse_color_config_simplified(
     builder.push_container("color_config", start);
 
     // high_bitdepth (1 bit)
-    let (high_bd, range) = reader.read_bit_tracked()?;
-    builder.add_field("high_bitdepth", range, format!("{}", high_bd as u8));
+    let high_bd = builder.add_flag(reader, "high_bitdepth")?;
 
     // twelve_bit (1 bit): profile 2 with high_bitdepth only
     let mut twelve_bit = false;
     if profile == 2 && high_bd {
-        let (twelve, range) = reader.read_bit_tracked()?;
-        builder.add_field("twelve_bit", range, format!("{}", twelve as u8));
+        let twelve = builder.add_flag(reader, "twelve_bit")?;
         twelve_bit = twelve;
     }
 
     // mono_chrome (1 bit): not coded in profile 1 (always 0)
     let mono = if profile != 1 {
-        let (mono, range) = reader.read_bit_tracked()?;
-        builder.add_field("mono_chrome", range, format!("{}", mono as u8));
-        mono
+        builder.add_flag(reader, "mono_chrome")?
     } else {
         false
     };
 
     // color_description_present_flag (1 bit); the descriptors default to 2 (unspecified)
-    let (desc_present, range) = reader.read_bit_tracked()?;
-    builder.add_field(
-        "color_description_present_flag",
-        range,
-        format!("{}", desc_present as u8),
-    );
+    let desc_present = builder.add_flag(reader, "color_description_present_flag")?;
     let (mut primaries, mut transfer, mut matrix) = (2, 2, 2);
     if desc_present {
         let (val, range) = reader.read_bits_tracked(8)?;
@@ -457,27 +408,23 @@ fn parse_color_config_simplified(
 
     if mono {
         // color_range only; subsampling is fixed, separate_uv_delta_q is 0 and not coded
-        let (val, range) = reader.read_bit_tracked()?;
-        builder.add_field("color_range", range, format!("{}", val as u8));
+        builder.add_flag(reader, "color_range")?;
     } else {
         // BT.709 primaries (1), sRGB transfer (13) and identity matrix (0): full range 4:4:4,
         // neither color_range nor the subsampling bits are coded
         let srgb_identity = primaries == 1 && transfer == 13 && matrix == 0;
         if !srgb_identity {
-            let (val, range) = reader.read_bit_tracked()?;
-            builder.add_field("color_range", range, format!("{}", val as u8));
+            builder.add_flag(reader, "color_range")?;
 
             let (sub_x, sub_y) = match profile {
                 0 => (true, true),
                 1 => (false, false),
                 _ if twelve_bit => {
                     // profile 2 at 12 bit: subsampling_x, and subsampling_y only if x is set
-                    let (sub_x, range) = reader.read_bit_tracked()?;
-                    builder.add_field("subsampling_x", range, format!("{}", sub_x as u8));
+                    let sub_x = builder.add_flag(reader, "subsampling_x")?;
                     let mut sub_y = false;
                     if sub_x {
-                        let (y, range) = reader.read_bit_tracked()?;
-                        builder.add_field("subsampling_y", range, format!("{}", y as u8));
+                        let y = builder.add_flag(reader, "subsampling_y")?;
                         sub_y = y;
                     }
                     (sub_x, sub_y)
@@ -492,8 +439,7 @@ fn parse_color_config_simplified(
             }
         }
         // separate_uv_delta_q (1 bit)
-        let (val, range) = reader.read_bit_tracked()?;
-        builder.add_field("separate_uv_delta_q", range, format!("{}", val as u8));
+        builder.add_flag(reader, "separate_uv_delta_q")?;
     }
 
     let end = reader.position();
