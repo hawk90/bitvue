@@ -64,27 +64,18 @@ fn packets_sent_one_by_one_come_back_with_their_timestamps() {
     }
 }
 
-/// What `av1_aomenc_testsrc2.ivf` shows, packet by packet (headers read with
-/// `parse_frame_header_basic`): packet 0 is the key frame; packets 1 and 6 hold hidden frames and
-/// then one shown inter frame; packets 2, 5 and 8 only repeat an earlier frame
-/// (`show_existing_frame`), so the packet does not say what type the picture is.
-const TESTSRC2_SHOWN_TYPES: [Option<FrameType>; 12] = [
-    Some(FrameType::Key),
-    Some(FrameType::Inter),
-    None,
-    Some(FrameType::Inter),
-    Some(FrameType::Inter),
-    None,
-    Some(FrameType::Inter),
-    Some(FrameType::Inter),
-    None,
-    Some(FrameType::Inter),
-    Some(FrameType::Inter),
-    Some(FrameType::Inter),
-];
+/// `av1_aomenc_testsrc2.ivf` as dav1d itself types its pictures (`ffprobe -c:v libdav1d`: `I` for
+/// the first, `P` for the other eleven). Packets 1 and 6 hold hidden frames before the shown one;
+/// packets 2, 5 and 8 only repeat an earlier frame (`show_existing_frame`), which the decoder types
+/// by the reference slot the repeated frame sits in.
+const TESTSRC2_SHOWN_TYPES: [Option<FrameType>; 12] = {
+    let mut types = [Some(FrameType::Inter); 12];
+    types[0] = Some(FrameType::Key);
+    types
+};
 
 #[test]
-fn the_frame_type_is_the_shown_frames_and_unknown_when_the_packet_does_not_say() {
+fn the_frame_type_is_the_shown_pictures_even_when_a_packet_only_repeats_a_frame() {
     let data = ivf("av1_aomenc_testsrc2.ivf");
     let mut decoder = Av1Decoder::new().unwrap();
     let mut frames = Vec::new();
@@ -122,6 +113,27 @@ const TESTSRC2_SHOWN_QPS: [Option<u8>; 12] = [
     Some(91),
     Some(92),
 ];
+
+/// Clips with hidden and repeated frames, all typed by dav1d as one `I` and the rest `P`
+/// (`ffprobe -c:v libdav1d -show_entries frame=pict_type,key_frame`), so every picture is known.
+#[test]
+fn every_picture_of_clips_with_hidden_and_repeated_frames_is_typed_as_dav1d_types_it() {
+    for (name, frames) in [
+        ("av1_aomenc_testsrc2.ivf", 12),
+        ("av1_rav1e_testsrc2.ivf", 12),
+        ("av1_svtav1_testsrc2.ivf", 12),
+        ("sample_av1.ivf", 60),
+        ("av1_aomenc_superres.ivf", 30),
+        ("av1_aomenc_194x72.ivf", 10),
+        ("av1_aomenc_filmgrain.ivf", 10),
+    ] {
+        let decoded = Av1Decoder::new().unwrap().decode_all(&ivf(name)).unwrap();
+        let types: Vec<_> = decoded.iter().map(|f| f.frame_type).collect();
+        let mut want = vec![Some(FrameType::Inter); frames];
+        want[0] = Some(FrameType::Key);
+        assert_eq!(types, want, "{name}");
+    }
+}
 
 #[test]
 fn qp_avg_is_the_shown_frames_not_a_hidden_frame_sent_before_it() {
