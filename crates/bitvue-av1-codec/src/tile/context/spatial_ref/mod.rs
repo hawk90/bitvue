@@ -17,6 +17,7 @@ mod global_mv;
 mod global_mv_test;
 mod match_ref;
 mod mode_context;
+mod neighbour_scan;
 #[cfg(test)]
 mod scan_test;
 mod single_stack;
