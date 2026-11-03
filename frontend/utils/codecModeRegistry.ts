@@ -277,7 +277,7 @@ const VVC_MODES: CodecModeEntry[] = [
  * F1 Coding Flow | F2 Predictions | F3 Transform | F4 Reconstruction
  * F5 Loop Filter | F6 CDEF Filter | F7 SuperRes Filter
  * F8 Loop Restoration | F9 Film Grain Pixels | F10 YUV
- * Info overlays: Heat Map, Efficiency Map, Block Type, PSNR
+ * Info overlays: QP Map, Heat Map, Efficiency Map, Block Type, PSNR
  */
 const AV1_MODES: CodecModeEntry[] = [
   {
@@ -343,6 +343,13 @@ const AV1_MODES: CodecModeEntry[] = [
     description: "Decoded picture without any overlay",
   },
   // ── Info overlays ──────────────────────────────────────────────────────────
+  {
+    fKey: null,
+    mode: "qp-map",
+    label: "QP Map",
+    description: "Per-block QP heatmap",
+    isInfoOverlay: true,
+  },
   {
     fKey: null,
     mode: "heat-map",
