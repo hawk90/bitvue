@@ -93,8 +93,8 @@ is not a fault.
 | `F2` | `Predictions` | The prediction mode of each block | Intra frames are colored by direction mode (`D45`, `SmoothV`, `Paeth`, `CFL`, ...). Inter frames are colored by inter mode (`NewMV`, `NearMV`, ...). See the legend at the bottom |
 | `F3` | `Transform` | Transform block sizes | Colored grid per size with counts (for example `8x8 (78)`, `64x64 (88)`). The top-left label gives `Blocks` and `Types` |
 | `F4` | `Reconstruction` | The reconstructed picture before the loop filters | The picture as it was before any loop filter was applied |
-| `F5` | `Loop Filter` | The deblocking filter | Number of filtered edges, filter strength and the loop-filter parameters (`Level`, `Sharpness`, `Ref/Mode Deltas`) |
-| `F6` | `CDEF Filter` | The CDEF filter | A block grid with `CDEF Y-Primary`, `Y-Secondary` and `Damping`. Filter direction is drawn as arrows |
+| `F5` | `Loop Filter` | The deblocking filter | A numeric panel (`Deblocking Filter Analysis`: number of filtered edges, filter strength, loop-filter parameters `Level`, `Sharpness`, `Ref/Mode Deltas`) and, below it, `Block Boundary Visualization` with the picture |
+| `F6` | `CDEF Filter` | The CDEF filter | The picture with a block grid on top, and a legend with `CDEF Y-Primary`, `Y-Secondary`, `Damping` and `Arrows = filter direction` |
 | `F7` | `SuperRes Filter` | Super-resolution | Meaningful only for streams that use super-resolution |
 | `F8` | `Loop Restoration` | The loop restoration filter | Filter type and block size. Shows `disabled` when not used |
 | `F9` | `Film Grain Pixels` | Film grain synthesis | Meaningful only for streams with film grain. Otherwise `disabled` |
@@ -489,7 +489,7 @@ Places where the application differs from the reference guide or shows something
 | Player | In screenshots the decoded picture is missing (`F10 YUV` and `F4` are black, only the overlays show). It appears when WebGPU is turned off, so decoding and drawing work; the picture sits on a WebGPU canvas that screenshot capture does not include. Whether a person sees it on a real screen is not verified | #456 |
 | Filmstrip, timeline, statistics | Frames that re-show an earlier frame (2, 5, 8) are labelled `I`; they are actually P | #454 |
 | Frame information | For some frames `qp_avg` is the hidden frame's value, not the shown frame's (frames 1 and 6) | #455 |
-| `F5 Loop Filter` | Shows a numeric panel instead of drawing filtered edges on the picture (the values are correct) | #457 |
+| `F5 Loop Filter` | The numeric panel (HEVC-style terms) takes most of the space and the `Block Boundary Visualization` below it is cut off, so the colored filtered edges described in the guide are not visible (the numbers are correct) | #457 |
 | `HM` | Draws motion-vector magnitude instead of bit usage | #458 |
 | `F2 Predictions` | The legend contains an unnamed inter mode (`Inter69`) | #460 |
 | `HRD Buffer` | Draws values for streams that have no HRD information | #461 |
