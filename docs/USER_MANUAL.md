@@ -61,7 +61,7 @@ With the sample clip, a healthy screen looks like this:
 | Keyboard `Left` / `Right` | Previous / next frame |
 | Navigation buttons in the toolbar | First, previous, next, last frame |
 | Frame number box | Type a frame number |
-| Play button and speed (`1x`) | Present in the toolbar (playback itself is listed in [Features not yet verified](#9-features-not-yet-verified)) |
+| Play button and speed (`1x`) | Present in the toolbar (playback itself is listed in [Features not yet verified](#10-features-not-yet-verified)) |
 
 When the current frame is a P frame, **reference arrows** are drawn in the filmstrip. Lines run from the current frame to
 the frames it references, labelled `REF0`, `REF1`, ... (sample clip, frame 3: `REF0` to `REF5` point to frame 0, `REF6`
@@ -113,20 +113,40 @@ An overlay is an information map drawn on top of a mode. Switch overlays on and 
 |---|---|---|
 | `BT` | `Block Type` | Blocks colored by kind: `INTRA`, `INTER`, `SKIP`, `INTRA_BC`, `COMPOUND` (legend at the top left) |
 | `HM` | `Heat Map` | Bits spent per block (brighter = more bits). The application currently draws motion-vector magnitude instead ([Known issues](#known-issues)) |
-| `EFF` | `Efficiency` | Coding efficiency per block (brighter = more efficient) |
+| `EFF` | `Efficiency` | Intended: coding efficiency per block (brighter = more efficient). The application currently draws bits per pixel instead, with a `low bpp` to `high bpp` legend ([Known issues](#known-issues)) |
 | `PSNR` | `PSNR` | PSNR per block. Needs a reference YUV file |
 
 ## 7. Left side panels
 
-`Stream Tree` shows the frame list as a tree and has a `Filter` checkbox. Below it, the `Syntax` drop-down and `Syntax Detail`
-show information about the current frame.
+`Stream Tree` lists the frames, one line per frame, in the form `[F] Frame #0 - I @ 0x00000020 (3745 bytes)` (type, file offset and size; the size includes the 12-byte IVF frame header). It has a `Filter` checkbox.
+
+Below it a drop-down switches the lower panel between four views:
+
+| View | What it shows |
+|---|---|
+| `Syntax` | `SYNTAX DETAIL` with the tabs `FRAME`, `REFS`, `STATS` and `SEARCH` (table below) |
+| `Selection` | `SELECTION INFO` for the current frame: `Frame Index`, `Frame Type`, `Size`, `PTS`, `Temporal ID`, `References` (sample clip, frame 3: `3`, `P`, `1.02 KB`, `3`, `0`, `7`) |
+| `Unit HEX` | `UNIT HEX` with the tabs `Frame`, `Hex` and `DPB` (table below) |
+| `YUV Diff` | Compare against a reference YUV file ([Features not yet verified](#10-features-not-yet-verified)) |
+
+`Syntax` tabs:
 
 | Tab | Content |
 |---|---|
 | `FRAME` | `Frame:` (number), `Type:` (I/P) and the OBU tree (`obu_0`, ...). Expand the tree to see syntax elements |
-| `REFS` | Reference information. On frame 0 of the sample clip it shows only a "no data" icon |
-| `STATS` | Statistics of the current frame (`Current Frame`, `Index`, ...) |
+| `REFS` | The references of the current frame as an `L0` list (sample clip, frame 3: `L0`, `6 references`, rows such as `[3] #0 POC -3` where `#0` is the referenced frame). On frame 0 it shows only a "no data" icon |
+| `STATS` | Statistics of the current frame, starting with `Current Frame`: `Index`, `Type`, `Size`, `Temporal ID` |
 | `SEARCH` | Find a frame by type, number or PTS (`Search by frame type, number, or PTS...`) |
+
+`Unit HEX` tabs:
+
+| Tab | Content |
+|---|---|
+| `Frame` | The frame's number, type and size (frame 0: `3.66 KB (3745 bytes)`) |
+| `Hex` | A hex dump of the frame's first 2048 bytes (`Data: First 2048 bytes (of 3745 total)`), 16 bytes per row with an offset column. The first 12 bytes are the IVF frame header, so the AV1 data starts at byte 12 (sample clip, frame 0: `12 00 0A 0B` for a temporal delimiter followed by a sequence header) |
+| `DPB` | The decoded picture buffer: `Current Frame` and a table with `Idx`, `Frame`, `Type`, `PTS`, `Status` |
+
+> At the default window size the left panel is short and shows only a row or two. Enlarge the window to read it (see [Known issues](#known-issues)).
 
 ## 8. Bottom panels
 
@@ -134,10 +154,21 @@ show information about the current frame.
 |---|---|---|
 | `INFO` | File path, total frames, current frame, type | `Frames: 12`, `Current Frame: 4`, `Frame: P` |
 | `DETAILS` | `Temporal Layer`, `Display Order`, `Coding Order`, `References` | `0`, `3`, `3`, `0, 0, 0, 0, 0, 0, 1` |
-| `STATS` | Count of each frame type (`Frame Types`) | Number of I and P frames |
+| `STATS` | Count of each frame type (`Frame Types`), `Total`, `Keyframes`, `Avg Size` | Sample clip: 1 I frame and 11 P frames, `Total: 12`, `Keyframes: 1` (the application currently shows `I: 4`, see [Known issues](#known-issues)) |
 | `DIAGNOSTICS` | Errors, warnings and notes found in the stream (`All`, errors, warnings, info) | No problems: all `0` and a check mark |
 
-## 9. Features not yet verified
+## 9. Comparing two streams (`A/B Compare`)
+
+Open a second stream with `File` > `Open dependent bitstream...`. The window changes to the `A/B Compare` workspace, which shows stream A and stream B side by side.
+
+| Part | Content |
+|---|---|
+| Toolbar | `unlink` / `Sync` (follow the other stream), `Offset` with `-`, `+` and `Reset`, a match badge (`PtsExact High`), the layout switch `Side-by-Side` / `Split`, the `Show Diff` checkbox, `Temperature`, `Find First Diff`, `Export Diff Bundle` |
+| Stream panels | `Stream A` and `Stream B`, each with its size and frame count (`320x240 • 12 frames`), its own navigation buttons and frame box, and a badge with the frame number, type and size (`A: 1 / 12`, `I`, `3.7 KB`) |
+| Diff panel | `Temperature Map (real diff heatmap)` with `min`/`max` and a `Low` to `High` scale. Identical streams give `min: 0.0  max: 0.0` |
+| Bottom line | `Gap: 0 frames`, `Offset: 0` and a confidence badge (`High`); an `EXACT` badge when the two streams match exactly |
+
+## 10. Features not yet verified
 
 These are described in the reference guide but have not yet been checked in this application. Each is tracked as an issue; once
 verified, it moves into the chapters above.
@@ -151,8 +182,8 @@ verified, it moves into the chapters above.
 | Detail view of each mode; decode-order numbers, tiles and segment colors in `Coding Flow` | #471, #472 |
 | Motion vectors and residual picture on inter frames; the `EFF` and `PSNR` overlays | #473, #474, #475 |
 | `Syntax Detail` tabs for OBU, header, block, references and statistics | #476, #477, #478, #479, #480 |
-| Selection information; raw bytes and hex view; status and error panel | #481, #482, #483 |
-| Dual view; Debug YUV; opening a raw YUV file | #484, #485, #486 |
+| Selection information for a selected block (the frame-level `Selection` view works); status and error panel | #481, #483 |
+| Dual view operations (master/follower sync, `Delta`); Debug YUV; opening a raw YUV file | #484, #485, #486 |
 | Mode screens for streams that use loop restoration, super-resolution or film grain | #487 |
 
 ## Features by codec
@@ -463,4 +494,7 @@ Places where the application differs from the reference guide or shows something
 | `HRD Buffer` | Draws values for streams that have no HRD information | #461 |
 | `Frame Sizes` | The QP axis is fixed at 0 to 51, so AV1 QP (up to 255) exceeds it | #462 |
 | Overlays on a mode | The overlay label is drawn over the mode label and is hard to read | #451 |
+| `EFF` overlay | Draws bits per pixel instead of coding efficiency | #488 |
+| Window layout | At the default window size `Stream Tree` and `Syntax Detail` show only one or two rows | #489 |
+| Statistics | The bottom `STATS` panel shows `Keyframes: 4` and `I: 4` for a clip with one key frame | #454 |
 | AV1 `QP Map` | Not in the guide's AV1 overlays; whether to add it as an extension is undecided | #446, #453 |
