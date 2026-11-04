@@ -14,6 +14,7 @@ with commercial tools (VQ Analyzer, VQ Probe, VEGA, StreamEye). Migrated off Tau
 | `docs/PARITY_CHECKLIST.md` | Parity validation strategy, test sources, verification tiers, regression suite, fixtures |
 | `docs/COMPETITOR_FEATURE_MATRIX.md` | Competitor research provenance, out-of-scope rationale, per-product counts |
 | `docs/UX_PARITY_MATRIX.md` | UI/UX contracts narrative, menu tree, overlay colour scale, shortcuts ownership |
+| `docs/USER_MANUAL.md` | Per-panel expected behavior (VQ Analyzer guide as the reference) + what the desktop app actually shows, with issue numbers. Check the app against it; update it when a cell is verified |
 | `docs/DEVELOPMENT_PHASES.md` | Architecture decisions (sidecar, "제품 아키텍처 확정") + Phase 0-12 goals/rationale |
 | `docs/history/` | Dated dev logs + frozen old checklist notes — history, not current state |
 
