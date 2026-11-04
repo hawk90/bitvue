@@ -61,6 +61,7 @@ With the sample clip, a healthy screen looks like this:
 | Keyboard `Left` / `Right` | Previous / next frame |
 | Navigation buttons in the toolbar | First, previous, next, last frame |
 | Frame number box | Type a frame number |
+| Click a thumbnail | Goes to that frame (the player, `INFO`, `DETAILS` and the reference arrows all update) |
 | Play button and speed (`1x`) | Present in the toolbar (playback itself is listed in [Features not yet verified](#10-features-not-yet-verified)) |
 
 When the current frame is a P frame, **reference arrows** are drawn in the filmstrip. Lines run from the current frame to
@@ -177,7 +178,7 @@ verified, it moves into the chapters above.
 |---|---|
 | All menu items (`File`, `Mode`, `YUVDiff`, `Options`, `View`, `Help`) | #463 |
 | Full-stream analysis button; Metric view (PSNR/SSIM) | #464, #465 |
-| Thumbnail click / right-click / jump to number; interaction in the frame-size graph and in B-Pyramid | #466, #467, #468 |
+| Thumbnail right-click and jump to a number; interaction in the frame-size graph and in B-Pyramid | #466, #467, #468 |
 | Player buttons (`Pic`, `Info`, `Y/U/V`, ...) and mouse operations (select, zoom, pan) | #469, #470 |
 | Detail view of each mode; decode-order numbers, tiles and segment colors in `Coding Flow` | #471, #472 |
 | Motion vectors and residual picture on inter frames; the `EFF` and `PSNR` overlays | #473, #474, #475 |
@@ -485,7 +486,7 @@ Places where the application differs from the reference guide or shows something
 
 | Screen | Problem | Issue |
 |---|---|---|
-| Player | The decoded picture is not drawn (`F10 YUV` and `F4` are black). The cause is not known | #456 |
+| Player | In screenshots the decoded picture is missing (`F10 YUV` and `F4` are black, only the overlays show). It appears when WebGPU is turned off, so decoding and drawing work; the picture sits on a WebGPU canvas that screenshot capture does not include. Whether a person sees it on a real screen is not verified | #456 |
 | Filmstrip, timeline, statistics | Frames that re-show an earlier frame (2, 5, 8) are labelled `I`; they are actually P | #454 |
 | Frame information | For some frames `qp_avg` is the hidden frame's value, not the shown frame's (frames 1 and 6) | #455 |
 | `F5 Loop Filter` | Shows a numeric panel instead of drawing filtered edges on the picture (the values are correct) | #457 |

@@ -18,7 +18,7 @@ cd bitvue-desktop && npm run build:electron         # tsc + copy; frontend/dist 
 BITVUE_ELECTRON_OFFSCREEN=1 \                       # always: see Gotchas (a visible window gets your real mouse/keys)
 BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH=$PWD/../test_data/av1_aomenc_testsrc2.ivf \
 BITVUE_ELECTRON_SCREENSHOT=/tmp/shot.png \
-  npx electron .                                     # exit 0 and "[screenshot] saved to" = captured
+  npx electron . --disable-gpu                       # exit 0 and "[screenshot] saved to" = captured
 ```
 
 Window is 1280x800 (2560x1600 PNG on retina); `BITVUE_ELECTRON_WINDOW_SIZE=900x600` for the minimum size.
@@ -59,8 +59,14 @@ AV1 has F1 Coding Flow ... F5 Loop Filter, F6 CDEF, F10 YUV and overlays HM/BT/E
 - **Use `BITVUE_ELECTRON_OFFSCREEN=1`.** In the default window mode the window really appears on screen, so your own
   mouse and keyboard land in it: hover tooltips get captured and the current frame can change by itself (#447). With
   offscreen the same shot came out byte-identical every time. Still take each shot twice and compare sizes.
-- **Moving to a frame:** use `KEY=ArrowRight,ArrowRight,...` (works). `CLICK_SELECTOR` on a thumbnail only moves the
-  timeline cursor, not the player frame. Keys run in order, so `KEY=ArrowRight,ArrowRight,F2` = frame 2 in Predictions.
+- **`--disable-gpu` shows the picture.** With WebGPU active the decoded picture is drawn on a WebGPU canvas under the 2D canvas, and
+  screenshot capture does not include it: the player is black while overlays still show (#456). `--disable-gpu` makes WebGPU fail
+  (`Failed to create WebGPU Context Provider`) and the app draws the picture on the 2D canvas, so it appears in the capture.
+- **Moving to a frame:** `KEY=ArrowRight,ArrowRight,...` works (`KEY=ArrowRight,ArrowRight,F2` = frame 2 in Predictions). Clicking a thumbnail
+  works too, but the selector must be narrow: `data-frame-index` also exists on the timeline cells, and `CLICK_SELECTOR` uses the first match,
+  so use `.filmstrip-frame[data-frame-index="N"]`.
+- **Clicks carry no coordinates** (`CLICK_SELECTOR` sends `mousedown` and `click` only), so a position inside a canvas (selecting a block)
+  cannot be clicked (#490). `MOUSEMOVE` and `CONTEXT_MENU` do use the element's center.
 - **Tab labels are the DOM text, not what you see:** CSS shows `REFS` but the text is `Refs`, so use
   `CLICK_TAB=Refs` / `Stats` / `Search` / `Frame`. A wrong label aborts the capture ("tab not found").
 - A clip the decoder refuses (for example a stream with its sequence header removed) opens with every frame
