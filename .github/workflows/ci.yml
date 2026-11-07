@@ -441,7 +441,13 @@ jobs:
           files: coverage/bitvue-hevc.json,coverage/bitvue-avc.json,coverage/bitvue-vp9.json,coverage/bitvue-av1-codec.json,coverage/bitvue-avs3.json,coverage/bitvue-jpegxs.json,coverage/bitvue-vc3.json,coverage/bitvue-codecs-parser.json,coverage/bitvue-engine.json,coverage/bitvue-formats.json,coverage/bitvue-cli.json
           flags: rust
           name: rust-coverage
-          fail_ci_if_error: false
+          # The token is required for uploads from a protected branch (main); without it the CLI
+          # logs "Token required because branch is protected" and the badge stays "unknown".
+          # PRs from forks get no secrets, so only main (and same-repo PRs) can fail on it.
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # Only the files listed above: the default search also picked up tests/*coverage*.rs.
+          disable_search: true
+          fail_ci_if_error: ${{ github.event_name == 'push' }}
 
       - name: Upload coverage JSON (artifact)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
