@@ -6,38 +6,7 @@
 
 use thiserror::Error;
 
-/// Video codec identifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Codec {
-    /// H.264/AVC
-    Avc,
-    /// H.265/HEVC
-    Hevc,
-    /// VP9
-    Vp9,
-    /// H.266/VVC
-    Vvc,
-    /// AV1
-    Av1,
-    /// MPEG-2
-    Mpeg2,
-    /// Unknown codec
-    Unknown,
-}
-
-impl std::fmt::Display for Codec {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Codec::Avc => write!(f, "H.264/AVC"),
-            Codec::Hevc => write!(f, "H.265/HEVC"),
-            Codec::Vp9 => write!(f, "VP9"),
-            Codec::Vvc => write!(f, "H.266/VVC"),
-            Codec::Av1 => write!(f, "AV1"),
-            Codec::Mpeg2 => write!(f, "MPEG-2"),
-            Codec::Unknown => write!(f, "Unknown"),
-        }
-    }
-}
+pub use crate::codec::Codec;
 
 /// Unified codec parsing error type
 ///
