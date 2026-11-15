@@ -7,7 +7,7 @@
 //!   a) uses the embedded `test_data/av1_test.ivf` fixture, or
 //!   b) constructs a minimal synthetic bitstream inline.
 
-use bitvue_cli::commands::decode::{run, DecodeConfig, ForceCodec};
+use bitvue_cli::commands::decode::{run, Codec, DecodeConfig};
 use std::path::PathBuf;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ fn test_data(name: &str) -> PathBuf {
 fn av1_config() -> DecodeConfig {
     DecodeConfig {
         file: test_data("av1_test.ivf"),
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         ..Default::default()
     }
 }
@@ -45,7 +45,7 @@ fn av1_decode_runs_without_error() {
 fn av1_stats_flag_runs_without_error() {
     let cfg = DecodeConfig {
         file: test_data("av1_test.ivf"),
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         stats: true,
         ..Default::default()
     };
@@ -56,7 +56,7 @@ fn av1_stats_flag_runs_without_error() {
 fn av1_stream_stats_flag_runs_without_error() {
     let cfg = DecodeConfig {
         file: test_data("av1_test.ivf"),
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         stream_stats: true,
         ..Default::default()
     };
@@ -67,7 +67,7 @@ fn av1_stream_stats_flag_runs_without_error() {
 fn av1_md5_flag_runs_without_error() {
     let cfg = DecodeConfig {
         file: test_data("av1_test.ivf"),
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         md5: true,
         ..Default::default()
     };
@@ -79,7 +79,7 @@ fn av1_max_frames_limit_respected() {
     // Should not error even when max_frames < total frame count
     let cfg = DecodeConfig {
         file: test_data("av1_test.ivf"),
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         max_frames: 1,
         stats: true,
         ..Default::default()
@@ -146,7 +146,7 @@ fn minimal_ivf_no_frames_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         ..Default::default()
     };
     // Should not panic; may return Ok or an error about no frames
@@ -161,7 +161,7 @@ fn empty_file_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -175,7 +175,7 @@ fn garbage_data_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -204,7 +204,7 @@ fn hevc_empty_file_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::HEVC),
+        force_codec: Some(Codec::Hevc),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -218,7 +218,7 @@ fn hevc_minimal_annexb_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::HEVC),
+        force_codec: Some(Codec::Hevc),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -232,7 +232,7 @@ fn hevc_garbage_data_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::HEVC),
+        force_codec: Some(Codec::Hevc),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -246,7 +246,7 @@ fn hevc_stats_flag_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::HEVC),
+        force_codec: Some(Codec::Hevc),
         stats: true,
         ..Default::default()
     };
@@ -261,7 +261,7 @@ fn hevc_regress_flag_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::HEVC),
+        force_codec: Some(Codec::Hevc),
         regress: true,
         ..Default::default()
     };
@@ -292,7 +292,7 @@ fn avc_empty_file_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AVC),
+        force_codec: Some(Codec::Avc),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -306,7 +306,7 @@ fn avc_minimal_annexb_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AVC),
+        force_codec: Some(Codec::Avc),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -320,7 +320,7 @@ fn avc_garbage_data_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AVC),
+        force_codec: Some(Codec::Avc),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -334,7 +334,7 @@ fn avc_stats_flag_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AVC),
+        force_codec: Some(Codec::Avc),
         stats: true,
         ..Default::default()
     };
@@ -349,7 +349,7 @@ fn avc_regress_flag_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AVC),
+        force_codec: Some(Codec::Avc),
         regress: true,
         ..Default::default()
     };
@@ -401,7 +401,7 @@ fn vp9_empty_file_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::VP9),
+        force_codec: Some(Codec::Vp9),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -415,7 +415,7 @@ fn vp9_minimal_ivf_no_frames_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::VP9),
+        force_codec: Some(Codec::Vp9),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -429,7 +429,7 @@ fn vp9_minimal_ivf_one_frame_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::VP9),
+        force_codec: Some(Codec::Vp9),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -443,7 +443,7 @@ fn vp9_garbage_data_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::VP9),
+        force_codec: Some(Codec::Vp9),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -457,7 +457,7 @@ fn vp9_stats_flag_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::VP9),
+        force_codec: Some(Codec::Vp9),
         stats: true,
         ..Default::default()
     };
@@ -466,7 +466,7 @@ fn vp9_stats_flag_does_not_panic() {
 
 #[test]
 fn vp9_autodetect_from_ivf_fourcc_does_not_panic() {
-    // Auto-detect: no ForceCodec; let the IVF FourCC drive codec selection
+    // Auto-detect: no Codec; let the IVF FourCC drive codec selection
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("auto.vp9.ivf");
     std::fs::write(&path, minimal_ivf_vp9()).unwrap();
@@ -490,7 +490,7 @@ fn hevc_file_decoded_as_avc_does_not_panic() {
     // Intentional mismatch: tell decode it's AVC when it's actually HEVC data
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AVC),
+        force_codec: Some(Codec::Avc),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic regardless of codec mismatch
@@ -504,7 +504,7 @@ fn avc_file_decoded_as_hevc_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::HEVC),
+        force_codec: Some(Codec::Hevc),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic
@@ -518,7 +518,7 @@ fn vp9_ivf_decoded_as_av1_does_not_panic() {
 
     let cfg = DecodeConfig {
         file: path,
-        force_codec: Some(ForceCodec::AV1),
+        force_codec: Some(Codec::Av1),
         ..Default::default()
     };
     let _ = run(cfg); // must not panic

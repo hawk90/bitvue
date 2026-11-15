@@ -1,7 +1,7 @@
 //! Container/bitstream walking: turns raw file bytes into per-frame `FrameRecord`s
 //! (type, size, pts, offset, optional md5) for each supported codec.
 
-use super::{codec_name, ForceCodec};
+use super::{codec_name, Codec};
 use anyhow::Result;
 use bitvue_av1_codec::{parse_ivf_frames, ObuIterator, ObuType};
 
@@ -23,19 +23,19 @@ pub(super) struct FrameRecord {
 
 /// Returns (frames, parse_error_count).
 pub(super) fn extract_frames(
-    codec: ForceCodec,
+    codec: Codec,
     data: &[u8],
     limit: usize,
     want_md5: bool,
 ) -> Result<(Vec<FrameRecord>, usize)> {
     match codec {
-        ForceCodec::AV1 => extract_av1_frames(data, limit, want_md5),
-        ForceCodec::HEVC => extract_hevc_frames(data, limit, want_md5),
-        ForceCodec::AVC => extract_avc_frames(data, limit, want_md5),
-        ForceCodec::VP9 => extract_vp9_frames(data, limit, want_md5),
-        ForceCodec::AVS3 => extract_avs3_frames(data, limit, want_md5),
-        ForceCodec::JpegXs => extract_jpegxs_frames(data, limit, want_md5),
-        ForceCodec::Vc3 => extract_vc3_frames_cli(data, limit, want_md5),
+        Codec::Av1 => extract_av1_frames(data, limit, want_md5),
+        Codec::Hevc => extract_hevc_frames(data, limit, want_md5),
+        Codec::Avc => extract_avc_frames(data, limit, want_md5),
+        Codec::Vp9 => extract_vp9_frames(data, limit, want_md5),
+        Codec::Avs3 => extract_avs3_frames(data, limit, want_md5),
+        Codec::JpegXs => extract_jpegxs_frames(data, limit, want_md5),
+        Codec::Vc3 => extract_vc3_frames_cli(data, limit, want_md5),
         _ => {
             eprintln!(
                 "Note: Frame extraction not yet implemented for {}.",
