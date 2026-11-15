@@ -6,6 +6,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { act, renderAct, screen, fireEvent } from "@/test/test-utils";
 import { SyntaxDetailPanel } from "../SyntaxDetailPanel";
+import { muteBridgeUnavailableLogs } from "@/test/muteBridgeUnavailable";
 
 const mockFrames = [
   { frame_index: 0, frame_type: "I", size: 50000, pts: 0, temporal_id: 0 },
@@ -62,6 +63,8 @@ vi.mock("@/contexts/FileStateContext", () => ({
     <>{children}</>
   ),
 }));
+
+muteBridgeUnavailableLogs();
 
 describe("SyntaxDetailPanel", () => {
   describe("SyntaxDetailPanel", () => {

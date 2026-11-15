@@ -6,11 +6,14 @@ import { describe, it, expect } from "vitest";
 import { renderAct, screen } from "@/test/test-utils";
 import { DeblockingView } from "../DeblockingView";
 import type { FrameInfo } from "@/types/video";
+import { muteBridgeUnavailableLogs } from "@/test/muteBridgeUnavailable";
 
 // Use small dimensions (16x16) to keep SVG boundary count manageable (~6 elements)
 // instead of 1920x1080 which generates ~65,000 elements per test.
 const TEST_WIDTH = 16;
 const TEST_HEIGHT = 16;
+
+muteBridgeUnavailableLogs();
 
 describe("DeblockingView", () => {
   const mockFrame: FrameInfo = {

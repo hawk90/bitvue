@@ -16,6 +16,7 @@ import type {
   FramesChunkResult,
   StreamInfoResult,
 } from "@/services/electronBridgeService";
+import { muteBridgeUnavailableLogs } from "@/test/muteBridgeUnavailable";
 
 const { indexStream, getFramesChunk, getStreamInfo, getTimeline } = vi.hoisted(
   () => ({
@@ -107,6 +108,8 @@ function chunk(
 ): FramesChunkResult {
   return { indexed, units, total_count };
 }
+
+muteBridgeUnavailableLogs();
 
 describe("FileStateContext", () => {
   beforeEach(() => {

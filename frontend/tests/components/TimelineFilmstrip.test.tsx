@@ -8,6 +8,7 @@ import { renderAct } from "@/test/test-utils";
 import { TimelineFilmstrip } from "../TimelineFilmstrip";
 import type { FrameInfo } from "@/types/video";
 import { useSelection } from "@/contexts/SelectionContext";
+import { muteBridgeUnavailableLogs } from "@/test/muteBridgeUnavailable";
 
 // Mock SelectionContext
 vi.mock("@/contexts/SelectionContext", () => ({
@@ -35,6 +36,8 @@ const mockSelectionContext = {
   clearAll: vi.fn(),
   subscribe: vi.fn(() => () => {}),
 };
+
+muteBridgeUnavailableLogs();
 
 describe("TimelineFilmstrip", () => {
   beforeEach(() => {
