@@ -206,3 +206,8 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: vi.fn(),
   })),
 });
+
+// jsdom has no canvas backend: its getContext() prints "Not implemented" to stderr and
+// returns undefined. Return null (what a real browser returns when a context is
+// unavailable) without the noise. Tests that need a context stub it themselves.
+HTMLCanvasElement.prototype.getContext = vi.fn(() => null) as never;

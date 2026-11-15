@@ -5,7 +5,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import { YuvViewerPanel } from "../YuvViewerPanel";
 import { useMode } from "@/contexts/ModeContext";
 import { useStreamData } from "@/contexts/StreamDataContext";
@@ -82,7 +88,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 // `getDecodedFrameYuv` mock so every existing `sharedGetDecodedFrameYuvMock.mockResolvedValue/
 // mockRejectedValue(...)` call below keeps controlling the resolved/rejected frame data, just
 // via one extra layer of `{promise, cancel}` indirection matching the real bridge shape.
-vi.mock("@/services/electronBridgeService", () => {
+vi.mock("@/services/electronBridgeService", async () => {
+  const { bridgeYuvToFrame: actualBridgeYuvToFrame } = await vi.importActual<
+    typeof import("@/services/bridge/frameDecode")
+  >("@/services/bridge/frameDecode");
   const getDecodedFrameYuv = vi.fn(() =>
     Promise.reject(new Error("Test mode")),
   );
@@ -95,6 +104,11 @@ vi.mock("@/services/electronBridgeService", () => {
       }),
     ),
     getContextMenuItems: vi.fn(),
+    // The component also imports these; without them vitest throws on access and the
+    // component takes its error path (and logs it) on every render.
+    getDebugYuvFrame: vi.fn(() => Promise.reject(new Error("Test mode"))),
+    getFrameAnalysis: vi.fn(() => Promise.reject(new Error("Test mode"))),
+    bridgeYuvToFrame: actualBridgeYuvToFrame,
   };
 });
 
@@ -110,6 +124,19 @@ global.Image = class {
     }, 0);
   }
 } as any;
+
+/**
+ * Render and let the panel's mount-time async loads settle inside act(). The panel starts
+ * frame/analysis requests from an effect; with a bare render() they resolve right after the
+ * (synchronous) test body, outside act(), and React warns on every test.
+ */
+async function renderPanel(ui: React.ReactElement) {
+  let result!: ReturnType<typeof render>;
+  await act(async () => {
+    result = render(ui);
+  });
+  return result;
+}
 
 const mockProps = {
   currentFrameIndex: 1,
@@ -185,35 +212,37 @@ describe("YuvViewerPanel basic rendering", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should render video viewer panel", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should render video viewer panel", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should render toolbar", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should render toolbar", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Component renders without crashing
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should display current frame index in status bar", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should display current frame index in status bar", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // mockProps.currentFrameIndex = 1, StatusBar shows 1-based (currentFrameIndex + 1 = 2)
     expect(screen.getByText(/Frame 2/)).toBeInTheDocument();
   });
 
-  it("should display total frames", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should display total frames", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Component renders with total frames info
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should use React.memo for performance", () => {
-    const { rerender, container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should use React.memo for performance", async () => {
+    const { rerender, container } = await renderPanel(
+      <YuvViewerPanel {...mockProps} />,
+    );
 
     rerender(<YuvViewerPanel {...mockProps} />);
 
@@ -265,43 +294,43 @@ describe("YuvViewerPanel frame navigation controls", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should have first frame button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have first frame button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const firstButton = screen.queryByRole("button", { name: /first/i });
     expect(firstButton).toBeInTheDocument();
   });
 
-  it("should have previous frame button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have previous frame button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const prevButton = screen.queryByRole("button", { name: /previous/i });
     expect(prevButton).toBeInTheDocument();
   });
 
-  it("should have next frame button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have next frame button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const nextButton = screen.queryByRole("button", { name: /next/i });
     expect(nextButton).toBeInTheDocument();
   });
 
-  it("should have last frame button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have last frame button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const lastButton = screen.queryByRole("button", { name: /last/i });
     expect(lastButton).toBeInTheDocument();
   });
 
-  it("should show frame input", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should show frame input", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const frameInput = screen.queryByRole("spinbutton");
     expect(frameInput).toBeInTheDocument();
   });
 
-  it("should navigate to first frame", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should navigate to first frame", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const firstButton = screen.queryByRole("button", { name: /first/i });
     fireEvent.click(firstButton!);
@@ -309,8 +338,8 @@ describe("YuvViewerPanel frame navigation controls", () => {
     expect(mockProps.onFrameChange).toHaveBeenCalledWith(0);
   });
 
-  it("should navigate to previous frame", () => {
-    render(
+  it("should navigate to previous frame", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={50}
         totalFrames={100}
@@ -324,8 +353,8 @@ describe("YuvViewerPanel frame navigation controls", () => {
     expect(mockProps.onFrameChange).toHaveBeenCalledWith(49);
   });
 
-  it("should navigate to next frame", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should navigate to next frame", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const nextButton = screen.queryByRole("button", { name: /next/i });
     fireEvent.click(nextButton!);
@@ -333,8 +362,8 @@ describe("YuvViewerPanel frame navigation controls", () => {
     expect(mockProps.onFrameChange).toHaveBeenCalledWith(2);
   });
 
-  it("should navigate to last frame", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should navigate to last frame", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const lastButton = screen.queryByRole("button", { name: /last/i });
     fireEvent.click(lastButton!);
@@ -342,8 +371,8 @@ describe("YuvViewerPanel frame navigation controls", () => {
     expect(mockProps.onFrameChange).toHaveBeenCalledWith(99);
   });
 
-  it("should not navigate before first frame", () => {
-    render(
+  it("should not navigate before first frame", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={0}
         totalFrames={100}
@@ -357,8 +386,8 @@ describe("YuvViewerPanel frame navigation controls", () => {
     expect(mockProps.onFrameChange).not.toHaveBeenCalled();
   });
 
-  it("should not navigate after last frame", () => {
-    render(
+  it("should not navigate after last frame", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={99}
         totalFrames={100}
@@ -417,22 +446,22 @@ describe("YuvViewerPanel playback controls", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should have play/pause button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have play/pause button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const playButton = screen.queryByRole("button", { name: /play|pause/i });
     expect(playButton).toBeInTheDocument();
   });
 
-  it("should have speed selector", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have speed selector", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const speedSelector = screen.queryByRole("combobox", { name: /speed/i });
     expect(speedSelector).toBeInTheDocument();
   });
 
-  it("should toggle play/pause when button is clicked", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should toggle play/pause when button is clicked", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const playButton = screen.queryByRole("button", { name: /play|pause/i });
     fireEvent.click(playButton!);
@@ -486,29 +515,29 @@ describe("YuvViewerPanel zoom controls", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should have zoom in button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have zoom in button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const zoomInButton = screen.queryByRole("button", { name: /zoom.*in/i });
     expect(zoomInButton).toBeInTheDocument();
   });
 
-  it("should have zoom out button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have zoom out button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const zoomOutButton = screen.queryByRole("button", { name: /zoom.*out/i });
     expect(zoomOutButton).toBeInTheDocument();
   });
 
-  it("should have reset zoom button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have reset zoom button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const resetButton = screen.queryByRole("button", { name: /reset/i });
     expect(resetButton).toBeInTheDocument();
   });
 
-  it("should call zoomIn when zoom in button is clicked", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should call zoomIn when zoom in button is clicked", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const zoomInButton = screen.queryByRole("button", { name: /zoom.*in/i });
     fireEvent.click(zoomInButton!);
@@ -516,8 +545,8 @@ describe("YuvViewerPanel zoom controls", () => {
     expect(mockCanvasInteraction.zoomIn).toHaveBeenCalled();
   });
 
-  it("should call zoomOut when zoom out button is clicked", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should call zoomOut when zoom out button is clicked", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const zoomOutButton = screen.queryByRole("button", { name: /zoom.*out/i });
     fireEvent.click(zoomOutButton!);
@@ -525,8 +554,8 @@ describe("YuvViewerPanel zoom controls", () => {
     expect(mockCanvasInteraction.zoomOut).toHaveBeenCalled();
   });
 
-  it("should call resetZoom when reset button is clicked", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should call resetZoom when reset button is clicked", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const resetButton = screen.queryByRole("button", { name: /reset/i });
     fireEvent.click(resetButton!);
@@ -535,14 +564,14 @@ describe("YuvViewerPanel zoom controls", () => {
   });
 
   // INT-01: Fit-to-window toolbar button
-  it("should have a fit-to-window button", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have a fit-to-window button", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const fitButton = screen.queryByRole("button", { name: /fit/i });
     expect(fitButton).toBeInTheDocument();
   });
 
-  it("should call setZoom/setPan when the fit-to-window button is clicked", () => {
+  it("should call setZoom/setPan when the fit-to-window button is clicked", async () => {
     Object.defineProperty(HTMLDivElement.prototype, "clientWidth", {
       configurable: true,
       value: 800,
@@ -552,7 +581,7 @@ describe("YuvViewerPanel zoom controls", () => {
       value: 450,
     });
 
-    render(<YuvViewerPanel {...mockProps} />);
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const fitButton = screen.queryByRole("button", { name: /fit/i });
     fireEvent.click(fitButton!);
@@ -607,15 +636,15 @@ describe("YuvViewerPanel mode selector", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should have mode selector dropdown", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should have mode selector dropdown", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const modeSelector = screen.queryByRole("combobox", { name: /mode/i });
     expect(modeSelector).toBeInTheDocument();
   });
 
-  it("should display current mode", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should display current mode", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(screen.getByText(/overview/i)).toBeInTheDocument();
   });
@@ -660,8 +689,8 @@ describe("YuvViewerPanel keyboard shortcuts - navigation", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should handle Space key for play/pause", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle Space key for play/pause", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: " " });
 
@@ -669,8 +698,8 @@ describe("YuvViewerPanel keyboard shortcuts - navigation", () => {
     expect(playButton).toBeInTheDocument();
   });
 
-  it("should handle ArrowLeft key", () => {
-    render(
+  it("should handle ArrowLeft key", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={50}
         totalFrames={100}
@@ -683,8 +712,8 @@ describe("YuvViewerPanel keyboard shortcuts - navigation", () => {
     expect(mockProps.onFrameChange).toHaveBeenCalledWith(49);
   });
 
-  it("should handle ArrowRight key", () => {
-    render(
+  it("should handle ArrowRight key", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={50}
         totalFrames={100}
@@ -697,8 +726,8 @@ describe("YuvViewerPanel keyboard shortcuts - navigation", () => {
     expect(mockProps.onFrameChange).toHaveBeenCalledWith(51);
   });
 
-  it("should handle Home key", () => {
-    render(
+  it("should handle Home key", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={50}
         totalFrames={100}
@@ -711,8 +740,8 @@ describe("YuvViewerPanel keyboard shortcuts - navigation", () => {
     expect(mockProps.onFrameChange).toHaveBeenCalledWith(0);
   });
 
-  it("should handle End key", () => {
-    render(
+  it("should handle End key", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={50}
         totalFrames={100}
@@ -725,8 +754,8 @@ describe("YuvViewerPanel keyboard shortcuts - navigation", () => {
     expect(mockProps.onFrameChange).toHaveBeenCalledWith(99);
   });
 
-  it("should not navigate before first frame with ArrowLeft", () => {
-    render(
+  it("should not navigate before first frame with ArrowLeft", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={0}
         totalFrames={100}
@@ -739,8 +768,8 @@ describe("YuvViewerPanel keyboard shortcuts - navigation", () => {
     expect(mockProps.onFrameChange).not.toHaveBeenCalled();
   });
 
-  it("should not navigate after last frame with ArrowRight", () => {
-    render(
+  it("should not navigate after last frame with ArrowRight", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={99}
         totalFrames={100}
@@ -798,48 +827,48 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should handle + key for zoom in", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle + key for zoom in", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "+" });
 
     expect(mockCanvasInteraction.zoomIn).toHaveBeenCalled();
   });
 
-  it("should handle = key for zoom in", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle = key for zoom in", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "=" });
 
     expect(mockCanvasInteraction.zoomIn).toHaveBeenCalled();
   });
 
-  it("should handle - key for zoom out", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle - key for zoom out", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "-" });
 
     expect(mockCanvasInteraction.zoomOut).toHaveBeenCalled();
   });
 
-  it("should handle Ctrl+0 for reset zoom", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle Ctrl+0 for reset zoom", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "0", ctrlKey: true });
 
     expect(mockCanvasInteraction.resetZoom).toHaveBeenCalled();
   });
 
-  it("should handle Cmd+0 for reset zoom (Mac)", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle Cmd+0 for reset zoom (Mac)", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "0", metaKey: true });
 
     expect(mockCanvasInteraction.resetZoom).toHaveBeenCalled();
   });
 
-  it("should not handle 0 without modifier key", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should not handle 0 without modifier key", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "0" });
 
@@ -847,8 +876,8 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
   });
 
   // INT-01: Fit/100%/200% zoom presets -- previously documented-but-empty "1"/"2"/"3" stubs.
-  it("should set zoom to 100% and reset pan on '2'", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should set zoom to 100% and reset pan on '2'", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "2" });
 
@@ -856,8 +885,8 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
     expect(mockCanvasInteraction.setPan).toHaveBeenCalledWith({ x: 0, y: 0 });
   });
 
-  it("should set zoom to 200% and reset pan on '3'", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should set zoom to 200% and reset pan on '3'", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "3" });
 
@@ -865,7 +894,7 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
     expect(mockCanvasInteraction.setPan).toHaveBeenCalledWith({ x: 0, y: 0 });
   });
 
-  it("should compute and apply a real fit-to-window zoom on '1'", () => {
+  it("should compute and apply a real fit-to-window zoom on '1'", async () => {
     // jsdom elements report 0x0 by default -- stub the container's real on-screen size the
     // same way VideoCanvas.test.tsx stubs getBoundingClientRect for its own coordinate math.
     Object.defineProperty(HTMLDivElement.prototype, "clientWidth", {
@@ -877,7 +906,7 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
       value: 450,
     });
 
-    render(<YuvViewerPanel {...mockProps} />);
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
     fireEvent.keyDown(document, { key: "1" });
 
     // No yuvData/frameImage in this test -> VideoCanvas's logical size fallback is 640x360;
@@ -886,8 +915,8 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
     expect(mockCanvasInteraction.setPan).toHaveBeenCalledWith({ x: 0, y: 0 });
   });
 
-  it("should not trigger a preset when a modifier key is held with 1/2/3", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should not trigger a preset when a modifier key is held with 1/2/3", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "1", ctrlKey: true });
     fireEvent.keyDown(document, { key: "2", metaKey: true });
@@ -944,56 +973,56 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should handle F1 key for overview mode", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle F1 key for overview mode", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "F1" });
 
     expect(handleFKeyMock).toHaveBeenCalledWith(1);
   });
 
-  it("should handle F2 key for coding-flow mode", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle F2 key for coding-flow mode", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "F2" });
 
     expect(handleFKeyMock).toHaveBeenCalledWith(2);
   });
 
-  it("should handle F3 key for prediction mode", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle F3 key for prediction mode", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "F3" });
 
     expect(handleFKeyMock).toHaveBeenCalledWith(3);
   });
 
-  it("should handle F4 key for transform mode", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle F4 key for transform mode", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "F4" });
 
     expect(handleFKeyMock).toHaveBeenCalledWith(4);
   });
 
-  it("should handle F5 key for qp-map mode", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle F5 key for qp-map mode", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "F5" });
 
     expect(handleFKeyMock).toHaveBeenCalledWith(5);
   });
 
-  it("should handle F6 key for mv-field mode", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle F6 key for mv-field mode", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "F6" });
 
     expect(handleFKeyMock).toHaveBeenCalledWith(6);
   });
 
-  it("should handle F7 key for reference mode", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should handle F7 key for reference mode", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "F7" });
 
@@ -1073,7 +1102,7 @@ describe("YuvViewerPanel Player context menu", () => {
       setSpatialBlockSelection: vi.fn(),
     } as any);
 
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const canvasContainer = container.querySelector(".yuv-canvas-container")!;
     fireEvent.contextMenu(canvasContainer);
@@ -1096,7 +1125,7 @@ describe("YuvViewerPanel Player context menu", () => {
       setSpatialBlockSelection: vi.fn(),
     } as any);
 
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const canvasContainer = container.querySelector(".yuv-canvas-container")!;
     fireEvent.contextMenu(canvasContainer);
@@ -1154,22 +1183,24 @@ describe("YuvViewerPanel loading states", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should show loading overlay when frame is loading", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should show loading overlay when frame is loading", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Component renders without crashing
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should show placeholder when no frame is loaded", () => {
-    const { container: _container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should show placeholder when no frame is loaded", async () => {
+    const { container: _container } = await renderPanel(
+      <YuvViewerPanel {...mockProps} />,
+    );
 
     // Component renders without crashing
     expect(_container.firstChild).toBeInTheDocument();
   });
 
-  it("should show correct placeholder text", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should show correct placeholder text", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Component renders - checking for frame number display
     // mockProps.currentFrameIndex = 1 → StatusBar shows "Frame 2" (1-based)
@@ -1221,27 +1252,27 @@ describe("YuvViewerPanel status bar", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should display current mode in status bar", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("should display current mode in status bar", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(screen.getByText(/overview/i)).toBeInTheDocument();
   });
 
-  it("should display zoom level in status bar", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should display zoom level in status bar", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Component renders with zoom info
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should display playback speed in status bar", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should display playback speed in status bar", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should display frame info", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should display frame info", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(container.firstChild).toBeInTheDocument();
   });
@@ -1291,15 +1322,15 @@ describe("YuvViewerPanel frame info display", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should display current frame type", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should display current frame type", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Component renders with frame type info
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should display frame size", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should display frame size", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(container.firstChild).toBeInTheDocument();
   });
@@ -1349,8 +1380,8 @@ describe("YuvViewerPanel edge cases", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should handle single frame video", () => {
-    const { container } = render(
+  it("should handle single frame video", async () => {
+    const { container } = await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={0}
         totalFrames={1}
@@ -1361,8 +1392,8 @@ describe("YuvViewerPanel edge cases", () => {
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should handle zero total frames", () => {
-    const { container } = render(
+  it("should handle zero total frames", async () => {
+    const { container } = await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={0}
         totalFrames={0}
@@ -1373,8 +1404,8 @@ describe("YuvViewerPanel edge cases", () => {
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should handle very large frame index", () => {
-    const { container } = render(
+  it("should handle very large frame index", async () => {
+    const { container } = await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={9999}
         totalFrames={10000}
@@ -1385,8 +1416,8 @@ describe("YuvViewerPanel edge cases", () => {
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should handle frame at index 0", () => {
-    render(
+  it("should handle frame at index 0", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={0}
         totalFrames={100}
@@ -1401,8 +1432,8 @@ describe("YuvViewerPanel edge cases", () => {
     expect(mockProps.onFrameChange).not.toHaveBeenCalled();
   });
 
-  it("should handle frame at last index", () => {
-    render(
+  it("should handle frame at last index", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={99}
         totalFrames={100}
@@ -1417,7 +1448,7 @@ describe("YuvViewerPanel edge cases", () => {
     expect(mockProps.onFrameChange).not.toHaveBeenCalled();
   });
 
-  it("should handle missing frame info", () => {
+  it("should handle missing frame info", async () => {
     vi.mocked(useStreamData).mockReturnValue({
       frames: [],
       currentFrameIndex: 0,
@@ -1431,7 +1462,7 @@ describe("YuvViewerPanel edge cases", () => {
       setFrames: vi.fn(),
     } as any);
 
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Should still render without crashing
     expect(container.firstChild).toBeInTheDocument();
@@ -1482,8 +1513,8 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should not trigger Space key with modifier keys", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should not trigger Space key with modifier keys", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Space with Ctrl should not trigger
     fireEvent.keyDown(document, { key: " ", ctrlKey: true });
@@ -1492,24 +1523,24 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should not trigger Space key with Shift key", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should not trigger Space key with Shift key", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: " ", shiftKey: true });
 
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should not trigger Space key with Meta key", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should not trigger Space key with Meta key", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: " ", metaKey: true });
 
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should handle rapid keyboard shortcuts", () => {
-    const { container } = render(
+  it("should handle rapid keyboard shortcuts", async () => {
+    const { container } = await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={50}
         totalFrames={100}
@@ -1525,7 +1556,7 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should handle multiple mode switches", () => {
+  it("should handle multiple mode switches", async () => {
     const handleFKeyMock2 = vi.fn().mockReturnValue(true);
     vi.mocked(useMode).mockReturnValue({
       currentMode: "overview",
@@ -1567,7 +1598,7 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
 
-    render(<YuvViewerPanel {...mockProps} />);
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     fireEvent.keyDown(document, { key: "F1" });
     fireEvent.keyDown(document, { key: "F2" });
@@ -1621,27 +1652,27 @@ describe("YuvViewerPanel zoom state interaction", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should display zoom in status bar", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should display zoom in status bar", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Component renders
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should display zoom out in status bar", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should display zoom out in status bar", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should handle maximum zoom", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should handle maximum zoom", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("should handle minimum zoom", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("should handle minimum zoom", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(container.firstChild).toBeInTheDocument();
   });
@@ -1691,15 +1722,15 @@ describe("YuvViewerPanel cleanup", () => {
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
-  it("should cleanup event listeners on unmount", () => {
-    const { unmount } = render(<YuvViewerPanel {...mockProps} />);
+  it("should cleanup event listeners on unmount", async () => {
+    const { unmount } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Should not throw when unmounting
     expect(() => unmount()).not.toThrow();
   });
 
-  it("should cleanup playback timer on unmount", () => {
-    const { unmount } = render(<YuvViewerPanel {...mockProps} />);
+  it("should cleanup playback timer on unmount", async () => {
+    const { unmount } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     expect(() => unmount()).not.toThrow();
   });
@@ -1779,7 +1810,7 @@ describe("YuvViewerPanel frame load error handling", () => {
       new Error("Backend unavailable"),
     );
 
-    const { findByText } = render(<YuvViewerPanel {...mockProps} />);
+    const { findByText } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // The catch block sets loadError to the generic message
     const errMsg = await findByText(/Failed to load frame/i);
@@ -1791,7 +1822,7 @@ describe("YuvViewerPanel frame load error handling", () => {
       new Error("Corrupt frame data"),
     );
 
-    const { findByText } = render(<YuvViewerPanel {...mockProps} />);
+    const { findByText } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // The bridge has no "soft failure" shape (unlike the old Tauri success:false convention) --
     // any failure is a rejected promise, and the catch block always surfaces the same generic
@@ -1815,7 +1846,7 @@ describe("YuvViewerPanel frame load error handling", () => {
       bytes: new Uint8Array(8),
     });
 
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Wait for effects to settle, error overlay must not appear
     await vi.waitFor(() => {
@@ -1828,7 +1859,7 @@ describe("YuvViewerPanel frame load error handling", () => {
   it("shows a retry button inside the error overlay", async () => {
     sharedGetDecodedFrameYuvMock.mockRejectedValue(new Error("Network error"));
 
-    const { findByText } = render(<YuvViewerPanel {...mockProps} />);
+    const { findByText } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const retryButton = await findByText(/Retry/i);
     expect(retryButton).toBeInTheDocument();
@@ -1840,7 +1871,7 @@ describe("YuvViewerPanel frame load error handling", () => {
       new Error("Transient error"),
     );
 
-    const { findByText } = render(<YuvViewerPanel {...mockProps} />);
+    const { findByText } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const retryButton = await findByText(/Retry/i);
     const callCountBefore = sharedGetDecodedFrameYuvMock.mock.calls.length;
@@ -1876,7 +1907,7 @@ describe("YuvViewerPanel playback edge cases", () => {
   it("stops playing when at the last frame after timer fires", async () => {
     // Render at the last frame
     const onFrameChange = vi.fn();
-    render(
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={99}
         totalFrames={100}
@@ -1895,8 +1926,8 @@ describe("YuvViewerPanel playback edge cases", () => {
     expect(onFrameChange).not.toHaveBeenCalled();
   });
 
-  it("clears playback timer on unmount without error", () => {
-    const { unmount } = render(<YuvViewerPanel {...mockProps} />);
+  it("clears playback timer on unmount without error", async () => {
+    const { unmount } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const playButton = screen.queryByRole("button", { name: /play|pause/i });
     fireEvent.click(playButton!); // start playing
@@ -1904,8 +1935,8 @@ describe("YuvViewerPanel playback edge cases", () => {
     expect(() => unmount()).not.toThrow();
   });
 
-  it("rapid play/pause toggles do not crash the component", () => {
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+  it("rapid play/pause toggles do not crash the component", async () => {
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const playButton = screen.queryByRole("button", { name: /play|pause/i });
     for (let i = 0; i < 10; i++) {
@@ -1915,8 +1946,8 @@ describe("YuvViewerPanel playback edge cases", () => {
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("speed selector change is reflected in the component", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("speed selector change is reflected in the component", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     const speedSelector = screen.queryByRole("combobox", { name: /speed/i });
     expect(speedSelector).toBeInTheDocument();
@@ -1939,8 +1970,8 @@ describe("YuvViewerPanel navigation boundaries", () => {
     setupStandardMocks();
   });
 
-  it("Previous frame button is disabled at frame 0", () => {
-    render(
+  it("Previous frame button is disabled at frame 0", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={0}
         totalFrames={100}
@@ -1952,8 +1983,8 @@ describe("YuvViewerPanel navigation boundaries", () => {
     expect(prevButton).toBeDisabled();
   });
 
-  it("Next frame button is disabled at last frame", () => {
-    render(
+  it("Next frame button is disabled at last frame", async () => {
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={99}
         totalFrames={100}
@@ -1965,9 +1996,9 @@ describe("YuvViewerPanel navigation boundaries", () => {
     expect(nextButton).toBeDisabled();
   });
 
-  it("onFrameChange not called when clicking Previous at frame 0", () => {
+  it("onFrameChange not called when clicking Previous at frame 0", async () => {
     const onFrameChange = vi.fn();
-    render(
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={0}
         totalFrames={100}
@@ -1981,9 +2012,9 @@ describe("YuvViewerPanel navigation boundaries", () => {
     expect(onFrameChange).not.toHaveBeenCalled();
   });
 
-  it("ArrowLeft at frame 0 does not call onFrameChange", () => {
+  it("ArrowLeft at frame 0 does not call onFrameChange", async () => {
     const onFrameChange = vi.fn();
-    render(
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={0}
         totalFrames={100}
@@ -1996,9 +2027,9 @@ describe("YuvViewerPanel navigation boundaries", () => {
     expect(onFrameChange).not.toHaveBeenCalled();
   });
 
-  it("Home key navigates to frame 0", () => {
+  it("Home key navigates to frame 0", async () => {
     const onFrameChange = vi.fn();
-    render(
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={50}
         totalFrames={100}
@@ -2011,9 +2042,9 @@ describe("YuvViewerPanel navigation boundaries", () => {
     expect(onFrameChange).toHaveBeenCalledWith(0);
   });
 
-  it("End key navigates to last frame (totalFrames - 1)", () => {
+  it("End key navigates to last frame (totalFrames - 1)", async () => {
     const onFrameChange = vi.fn();
-    render(
+    await renderPanel(
       <YuvViewerPanel
         currentFrameIndex={50}
         totalFrames={100}
@@ -2052,14 +2083,16 @@ describe("YuvViewerPanel loading and placeholder states", () => {
     // So the only way to show placeholder is when YUV succeeds but produces
     // no data. That is tested separately above.
     // This test verifies the component still renders without crash.
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
     expect(container.firstChild).toBeInTheDocument();
   });
 
   it("loading overlay disappears and error overlay appears when invoke rejects", async () => {
     sharedInvokeMock.mockRejectedValue(new Error("fail"));
 
-    const { container, findByText } = render(<YuvViewerPanel {...mockProps} />);
+    const { container, findByText } = await renderPanel(
+      <YuvViewerPanel {...mockProps} />,
+    );
 
     // After error settles, loading overlay should be gone
     await findByText(/Failed to load frame/i);
@@ -2071,7 +2104,9 @@ describe("YuvViewerPanel loading and placeholder states", () => {
   it("error overlay appears and placeholder is absent when the bridge call rejects", async () => {
     sharedGetDecodedFrameYuvMock.mockRejectedValue(new Error("Bad frame"));
 
-    const { container, findByText } = render(<YuvViewerPanel {...mockProps} />);
+    const { container, findByText } = await renderPanel(
+      <YuvViewerPanel {...mockProps} />,
+    );
 
     await findByText(/Failed to load frame/i);
 
@@ -2091,7 +2126,7 @@ describe("YuvViewerPanel loading and placeholder states", () => {
       }),
     );
 
-    const { container } = render(<YuvViewerPanel {...mockProps} />);
+    const { container } = await renderPanel(<YuvViewerPanel {...mockProps} />);
 
     // Loading overlay should be present while the promise is pending
     expect(container.querySelector(".yuv-loading-overlay")).toBeInTheDocument();
