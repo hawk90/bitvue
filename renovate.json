@@ -31,7 +31,7 @@
     ]
   },
   "nodenv": {
-    "enabled": false
+    "enabled": true
   },
   "packageRules": [
     {
@@ -112,6 +112,19 @@
         "major"
       ],
       "enabled": false
+    },
+    {
+      "description": "bitvue-desktop's main/preload code runs on the Node bundled inside Electron (45.x ships 24.22.2), not on the Node 26 dev toolchain, so its @types/node must follow Electron's Node. Stay on 24.x until an Electron release bundles a newer Node, then lift this cap; the frontend's @types/node (vitest/vite run on the dev Node) keeps following the toolchain",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "bitvue-desktop/package.json"
+      ],
+      "matchPackageNames": [
+        "@types/node"
+      ],
+      "allowedVersions": "<25"
     },
     {
       "description": "Rust toolchain pin (rust-toolchain.toml): manual, one PR per release",
