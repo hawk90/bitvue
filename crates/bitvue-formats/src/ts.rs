@@ -427,49 +427,15 @@ fn parse_timestamp(data: &[u8]) -> u64 {
         | ((data[4] as u64) >> 1)
 }
 
-/// Split an Annex B byte sequence into individual NAL units.
+/// Split an Annex B byte sequence into its NAL units, as slices of `data` (start code stripped).
 ///
-/// Scans for 3-byte (0x000001) and 4-byte (0x00000001) start codes and returns
-/// the raw NAL unit payload (start code stripped) for each unit found.
-fn split_annex_b_nal_units(data: &[u8]) -> Vec<Vec<u8>> {
-    let mut nal_units = Vec::new();
-    let mut i = 0;
-
-    // Locate all start code positions
-    let mut starts: Vec<(usize, usize)> = Vec::new(); // (payload_start, start_code_len)
-    while i < data.len() {
-        if i + 3 <= data.len() && data[i] == 0x00 && data[i + 1] == 0x00 {
-            if i + 4 <= data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
-                starts.push((i + 4, 4));
-                i += 4;
-                continue;
-            } else if data[i + 2] == 0x01 {
-                starts.push((i + 3, 3));
-                i += 3;
-                continue;
-            }
-        }
-        i += 1;
-    }
-
-    // Extract NAL unit bytes between consecutive start codes
-    for (idx, &(payload_start, _)) in starts.iter().enumerate() {
-        let payload_end = if idx + 1 < starts.len() {
-            // The next start code begins sc_len bytes before its payload_start;
-            // use the minimum of both to trim trailing zeros of the start code prefix.
-            let next_payload = starts[idx + 1].0;
-            let next_sc_len = starts[idx + 1].1;
-            next_payload.saturating_sub(next_sc_len)
-        } else {
-            data.len()
-        };
-
-        if payload_end > payload_start {
-            nal_units.push(data[payload_start..payload_end].to_vec());
-        }
-    }
-
-    nal_units
+/// A unit ends before the zero bytes in front of the next start code, whatever its length; see
+/// [`bitvue_engine::annex_b`].
+fn split_annex_b_nal_units(data: &[u8]) -> Vec<&[u8]> {
+    bitvue_engine::annex_b::find_nal_ranges(data)
+        .into_iter()
+        .map(|unit| &data[unit.start..unit.end])
+        .collect()
 }
 
 /// Determine whether an H.264 NAL unit represents a keyframe (IDR slice).
@@ -595,7 +561,7 @@ fn flush_pes(
         if nal.is_empty() {
             continue;
         }
-        let key_frame = is_keyframe_fn(&nal);
+        let key_frame = is_keyframe_fn(nal);
         let size = nal.len();
         samples.push((
             pes_index,
@@ -605,7 +571,7 @@ fn flush_pes(
                 pts,
                 dts,
                 key_frame,
-                data: nal,
+                data: nal.to_vec(),
             },
         ));
         *byte_offset += size;
@@ -1073,8 +1039,8 @@ mod tests {
         ];
         let nal_units = split_annex_b_nal_units(&data);
         assert_eq!(nal_units.len(), 2);
-        assert_eq!(nal_units[0], vec![0x67, 0xAA, 0xBB]);
-        assert_eq!(nal_units[1], vec![0x65, 0xCC, 0xDD]);
+        assert_eq!(nal_units[0], [0x67, 0xAA, 0xBB]);
+        assert_eq!(nal_units[1], [0x65, 0xCC, 0xDD]);
     }
 
     #[test]
@@ -1086,8 +1052,8 @@ mod tests {
         ];
         let nal_units = split_annex_b_nal_units(&data);
         assert_eq!(nal_units.len(), 2);
-        assert_eq!(nal_units[0], vec![0x67, 0xAA]);
-        assert_eq!(nal_units[1], vec![0x65, 0xBB]);
+        assert_eq!(nal_units[0], [0x67, 0xAA]);
+        assert_eq!(nal_units[1], [0x65, 0xBB]);
     }
 
     #[test]
@@ -1555,17 +1521,26 @@ mod stream_tests {
         // consecutive start codes: the empty unit between them is dropped
         assert_eq!(
             split_annex_b_nal_units(&[0, 0, 1, 0, 0, 1, 0xAA]),
-            vec![vec![0xAA]]
+            vec![&[0xAA][..]]
         );
         // extra leading zero before a 4-byte start code is not part of the unit
         assert_eq!(
             split_annex_b_nal_units(&[0, 0, 0, 0, 1, 0xAA]),
-            vec![vec![0xAA]]
+            vec![&[0xAA][..]]
         );
         // garbage before the first start code is ignored
         assert_eq!(
             split_annex_b_nal_units(&[7, 7, 0, 0, 1, 0xAA]),
-            vec![vec![0xAA]]
+            vec![&[0xAA][..]]
+        );
+    }
+
+    #[test]
+    fn annex_b_units_do_not_keep_trailing_zero_bytes() {
+        // trailing_zero_8bits before a 3-byte code, and at the very end of the data
+        assert_eq!(
+            split_annex_b_nal_units(&[0, 0, 1, 0x67, 0xAA, 0, 0, 0, 0, 1, 0x65, 0xBB, 0, 0]),
+            vec![&[0x67, 0xAA][..], &[0x65, 0xBB][..]]
         );
     }
 
@@ -1578,7 +1553,7 @@ mod stream_tests {
         ]);
         assert_eq!(
             split_annex_b_nal_units(&d),
-            vec![IDR.to_vec(), NON_IDR.to_vec(), vec![0x67]]
+            vec![&IDR[..], &NON_IDR[..], &[0x67][..]]
         );
     }
 
@@ -1841,7 +1816,10 @@ mod stream_tests {
             at += sample.size;
         }
         let all: Vec<u8> = v.iter().flat_map(|s| s.data.iter().copied()).collect();
-        let nals = split_annex_b_nal_units(&all);
+        let nals: Vec<Vec<u8>> = split_annex_b_nal_units(&all)
+            .into_iter()
+            .map(<[u8]>::to_vec)
+            .collect();
         assert_eq!(nals, extract_avc_samples(&d).unwrap());
     }
 
