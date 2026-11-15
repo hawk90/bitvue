@@ -27,10 +27,10 @@
 //! entry point for this (`Command::RunFullAnalysis` stays unused; see the sidecar's module doc).
 
 use bitvue_av1_codec::frame_header::parse_frame_header_basic;
-use bitvue_av1_codec::frame_header_full::{parse_frame_header_full, RefFrameState};
 use bitvue_av1_codec::ivf::parse_ivf_frames;
 use bitvue_av1_codec::parse_obu_syntax;
 use bitvue_av1_codec::sequence::SequenceHeader;
+use bitvue_av1_codec::{shown_header, HeaderEvent, PacketHeaders, RefSlotTypes};
 use bitvue_engine::event::{Category, Diagnostic, Severity};
 use bitvue_engine::frame_identity::{FrameMetadata, TimelineMapper};
 use bitvue_engine::timeline::TimelineBase;
@@ -462,26 +462,17 @@ fn index_ivf_av1(
         let chunk_size = 12u64 + frame.size as u64;
         let frame_start = offset;
 
-        let parsed = headers.parse(stream, frame_index, &frame.data, &mut diagnostics);
-        let unit = frame_unit(
+        // `parse` advances `slots` past every frame the packet codes, taking the shown frame's
+        // `ref_frame_idx` from the DPB state as it stood BEFORE that frame was decoded (spec
+        // 7.20's reference frame update process happens only after the current frame is done).
+        let parsed = headers.parse(
             stream,
             frame_index,
-            frame,
-            frame_start,
-            chunk_size,
-            &parsed,
-            &slots,
+            &frame.data,
+            &mut slots,
+            &mut diagnostics,
         );
-        // Apply this frame's own refresh AFTER computing its ref_frames above -- a frame's
-        // `ref_frame_idx` refers to DPB state as it stood BEFORE this frame was decoded (spec
-        // 7.20's reference frame update process happens only after the current frame is done).
-        if parsed.used_full_parser {
-            if let Some(refresh_flags) =
-                parsed.header.as_ref().and_then(|fh| fh.refresh_frame_flags)
-            {
-                slots.refresh(refresh_flags, frame_index);
-            }
-        }
+        let unit = frame_unit(stream, frame_index, frame, frame_start, chunk_size, &parsed);
 
         units.push(unit);
         offset += chunk_size;
@@ -490,15 +481,35 @@ fn index_ivf_av1(
     Ok(Some((header, units, diagnostics)))
 }
 
-/// What one frame's header parse produced.
-struct ParsedFrameHeader {
-    header: Option<bitvue_av1_codec::frame_header::FrameHeader>,
-    /// Whether `header` came from the full parser (only then are its reference slots trusted).
-    used_full_parser: bool,
+/// What one packet's header parse produced: what the unit reports about the picture the packet
+/// shows.
+struct ParsedFrame {
+    /// The picture's frame type; `None` when no header could be read.
+    frame_type: Option<bitvue_engine::FrameType>,
+    /// `base_q_idx` of the shown frame; only the full parser's value is trusted (#444).
+    qp_avg: Option<u8>,
+    /// The frame indices the shown frame references; only translated from the full parser's
+    /// slot numbers.
+    ref_frames: Option<Vec<usize>>,
+}
+
+impl ParsedFrame {
+    fn unknown() -> Self {
+        Self {
+            frame_type: None,
+            qp_avg: None,
+            ref_frames: None,
+        }
+    }
 }
 
 /// Parses frame headers across a stream: the full parser while its cross-frame reference state
 /// can be trusted, the approximate one otherwise.
+///
+/// A packet is not one frame (see [`PacketHeaders`]): it can hold hidden frames before the shown
+/// one, or only repeat an earlier frame (`show_existing_frame`). Every frame header of a packet is
+/// read in order so the reference state and the slot trackers stay right, and the unit reports the
+/// frame the packet *shows*.
 ///
 /// `ref_frame_idx` (spec 5.9.2, `u(3)`) is a DPB *slot* number (0-7), NOT a frame index. Getting a
 /// correct slot number in the first place needs the real spec-accurate `parse_frame_header_full`
@@ -508,58 +519,63 @@ struct ParsedFrameHeader {
 /// it deliberately skips/approximates upstream of `ref_frame_idx`, so its raw slot values aren't
 /// safe to translate.
 struct FrameHeaders {
-    seq_header: Option<SequenceHeader>,
-    ref_state: RefFrameState,
-    /// Once a full-header parse fails mid-stream, `ref_state` (and the slot tracker beside it)
-    /// can't be trusted for any later frame either (we'd be guessing at a refresh that may not
-    /// really have happened) -- rather than silently keep emitting increasingly-suspect
-    /// translations, stop for the rest of the stream. frame_type/qp/etc keep working either way
-    /// (unaffected by this).
+    packets: PacketHeaders,
+    /// The frame type each reference slot holds, so a `show_existing_frame` packet can say what
+    /// type of picture it shows.
+    slot_types: RefSlotTypes,
+    /// Once a full-header parse fails mid-stream, the reference state (and the slot trackers
+    /// beside it) can't be trusted for any later frame either (we'd be guessing at a refresh that
+    /// may not really have happened) -- rather than silently keep emitting increasingly-suspect
+    /// translations, stop for the rest of the stream. frame_type keeps working either way (from
+    /// the approximate parser).
     reliable: bool,
 }
 
 impl FrameHeaders {
     fn new(seq_header: Option<SequenceHeader>) -> Self {
-        let reliable = seq_header.is_some();
         Self {
-            seq_header,
-            ref_state: RefFrameState::new(),
-            reliable,
+            packets: PacketHeaders::new(),
+            slot_types: RefSlotTypes::default(),
+            // The full parser needs the sequence header.
+            reliable: seq_header.is_some(),
         }
     }
 
-    /// Parses the frame header found in `chunk` and pushes a diagnostic for every way that went
+    /// Parses the frame headers found in `chunk` and pushes a diagnostic for every way that went
     /// wrong (no frame OBU, no parser could read it, the full parser failed so references are
-    /// dropped from here on).
+    /// dropped from here on). `slots` is advanced past every frame the packet codes.
     fn parse(
         &mut self,
         stream: StreamId,
         frame_index: usize,
         chunk: &[u8],
+        slots: &mut ReferenceSlots,
         diagnostics: &mut Vec<bitvue_engine::Event>,
-    ) -> ParsedFrameHeader {
-        let found_obu = find_frame_obu(chunk);
-
-        let full_parse = if self.reliable {
-            found_obu.as_ref().and_then(|found| {
-                parse_frame_header_full(
-                    &found.obu.payload,
-                    self.seq_header
-                        .as_ref()
-                        .expect("ref_state_reliable implies Some"),
-                    &mut self.ref_state,
-                )
-                .ok()
-            })
+    ) -> ParsedFrame {
+        let read = if self.reliable {
+            self.packets.read(chunk)
         } else {
             None
         };
-        let used_full_parser = full_parse.is_some();
-        let header = full_parse.or_else(|| {
-            found_obu
-                .as_ref()
-                .and_then(|found| parse_frame_header_basic(&found.obu.payload).ok())
-        });
+        if let Some(headers) = &read {
+            if headers.is_empty() {
+                diagnostics.push(frame_parse_diagnostic(
+                    stream,
+                    frame_index,
+                    "No frame OBU found in this IVF chunk".to_string(),
+                ));
+            }
+            return self.report(frame_index, headers, slots);
+        }
+
+        // The full parser could not be used for this packet: the approximate one still types the
+        // frame (but its slot numbers, QP and so on are not trusted).
+        slots.forget();
+        self.slot_types.forget();
+        let found_obu = find_frame_obu(chunk);
+        let header = found_obu
+            .as_ref()
+            .and_then(|found| parse_frame_header_basic(&found.obu.payload).ok());
 
         // Real, previously-silent per-frame signal: both steps already fail gracefully (frame
         // just gets frame_type "?", no ref_frames/qp_avg below) -- this makes that visible
@@ -577,10 +593,10 @@ impl FrameHeaders {
                 "Failed to parse this frame's AV1 frame header".to_string(),
             ));
         }
-        if self.reliable && found_obu.is_some() && !used_full_parser {
+        if self.reliable && found_obu.is_some() {
             // The real parser was attempted (a sequence header exists and no earlier frame broke
-            // tracking yet) but failed on *this* frame -- the slot tracker can no longer be
-            // trusted for anything after it.
+            // tracking yet) but failed on *this* packet -- the trackers can no longer be trusted
+            // for anything after it.
             diagnostics.push(frame_parse_diagnostic(
                 stream,
                 frame_index,
@@ -588,12 +604,95 @@ impl FrameHeaders {
                  later frames in this stream will be omitted rather than guessed"
                     .to_string(),
             ));
-            self.reliable = false;
+        }
+        self.reliable = false;
+
+        ParsedFrame {
+            frame_type: header.map(|fh| fh.frame_type),
+            qp_avg: None,
+            ref_frames: None,
+        }
+    }
+
+    /// What a packet whose frame headers all read shows, advancing `slots` and the type tracker
+    /// past it.
+    fn report(
+        &mut self,
+        frame_index: usize,
+        headers: &[bitvue_av1_codec::FrameHeader],
+        slots: &mut ReferenceSlots,
+    ) -> ParsedFrame {
+        if headers.is_empty() {
+            return ParsedFrame::unknown();
+        }
+        let shown = shown_header(headers);
+
+        // The frame references of the shown frame come from the slots as they stood when *it* was
+        // decoded, i.e. after the hidden frames before it in this packet refreshed theirs.
+        let mut ref_frames = None;
+        for header in headers {
+            if header.show_existing_frame {
+                continue;
+            }
+            if shown.is_some_and(|s| std::ptr::eq(s, header)) {
+                ref_frames = header.ref_frame_idx.map(|idx| {
+                    // A slot refreshed by a hidden frame of this same packet is not another unit.
+                    slots
+                        .frames_of(&idx)
+                        .into_iter()
+                        .filter(|&f| f != frame_index)
+                        .collect()
+                });
+            }
+            match header.refresh_frame_flags {
+                Some(flags) => slots.refresh(flags, frame_index),
+                None => slots.forget(),
+            }
         }
 
-        ParsedFrameHeader {
-            header,
-            used_full_parser,
+        // The picture's type: for a repeated frame (`show_existing_frame`) the header carries
+        // none, it is what the named slot holds.
+        let events: Option<Vec<HeaderEvent>> = headers
+            .iter()
+            .map(|fh| {
+                if fh.show_existing_frame {
+                    Some(HeaderEvent::ShowExisting {
+                        slot: fh.frame_to_show_map_idx?,
+                    })
+                } else {
+                    Some(HeaderEvent::Coded {
+                        frame_type: fh.frame_type,
+                        shown: fh.show_frame,
+                        refresh: fh.refresh_frame_flags,
+                    })
+                }
+            })
+            .collect();
+        let picture_type = match &events {
+            Some(events) => self.slot_types.apply(events),
+            None => {
+                self.slot_types.forget();
+                None
+            }
+        };
+        // Showing a key frame again refreshes every slot with it (spec 7.21).
+        if picture_type == Some(bitvue_engine::FrameType::Key) {
+            if let [HeaderEvent::ShowExisting { slot }] = events.as_deref().unwrap_or(&[]) {
+                slots.refresh_all_from(*slot);
+            }
+        }
+
+        let repeats_a_frame = headers.iter().any(|h| h.show_existing_frame);
+        let frame_type = if repeats_a_frame {
+            picture_type
+        } else {
+            // A packet that shows no frame or several: the first header, as ever.
+            picture_type.or_else(|| headers.first().map(|h| h.frame_type))
+        };
+        ParsedFrame {
+            frame_type,
+            qp_avg: shown.and_then(|h| h.base_q_idx),
+            ref_frames,
         }
     }
 }
@@ -622,6 +721,17 @@ impl ReferenceSlots {
             }
         }
     }
+
+    /// Showing a key frame again refreshes every slot with it: they all take what `slot` holds.
+    fn refresh_all_from(&mut self, slot: u8) {
+        let held = self.0.get(slot as usize).copied().flatten();
+        self.0 = [held; 8];
+    }
+
+    /// Drops everything known (a header could not be read, so a refresh may have been missed).
+    fn forget(&mut self) {
+        self.0 = [None; 8];
+    }
 }
 
 /// The single-letter frame type shown for a frame ("?" when its header did not parse).
@@ -645,8 +755,7 @@ fn frame_unit(
     frame: &bitvue_av1_codec::ivf::IvfFrame,
     frame_start: u64,
     chunk_size: u64,
-    parsed: &ParsedFrameHeader,
-    slots: &ReferenceSlots,
+    parsed: &ParsedFrame,
 ) -> UnitNode {
     let mut unit = UnitNode::new(
         stream,
@@ -655,34 +764,18 @@ fn frame_unit(
         chunk_size as usize,
     );
     unit.frame_index = Some(frame_index);
-    unit.frame_type = Some(Arc::from(frame_type_label(
-        parsed.header.as_ref().map(|fh| fh.frame_type),
-    )));
+    unit.frame_type = Some(Arc::from(frame_type_label(parsed.frame_type)));
     unit.pts = Some(frame.timestamp);
     unit.temporal_id = Some(frame.temporal_id);
     unit.display_name = Arc::from(format!(
         "Frame {frame_index} @ 0x{frame_start:08X} ({} bytes)",
         frame.size
     ));
-
-    if let Some(fh) = &parsed.header {
-        // Only trust slot->frame-index translation when this frame's header came from the real
-        // full parser. Leaving `ref_frames` unset for a basic-parser fallback (rather than the old
-        // "just cast the raw slot number" bug) is the honest choice: a specific-looking wrong
-        // frame index is worse than none.
-        if parsed.used_full_parser {
-            if let Some(ref_idx) = fh.ref_frame_idx {
-                unit.ref_frames = Some(slots.frames_of(&ref_idx));
-            }
-        }
-        // Same rule for the quantiser: `parse_frame_header_basic` reads `base_q_idx` wrongly on
-        // nearly every frame (#444), so only the full parser's value is reported.
-        if parsed.used_full_parser {
-            if let Some(qp) = fh.base_q_idx {
-                unit.qp_avg = Some(qp);
-            }
-        }
-    }
+    // Only the full parser's slot translation and quantiser are reported (a specific-looking
+    // wrong frame index or QP is worse than none; `parse_frame_header_basic` reads `base_q_idx`
+    // wrongly on nearly every frame, #444).
+    unit.ref_frames = parsed.ref_frames.clone();
+    unit.qp_avg = parsed.qp_avg;
     unit
 }
 

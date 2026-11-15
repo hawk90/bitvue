@@ -83,16 +83,64 @@ macro_rules! clip_case {
     };
 }
 
-clip_case!(fixture_clip, "av1_test.ivf", 5500076595937768709);
-clip_case!(aomenc_clip, "av1_aomenc_testsrc2.ivf", 11412180962405432926);
-clip_case!(rav1e_clip, "av1_rav1e_testsrc2.ivf", 14013110674230659423);
-clip_case!(svtav1_clip, "av1_svtav1_testsrc2.ivf", 6698601066228324678);
+clip_case!(fixture_clip, "av1_test.ivf", 2838956800918720484);
+clip_case!(aomenc_clip, "av1_aomenc_testsrc2.ivf", 8848768865997615315);
+clip_case!(rav1e_clip, "av1_rav1e_testsrc2.ivf", 7710477245287067546);
+clip_case!(svtav1_clip, "av1_svtav1_testsrc2.ivf", 10215973231162467492);
 clip_case!(tiles5_clip, "av1_aomenc_tiles5.ivf", 16582806326677311973);
 clip_case!(
     tile_groups_clip,
     "av1_aomenc_tilegroups.ivf",
     819574246088524650
 );
+
+/// The unit of a packet describes the picture the packet *shows*, not its first frame (#454,
+/// #455). Packet 1 of this clip has three hidden frames before the shown one, and packets 2, 5 and
+/// 8 only repeat an earlier frame (`show_existing_frame`). The expected values are what FFmpeg's
+/// `trace_headers` bitstream filter (the shown frame's `base_q_idx`) and dav1d (the picture type)
+/// report for the clip; both are AV1 readers written independently of this repository.
+#[test]
+fn every_unit_reports_the_picture_its_packet_shows() {
+    let (_, units, diagnostics) = index_ivf_av1(CLIP, StreamId::A, &AtomicBool::new(false))
+        .unwrap()
+        .unwrap();
+    assert!(diagnostics.is_empty());
+
+    let types: Vec<_> = units
+        .iter()
+        .map(|u| u.frame_type.as_deref().unwrap())
+        .collect();
+    assert_eq!(
+        types,
+        ["I", "P", "P", "P", "P", "P", "P", "P", "P", "P", "P", "P"]
+    );
+
+    let qps: Vec<_> = units.iter().map(|u| u.qp_avg).collect();
+    assert_eq!(
+        qps,
+        [
+            Some(14),
+            Some(85), // after hidden frames of 52, 69 and 77
+            None,     // repeats a frame: the header carries no quantiser
+            Some(85),
+            Some(86),
+            None,
+            Some(88),
+            Some(89),
+            None,
+            Some(90),
+            Some(91),
+            Some(92),
+        ]
+    );
+
+    // A repeated frame references nothing; the references of packet 1's shown frame leave out the
+    // slots its own hidden frames refreshed (they are not another unit).
+    for repeated in [2, 5, 8] {
+        assert_eq!(units[repeated].ref_frames, None, "unit {repeated}");
+    }
+    assert_eq!(units[1].ref_frames, Some(vec![0, 0, 0, 0]));
+}
 
 /// Start of every frame payload of an IVF file (each frame has a 12-byte header whose first four
 /// bytes are the payload size).
@@ -149,7 +197,7 @@ fn the_corruption_sweep_reaches_diagnostics() {
 
 #[test]
 fn corrupted_clips_are_pinned() {
-    assert_eq!(corruption_sweep(CLIP, 1..=60).0, 14819150309747728694);
+    assert_eq!(corruption_sweep(CLIP, 1..=60).0, 3740497106734397439);
 }
 
 #[test]
