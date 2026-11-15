@@ -1,7 +1,7 @@
 //! `-o`: decode AV1 to raw YUV/Y4M and write it to disk.
 
 use super::extract::FrameRecord;
-use super::{codec_name, DecodeConfig, ForceCodec};
+use super::{codec_name, Codec, DecodeConfig};
 use anyhow::{Context, Result};
 use bitvue_av1_codec::parse_ivf_frames;
 use std::fs::File;
@@ -13,9 +13,9 @@ pub(super) fn do_yuv_dump(
     cfg: &DecodeConfig,
     file_data: &[u8],
     records: &[FrameRecord],
-    codec: ForceCodec,
+    codec: Codec,
 ) -> Result<()> {
-    if !matches!(codec, ForceCodec::AV1) {
+    if !matches!(codec, Codec::Av1) {
         println!(
             "Note: YUV dump is only available for AV1 (decoded via dav1d). \
              Got {}.",

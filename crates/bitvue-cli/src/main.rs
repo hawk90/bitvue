@@ -328,21 +328,21 @@ fn main() -> Result<()> {
             reference,
             cpu_max_feature,
         } => {
-            use commands::decode::{DecodeConfig, ForceCodec};
+            use commands::decode::{Codec, DecodeConfig};
             let force_codec = if codec_av1 {
-                Some(ForceCodec::AV1)
+                Some(Codec::Av1)
             } else if codec_hevc {
-                Some(ForceCodec::HEVC)
+                Some(Codec::Hevc)
             } else if codec_avc {
-                Some(ForceCodec::AVC)
+                Some(Codec::Avc)
             } else if codec_vp9 {
-                Some(ForceCodec::VP9)
+                Some(Codec::Vp9)
             } else if codec_vvc {
-                Some(ForceCodec::VVC)
+                Some(Codec::Vvc)
             } else if codec_mpeg2 {
-                Some(ForceCodec::MPEG2)
+                Some(Codec::Mpeg2)
             } else if codec_avs3 {
-                Some(ForceCodec::AVS3)
+                Some(Codec::Avs3)
             } else {
                 None
             };

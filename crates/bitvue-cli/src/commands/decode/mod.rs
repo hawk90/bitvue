@@ -25,25 +25,15 @@ use yuv_dump::do_yuv_dump;
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
-/// Codec forced by the user (overrides auto-detect).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ForceCodec {
-    AV1,
-    HEVC,
-    AVC,
-    VP9,
-    VVC,
-    MPEG2,
-    AVS3,
-    JpegXs,
-    Vc3,
-}
+/// The codec identifier shared by every crate (`bitvue_engine::Codec`); the user can force one
+/// with `--codec-*` to override auto-detect.
+pub use bitvue_engine::Codec;
 
 /// Full configuration for the `decode` subcommand.
 #[derive(Debug, Default)]
 pub struct DecodeConfig {
     pub file: PathBuf,
-    pub force_codec: Option<ForceCodec>,
+    pub force_codec: Option<Codec>,
     pub max_frames: usize,
     pub md5: bool,
     pub stats: bool,
@@ -155,7 +145,7 @@ pub fn run(cfg: DecodeConfig) -> Result<()> {
         println!();
         print_stream_stats(&records, cfg.stream_stats);
         // HEVC-specific NAL unit type breakdown (--stream-stats only)
-        if cfg.stream_stats && matches!(effective_codec, ForceCodec::HEVC) {
+        if cfg.stream_stats && matches!(effective_codec, Codec::Hevc) {
             print_hevc_nal_stats(&file_data);
         }
     }
@@ -199,7 +189,7 @@ pub fn run(cfg: DecodeConfig) -> Result<()> {
 
 // ─── Codec resolution ─────────────────────────────────────────────────────────
 
-fn resolve_codec(cfg: &DecodeConfig, data: &[u8]) -> ForceCodec {
+fn resolve_codec(cfg: &DecodeConfig, data: &[u8]) -> Codec {
     if let Some(forced) = cfg.force_codec {
         return forced;
     }
@@ -210,29 +200,45 @@ fn resolve_codec(cfg: &DecodeConfig, data: &[u8]) -> ForceCodec {
             // Peek FourCC from IVF header
             if data.len() >= 12 {
                 match &data[8..12] {
-                    b"AV01" => ForceCodec::AV1,
-                    b"VP90" | b"VP9 " => ForceCodec::VP9,
-                    _ => ForceCodec::AV1, // default
+                    b"AV01" => Codec::Av1,
+                    b"VP90" | b"VP9 " => Codec::Vp9,
+                    _ => Codec::Av1, // default
                 }
             } else {
-                ForceCodec::AV1
+                Codec::Av1
             }
         }
-        ContainerFormat::AnnexB => ForceCodec::HEVC,
-        _ => ForceCodec::AV1, // fallback
+        ContainerFormat::AnnexB => Codec::Hevc,
+        _ => Codec::Av1, // fallback
     }
 }
 
-pub(super) fn codec_name(c: ForceCodec) -> &'static str {
+pub(super) fn codec_name(c: Codec) -> &'static str {
     match c {
-        ForceCodec::AV1 => "AV1",
-        ForceCodec::HEVC => "HEVC/H.265",
-        ForceCodec::AVC => "AVC/H.264",
-        ForceCodec::VP9 => "VP9",
-        ForceCodec::VVC => "VVC/H.266",
-        ForceCodec::MPEG2 => "MPEG-2 Video",
-        ForceCodec::AVS3 => "AVS3",
-        ForceCodec::JpegXs => "JPEG XS",
-        ForceCodec::Vc3 => "VC-3/DNxHD",
+        Codec::Av1 => "AV1",
+        Codec::Hevc => "HEVC/H.265",
+        Codec::Avc => "AVC/H.264",
+        Codec::Vp9 => "VP9",
+        Codec::Vvc => "VVC/H.266",
+        Codec::Mpeg2 => "MPEG-2 Video",
+        Codec::Avs3 => "AVS3",
+        Codec::JpegXs => "JPEG XS",
+        Codec::Vc3 => "VC-3/DNxHD",
+        Codec::Unknown => "Unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_codec_prints_a_distinct_name() {
+        let mut names: Vec<_> = Codec::KNOWN.iter().map(|&c| codec_name(c)).collect();
+        names.push(codec_name(Codec::Unknown));
+        let count = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), count);
     }
 }
