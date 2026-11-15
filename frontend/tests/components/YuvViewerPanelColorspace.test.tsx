@@ -92,7 +92,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 // `getDecodedFrameYuv` mock so every existing `sharedGetDecodedFrameYuvMock.mockResolvedValue/
 // mockRejectedValue(...)` call below keeps controlling the resolved/rejected frame data, just
 // via one extra layer of `{promise, cancel}` indirection matching the real bridge shape.
-vi.mock("@/services/electronBridgeService", () => {
+vi.mock("@/services/electronBridgeService", async () => {
+  const { bridgeYuvToFrame: actualBridgeYuvToFrame } = await vi.importActual<
+    typeof import("@/services/bridge/frameDecode")
+  >("@/services/bridge/frameDecode");
   const getDecodedFrameYuv = vi.fn(() =>
     Promise.reject(new Error("Test mode")),
   );
@@ -105,6 +108,11 @@ vi.mock("@/services/electronBridgeService", () => {
       }),
     ),
     getContextMenuItems: vi.fn(),
+    // The component also imports these; without them vitest throws on access and the
+    // component takes its error path (and logs it) on every render.
+    getDebugYuvFrame: vi.fn(() => Promise.reject(new Error("Test mode"))),
+    getFrameAnalysis: vi.fn(() => Promise.reject(new Error("Test mode"))),
+    bridgeYuvToFrame: actualBridgeYuvToFrame,
   };
 });
 
@@ -120,6 +128,19 @@ global.Image = class {
     }, 0);
   }
 } as any;
+
+/**
+ * Render and let the panel's mount-time async loads settle inside act(). The panel starts
+ * frame/analysis requests from an effect; with a bare render() they resolve right after the
+ * (synchronous) test body, outside act(), and React warns on every test.
+ */
+async function renderPanel(ui: React.ReactElement) {
+  let result!: ReturnType<typeof render>;
+  await act(async () => {
+    result = render(ui);
+  });
+  return result;
+}
 
 const mockProps = {
   currentFrameIndex: 1,
@@ -201,8 +222,8 @@ describe("YuvViewerPanel Options > Color Space", () => {
       window.dispatchEvent(new CustomEvent(event));
     });
 
-  it("defaults to BT.709", () => {
-    render(<YuvViewerPanel {...mockProps} />);
+  it("defaults to BT.709", async () => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
     expect(canvas()).toHaveAttribute("data-colorspace", Colorspace.BT709);
   });
 
@@ -210,8 +231,8 @@ describe("YuvViewerPanel Options > Color Space", () => {
     [MENU_EVENTS.colorBt601, Colorspace.BT601],
     [MENU_EVENTS.colorBt2020, Colorspace.BT2020],
     [MENU_EVENTS.colorBt709, Colorspace.BT709],
-  ])("native-menu event %s selects %s", (event, expected) => {
-    render(<YuvViewerPanel {...mockProps} />);
+  ])("native-menu event %s selects %s", async (event, expected) => {
+    await renderPanel(<YuvViewerPanel {...mockProps} />);
     if (expected === Colorspace.BT709) fire(MENU_EVENTS.colorBt2020);
     fire(event);
     expect(canvas()).toHaveAttribute("data-colorspace", expected);
@@ -221,8 +242,8 @@ describe("YuvViewerPanel Options > Color Space", () => {
   it.each([
     ["ITU Rec. 601", Colorspace.BT601],
     ["ITU Rec. 2020", Colorspace.BT2020],
-  ])("TitleBar item %s selects %s", (label, expected) => {
-    render(
+  ])("TitleBar item %s selects %s", async (label, expected) => {
+    await renderPanel(
       <>
         <TitleBar fileName="x" onOpenFile={vi.fn()} />
         <YuvViewerPanel {...mockProps} />
