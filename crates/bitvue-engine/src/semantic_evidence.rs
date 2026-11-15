@@ -11,16 +11,7 @@ use std::collections::HashMap;
 
 use crate::evidence::EvidenceId;
 
-/// Codec type for semantic evidence
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Codec {
-    Av1,
-    H264,
-    Hevc,
-    Vp9,
-    Vvc,
-    Avs3,
-}
+pub use crate::codec::Codec;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AV1 Semantic Evidence
@@ -322,7 +313,7 @@ impl SemanticEvidence {
             Self::H264Poc(_)
             | Self::H264Mmco(_)
             | Self::H264DpbSliding(_)
-            | Self::H264BPyramid(_) => Codec::H264,
+            | Self::H264BPyramid(_) => Codec::Avc,
             Self::HevcIrap(_) | Self::HevcTemporal(_) | Self::HevcCtuBoundary(_) => Codec::Hevc,
             Self::Vp9Superframe(_) | Self::Vp9RefBuffer(_) | Self::Vp9Segmentation(_) => Codec::Vp9,
             Self::VvcGdr(_) | Self::VvcRpl(_) | Self::VvcAlf(_) | Self::VvcSubpic(_) => Codec::Vvc,
