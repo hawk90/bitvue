@@ -53,39 +53,20 @@ pub struct NalUnit<'a> {
 
 /// Scan `data` and return all NAL units found.
 ///
-/// Each unit's `data` slice spans from the SCI byte (inclusive) up to, but
-/// not including, the next start code (or end of buffer).
+/// Each unit's `data` slice spans from the SCI byte (inclusive) up to, but not including, the
+/// zero bytes in front of the next start code (the optional `zero_byte` of a 4-byte start code and
+/// any trailing zero bytes), or the end of the buffer. `offset` is the position of the
+/// `00 00 01` of the unit's own start code. A slice unit that is nothing but the SCI `0x00` and
+/// zero bytes holds no data and is not reported.
 pub fn scan_nal_units(data: &[u8]) -> Vec<NalUnit<'_>> {
-    let mut units = Vec::new();
-    let mut i = 0usize;
-
-    while i + 3 < data.len() {
-        if data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01 {
-            let sci = Sci::from(data[i + 3]);
-            // The data starts at SCI byte
-            let start = i + 3;
-            // Find the next start code
-            let end = find_next_start_code(data, i + 4).unwrap_or(data.len());
-            units.push(NalUnit {
-                sci,
-                data: &data[start..end],
-                offset: i,
-            });
-            i = end;
-        } else {
-            i += 1;
-        }
-    }
-
-    units
-}
-
-/// Find the next 0x00 0x00 0x01 pattern starting at `from`.
-fn find_next_start_code(data: &[u8], from: usize) -> Option<usize> {
-    if from + 2 >= data.len() {
-        return None;
-    }
-    (from..data.len() - 2).find(|&i| data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01)
+    bitvue_engine::annex_b::find_nal_ranges(data)
+        .into_iter()
+        .map(|unit| NalUnit {
+            sci: Sci::from(data[unit.start]),
+            data: &data[unit.start..unit.end],
+            offset: unit.start - 3,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -105,5 +86,23 @@ mod tests {
         assert_eq!(units[0].data, &[0xB0, 0xAA, 0xBB]);
         assert_eq!(units[1].sci, Sci::IFrame);
         assert_eq!(units[1].data, &[0xB3, 0xCC, 0xDD, 0xEE]);
+    }
+
+    #[test]
+    fn zero_bytes_in_front_of_the_next_start_code_are_not_part_of_the_unit() {
+        // 4-byte start code (zero_byte) and trailing zero bytes before the next unit
+        let data = [
+            0x00, 0x00, 0x01, 0xB0, 0xAA, 0x00, 0x00, // seq header + 2 trailing zeros
+            0x00, 0x00, 0x00, 0x01, 0xB3, 0xCC, 0x00, // zero_byte + 3-byte code, I-frame
+        ];
+        let units = scan_nal_units(&data);
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[0].data, &[0xB0, 0xAA]);
+        assert_eq!(units[0].offset, 0);
+        assert_eq!(units[1].data, &[0xB3, 0xCC]);
+        assert_eq!(
+            units[1].offset, 8,
+            "offset stays on the 00 00 01 of the start code"
+        );
     }
 }
