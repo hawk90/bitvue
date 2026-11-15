@@ -214,41 +214,14 @@ fn resolve_mkv_frame_type(data: &[u8], codec: &str, key_frame: bool) -> String {
 
 /// Collect frames from an Annex B byte-stream (H.264 or HEVC raw bitstream).
 ///
-/// Scans for 3-byte (00 00 01) and 4-byte (00 00 00 01) start codes to find
-/// slice NAL units. Each access unit (group of NALs sharing a PTS) is one frame.
+/// Finds the NAL units between the start codes (see [`bitvue_engine::annex_b`]) and reports one
+/// frame per slice NAL unit. `offset` is where its start code begins, `size` runs to the end of
+/// the unit (without the zero bytes in front of the next start code).
 fn collect_annex_b_frames(data: &[u8]) -> Result<Vec<ExportFrame>> {
     let mut records = Vec::new();
-    let mut pos = 0usize;
-    let mut frame_idx = 0usize;
 
-    // Locate NAL start codes and derive access unit boundaries
-    while pos < data.len() {
-        // Find next start code (00 00 01 or 00 00 00 01)
-        let Some(sc_pos) = find_start_code(data, pos) else {
-            break;
-        };
-
-        let sc_len = if sc_pos >= 1 && data[sc_pos - 1] == 0x00 {
-            4
-        } else {
-            3
-        };
-        let nal_start = sc_pos - (sc_len - 3); // start of start code prefix
-        let nal_data_start = sc_pos + 1; // byte after 00 01
-
-        // Find end of NAL (next start code or EOF)
-        let nal_end = find_start_code(data, nal_data_start + 1)
-            .map(|p| {
-                if p >= 1 && data.get(p - 1) == Some(&0x00) {
-                    p - 1
-                } else {
-                    p
-                }
-            })
-            .unwrap_or(data.len());
-
-        // Determine if this is H.264 or HEVC from the NAL header byte
-        let nal_byte = data.get(nal_data_start).copied().unwrap_or(0);
+    for unit in bitvue_engine::annex_b::find_nal_ranges(data) {
+        let nal_byte = data[unit.start];
         // H.264 NAL type = nal_byte & 0x1F; HEVC NAL type = (nal_byte >> 1) & 0x3F
         let h264_type = nal_byte & 0x1F;
         let is_slice_h264 = matches!(h264_type, 1 | 5); // non-IDR or IDR
@@ -262,18 +235,15 @@ fn collect_annex_b_frames(data: &[u8]) -> Result<Vec<ExportFrame>> {
             let key_frame = is_idr_h264 || is_idr_hevc;
             let frame_type = if key_frame { "I" } else { "P" }.to_string();
             records.push(ExportFrame {
-                index: frame_idx,
+                index: records.len(),
                 frame_type,
-                size: nal_end - nal_start,
+                size: unit.end - unit.start_code,
                 pts: None, // Annex B has no PTS
-                offset: nal_start as u64,
+                offset: unit.start_code as u64,
                 key_frame,
                 temporal_id: None,
             });
-            frame_idx += 1;
         }
-
-        pos = nal_data_start + 1;
     }
 
     if records.is_empty() {
@@ -281,19 +251,6 @@ fn collect_annex_b_frames(data: &[u8]) -> Result<Vec<ExportFrame>> {
     }
 
     Ok(records)
-}
-
-/// Find the position of the `01` byte in the next `00 00 01` pattern.
-fn find_start_code(data: &[u8], start: usize) -> Option<usize> {
-    if start + 2 >= data.len() {
-        return None;
-    }
-    for i in start..data.len() - 2 {
-        if data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01 {
-            return Some(i + 2); // position of the 01 byte
-        }
-    }
-    None
 }
 
 fn resolve_av1_frame_type(frame_data: &[u8]) -> (String, Option<u8>) {
@@ -351,4 +308,43 @@ fn render_markdown(doc: &ExportDocument) -> String {
         ));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frames(data: &[u8]) -> Vec<(String, usize, u64)> {
+        collect_annex_b_frames(data)
+            .unwrap()
+            .into_iter()
+            .map(|f| (f.frame_type, f.size, f.offset))
+            .collect()
+    }
+
+    #[test]
+    fn annex_b_frames_report_the_start_code_offset_and_exact_size() {
+        let data = [
+            0, 0, 0, 1, 0x67, 0x42, // SPS: not a frame
+            0, 0, 0, 1, 0x65, 0x88, 0x84, // IDR (4-byte code)
+            0, 0, 0, 1, 0x41, 0x9A, 0,
+            0, // P: the 0 before `00 00 01` is its zero_byte, 2 trailing
+        ];
+        assert_eq!(
+            frames(&data),
+            vec![("I".to_string(), 7, 6), ("P".to_string(), 6, 13)]
+        );
+    }
+
+    #[test]
+    fn annex_b_frame_after_back_to_back_start_codes_is_not_lost() {
+        let data = [0, 0, 1, 0, 0, 1, 0x65, 0x88];
+        assert_eq!(frames(&data), vec![("I".to_string(), 5, 3)]);
+    }
+
+    #[test]
+    fn annex_b_without_slices_is_an_error() {
+        assert!(collect_annex_b_frames(&[0, 0, 0, 1, 0x67, 0x42]).is_err());
+        assert!(collect_annex_b_frames(&[]).is_err());
+    }
 }
