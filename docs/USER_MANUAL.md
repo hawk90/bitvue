@@ -112,7 +112,7 @@ An overlay is an information map drawn on top of a mode. Switch overlays on and 
 
 | Button | Name | What it shows |
 |---|---|---|
-| `QP` | `QP Map` | Quantizer per block. Blocks are filled with a color per QP, and a legend at the top left gives the range (`QP: 13-17` on the key frame of the sample clip, which matches `base_q_idx` 14 with per-block delta-Q in the stream headers). The label can overlap the mode label ([Known issues](#known-issues)) |
+| `QP` | `QP Map` | Quantizer per block. Blocks are filled from blue (lowest QP in the frame) through cyan and yellow to red (highest). The scale is relative to each frame, so the same color means different QP values on different frames. A legend at the top left gives the frame's range (`QP: 13-17` on the key frame of the sample clip, which matches `base_q_idx` 14 with per-block delta-Q in the stream headers). The label can overlap the mode label ([Known issues](#known-issues)) |
 | `BT` | `Block Type` | Blocks colored by kind: `INTRA`, `INTER`, `SKIP`, `INTRA_BC`, `COMPOUND` (legend at the top left) |
 | `HM` | `Heat Map` | Bits spent per block (brighter = more bits). The application currently draws motion-vector magnitude instead ([Known issues](#known-issues)) |
 | `EFF` | `Efficiency` | Intended: coding efficiency per block (brighter = more efficient). The application currently draws bits per pixel instead, with a `low bpp` to `high bpp` legend ([Known issues](#known-issues)) |
