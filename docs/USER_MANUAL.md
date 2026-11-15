@@ -108,10 +108,11 @@ vertical/horizontal) and `1 / 8` (U / V) and `Sharpness 0` in `F5`, and `Y-Prima
 ## 6. Information overlays (`Overlay`)
 
 An overlay is an information map drawn on top of a mode. Switch overlays on and off with the `Overlay` buttons. `Ctrl+F1` to
-`Ctrl+F6` toggle them in list order.
+`Ctrl+F6` toggle them in list order. For AV1 the buttons are `QP`, `HM`, `BT`, `EFF`, `PSNR`, so `Ctrl+F1` is `QP` and `Ctrl+F5` is `PSNR`.
 
 | Button | Name | What it shows |
 |---|---|---|
+| `QP` | `QP Map` | Quantizer per block. Blocks are filled with a color per QP, and a legend at the top left gives the range (`QP: 13-17` on the key frame of the sample clip, which matches `base_q_idx` 14 with per-block delta-Q in the stream headers). The label can overlap the mode label ([Known issues](#known-issues)) |
 | `BT` | `Block Type` | Blocks colored by kind: `INTRA`, `INTER`, `SKIP`, `INTRA_BC`, `COMPOUND` (legend at the top left) |
 | `HM` | `Heat Map` | Bits spent per block (brighter = more bits). The application currently draws motion-vector magnitude instead ([Known issues](#known-issues)) |
 | `EFF` | `Efficiency` | Intended: coding efficiency per block (brighter = more efficient). The application currently draws bits per pixel instead, with a `low bpp` to `high bpp` legend ([Known issues](#known-issues)) |
@@ -204,7 +205,7 @@ All test clips are generated (320x240, 12 frames, from `ffmpeg`'s `testsrc2` sou
 
 ### AV1
 
-Modes in the reference guide: Coding Flow, Predictions, Transform, Reconstruction, Loop Filter, CDEF Filter, SuperRes Filter, Loop restoration Filter, Film Grain Pixels, YUV, Info Overlays (Heat Map, Efficiency Map, Block Type, PSNR), Simple Motion.
+Modes in the reference guide: Coding Flow, Predictions, Transform, Reconstruction, Loop Filter, CDEF Filter, SuperRes Filter, Loop restoration Filter, Film Grain Pixels, YUV, Info Overlays (Heat Map, Efficiency Map, Block Type, PSNR), Simple Motion. The application adds a `QP Map` overlay for AV1 that the guide does not list.
 
 | Tool | Encoder option (aomenc) | In the stream | Shown in the analyzer | Bitvue status |
 |---|---|---|---|---|
@@ -212,7 +213,7 @@ Modes in the reference guide: Coding Flow, Predictions, Transform, Reconstructio
 | Partition types | `--enable-rect-partitions`, `--enable-ab-partitions`, `--enable-1to4-partitions` | Not tested | Coding Flow, Predictions | No item |
 | Tiles | `--tile-columns`, `--tile-rows` (log2), `--num-tile-groups` | libdav1d `tiles 2x2` (default `1x1`) | Coding Flow (tile boundaries); selection info | CODEC-021 done |
 | Segmentation | `--aq-mode` | `segmentation_enabled=1` with `--aq-mode=1` | Coding Flow (segment colors); selection info | CODEC-025 done |
-| Per-block delta QP | `--deltaq-mode` | `delta_q_present=1` in the sample clip | QP axis of the frame-size graph | OVL-042 done |
+| Per-block delta QP | `--deltaq-mode` | `delta_q_present=1` in the sample clip | QP axis of the frame-size graph, `QP Map` overlay | OVL-042 done |
 | Quantizer matrices | `--enable-qm`, `--qm-min`, `--qm-max` | `using_qmatrix=1` | Frame header syntax | CODEC-025 done |
 | Loop filter | `--loopfilter-control`, `--sharpness` | `loop_filter_level[0..3]`, `loop_filter_sharpness` | `F5` Loop Filter | OVL-017 done |
 | CDEF | `--enable-cdef` | `enable_cdef=0` clip versus default clip (`cdef_*` fields) | `F6` CDEF Filter | OVL-007 partial |
@@ -498,4 +499,3 @@ Places where the application differs from the reference guide or shows something
 | `EFF` overlay | Draws bits per pixel instead of coding efficiency | #488 |
 | Window layout | At the default window size `Stream Tree` and `Syntax Detail` show only one or two rows | #489 |
 | Statistics | The bottom `STATS` panel shows `Keyframes: 4` and `I: 4` for a clip with one key frame | #454 |
-| AV1 `QP Map` | Not in the guide's AV1 overlays; whether to add it as an extension is undecided | #446, #453 |
