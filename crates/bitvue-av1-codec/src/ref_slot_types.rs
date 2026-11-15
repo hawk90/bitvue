@@ -2,14 +2,14 @@
 //! packet (which only names a slot) can still say what type the picture it shows has.
 //!
 //! The tracker is a pure function of the frame headers it is fed, in order; it knows nothing about
-//! dav1d. Wherever it cannot be sure it answers `None` rather than guess: a slot it never saw
+//! any decoder. Wherever it cannot be sure it answers `None` rather than guess: a slot it never saw
 //! written, a header that did not parse (`forget`), a packet that shows no frame or several.
 
-use crate::decoder::FrameType;
+use crate::FrameType;
 
 /// What the tracker needs from one frame header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HeaderEvent {
+pub enum HeaderEvent {
     /// `show_existing_frame`: shows the frame held in `slot`.
     ShowExisting { slot: u8 },
     /// A coded frame. `refresh` is its `refresh_frame_flags` (bit `i` set: slot `i` takes this
@@ -23,20 +23,20 @@ pub(crate) enum HeaderEvent {
 
 /// The frame type held by each reference slot; `None` where it is not known.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct RefSlotTypes {
+pub struct RefSlotTypes {
     slots: [Option<FrameType>; 8],
 }
 
 impl RefSlotTypes {
     /// Drops everything known: after a reset, a flush, a failed send or an unreadable header the
     /// slots may no longer hold what was recorded.
-    pub(crate) fn forget(&mut self) {
+    pub fn forget(&mut self) {
         self.slots = [None; 8];
     }
 
     /// Applies the frame headers of one packet in order and returns the type of the picture the
     /// packet shows, when it shows exactly one and its type is known.
-    pub(crate) fn apply(&mut self, events: &[HeaderEvent]) -> Option<FrameType> {
+    pub fn apply(&mut self, events: &[HeaderEvent]) -> Option<FrameType> {
         let mut shown = 0;
         let mut picture = None;
         for event in events {
@@ -83,7 +83,7 @@ impl RefSlotTypes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use FrameType::{Inter, Intra, Key};
+    use FrameType::{Inter, IntraOnly as Intra, Key};
 
     fn coded(frame_type: FrameType, shown: bool, refresh: u8) -> HeaderEvent {
         HeaderEvent::Coded {

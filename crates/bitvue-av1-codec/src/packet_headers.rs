@@ -1,20 +1,23 @@
-//! The frame headers of the packets sent to dav1d, read with the full parser.
+//! The frame headers of a stream's packets (IVF frames), read with the full parser.
 //!
-//! dav1d's Rust binding exposes neither the frame type nor the quantiser of a picture, so both are
-//! read from the packet that was sent. `parse_frame_header_basic` is not good enough for that: it
+//! A packet is not one frame: AV1 packs hidden frames (ARF and the like) and the one shown frame
+//! into a single packet, or repeats an earlier frame with `show_existing_frame`. Reading only the
+//! first frame OBU of a packet therefore gives the wrong header for the picture it shows. This
+//! reads every frame header of a packet in order, so the reference state stays right, and
+//! [`shown_header`] picks the picture's header out of them.
+//!
+//! `parse_frame_header_basic` is not good enough for this: it
 //! reads without the sequence header and guesses the layout, so its `base_q_idx` and
 //! `refresh_frame_flags` are wrong on nearly every frame (the key frame of
 //! `av1_aomenc_testsrc2.ivf` reads 128 where FFmpeg's parser and `parse_frame_header_full` both
 //! read 14). The full parser needs the sequence header and the reference-slot state built up from
 //! every earlier frame, so this keeps both and is fed the packets in order.
 
-use bitvue_av1_codec::frame_header_full::{parse_frame_header_full, RefFrameState};
-use bitvue_av1_codec::{
-    parse_all_obus, parse_sequence_header, FrameHeader, ObuType, SequenceHeader,
-};
+use crate::frame_header_full::{parse_frame_header_full, RefFrameState};
+use crate::{parse_all_obus, parse_sequence_header, FrameHeader, ObuType, SequenceHeader};
 
 /// Reads packet after packet; see the module doc.
-pub(crate) struct PacketHeaders {
+pub struct PacketHeaders {
     seq: Option<SequenceHeader>,
     ref_state: RefFrameState,
     /// The reference state can no longer be trusted (a packet did not parse, dav1d refused one,
@@ -23,8 +26,14 @@ pub(crate) struct PacketHeaders {
     lost: bool,
 }
 
+impl Default for PacketHeaders {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PacketHeaders {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             seq: None,
             ref_state: RefFrameState::new(),
@@ -33,14 +42,14 @@ impl PacketHeaders {
     }
 
     /// Gives up the reference state; see `lost`.
-    pub(crate) fn lose(&mut self) {
+    pub fn lose(&mut self) {
         self.ref_state = RefFrameState::new();
         self.lost = true;
     }
 
     /// The frame headers of `packet` in order, advancing the reference state past them. `None`
     /// when the packet cannot be read or the state is lost.
-    pub(crate) fn read(&mut self, packet: &[u8]) -> Option<Vec<FrameHeader>> {
+    pub fn read(&mut self, packet: &[u8]) -> Option<Vec<FrameHeader>> {
         let Ok(obus) = parse_all_obus(packet) else {
             self.lose();
             return None;
@@ -94,7 +103,7 @@ fn is_key(header: &FrameHeader) -> bool {
 /// came before it in the same packet. `None` when the packet repeats an earlier frame
 /// (`show_existing_frame`: the header carries no type or quantiser for it), shows no frame or
 /// several (spatial layers).
-pub(crate) fn shown_header(headers: &[FrameHeader]) -> Option<&FrameHeader> {
+pub fn shown_header(headers: &[FrameHeader]) -> Option<&FrameHeader> {
     let mut shown = None;
     for header in headers {
         if header.show_existing_frame {

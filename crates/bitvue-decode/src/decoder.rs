@@ -1,8 +1,8 @@
 //! AV1 decoder wrapper using dav1d
 
-use crate::av1_headers::{shown_header, PacketHeaders};
 use crate::plane_utils;
-use crate::ref_slots::{HeaderEvent, RefSlotTypes};
+use bitvue_av1_codec::{shown_header, PacketHeaders};
+use bitvue_av1_codec::{HeaderEvent, RefSlotTypes};
 use bitvue_engine::limits::{MAX_FILE_SIZE, MAX_FRAMES_PER_FILE, MAX_FRAME_SIZE};
 use dav1d::{Decoder, PlanarImageComponent};
 use std::path::{Path, PathBuf};
@@ -298,8 +298,11 @@ fn header_events(headers: &[bitvue_av1_codec::FrameHeader]) -> Option<Vec<Header
                     slot: fh.frame_to_show_map_idx?,
                 })
             } else {
+                // A frame type AV1 does not have means the header was not read right: give up
+                // on following the slots, as before.
+                from_av1_frame_type(fh.frame_type)?;
                 Some(HeaderEvent::Coded {
-                    frame_type: from_av1_frame_type(fh.frame_type)?,
+                    frame_type: fh.frame_type,
                     shown: fh.show_frame,
                     refresh: fh.refresh_frame_flags,
                 })
@@ -394,7 +397,7 @@ impl Av1Decoder {
         let events = headers.as_deref().and_then(header_events);
         // The slots follow only packets dav1d took and whose headers were all read.
         self.shown_type = match events {
-            Some(events) => self.ref_slots.apply(&events),
+            Some(events) => self.ref_slots.apply(&events).and_then(from_av1_frame_type),
             None => {
                 self.ref_slots.forget();
                 None

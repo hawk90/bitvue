@@ -19,12 +19,10 @@
 #![allow(unfulfilled_lint_expectations)]
 
 pub mod annex_b;
-mod av1_headers;
 pub mod decoder;
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
 pub mod plane_utils;
-mod ref_slots;
 pub mod strategy;
 pub mod traits;
 #[cfg(feature = "vvdec")]
