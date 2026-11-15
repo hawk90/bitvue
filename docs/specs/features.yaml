@@ -1391,10 +1391,11 @@ items:
     evidence:
       - frontend/components/panels/OverlayRenderer/renderers/QPMapRenderer.tsx::QPMapOverlay
       - frontend/utils/codecModeRegistry.ts::AV1_MODES
+      - frontend/tests/utils/codecModeRegistry.test.ts
       - crates/bitvue-sidecar/src/frame_analysis.rs::get_frame_analysis_qp_grid_has_real_block_dimensions
       - crates/bitvue-av1-codec/src/overlay_extraction/qp_extractor.rs
       - crates/bitvue-hevc/src/overlay_extraction.rs::extract_qp_grid
-      - crates/bitvue-avc/src/overlay_extraction.rs::extract_qp_grid
+      - crates/bitvue-avc/src/overlay_extraction/grids.rs::extract_qp_grid
       - crates/bitvue-vp9/src/overlay_extraction.rs::extract_qp_grid
     competitors:
       vqa: 'yes'
@@ -1412,12 +1413,11 @@ items:
       - UX_PARITY_MATRIX.md §1
       - UX_PARITY_MATRIX.md §11
       - DEVELOPMENT_PHASES.md §Phase 2 table QP Map
-    notes: 'Merge: VQA spec/phase docs said AV1 QP map done; code: AV1_MODES in codecModeRegistry.ts has no qp-map entry (not
-      selectable), non-AV1 has no sidecar backend → partial. | Doc said [x] (F2). Code: AV1 sidecar returns qp_grid but AV1_MODES
-      has no qp-map entry (not selectable for AV1); HEVC/AVC/VP9 have qp-map registry entries but no desktop backend (get_frame_analysis
-      AV1/IVF-only). | Matrix said ✅ for HEVC/VP9/AVC. Code: extract_qp_grid exists in each crate but sidecar get_frame_analysis
-      is AV1/IVF-only — engine-only. | Doc said ✅. AV1/IVF only in desktop. | Renderer shared and crate extractors exist;
-      no sidecar wiring (see INFRA-408).'
+    notes: 'AV1: QP Map is selectable (info overlay in AV1_MODES, #446) and renders frame.qp_grid from get_frame_analysis; the
+      grid carries real per-block QP (checked against FFmpeg trace_headers on av1_aomenc_testsrc2.ivf: key frame 13..17
+      around base_q_idx 14, inter frames equal base_q_idx). Still partial: HEVC/AVC/VP9 have qp-map registry entries and
+      crate extractors (extract_qp_grid) but no desktop backend (get_frame_analysis is AV1/IVF-only, see INFRA-408), so
+      the overlay shows real QP for AV1 only. | Earlier doc said done: that was wrong for non-AV1.'
   - id: OVL-003
     title: Motion-vector field overlay
     area: overlay
