@@ -35,6 +35,8 @@ pub mod ivf;
 pub mod leb128;
 pub mod obu;
 pub mod overlay_extraction;
+pub mod packet_headers;
+pub mod ref_slot_types;
 pub mod sequence;
 pub mod symbol;
 pub mod syntax_parser;
@@ -65,6 +67,8 @@ pub use overlay_extraction::{
     extract_prediction_mode_grid_from_parsed, extract_qp_grid, extract_qp_grid_from_parsed,
     extract_transform_grid, extract_transform_grid_from_parsed, MAX_FRAME_LUMA_SAMPLES,
 };
+pub use packet_headers::{shown_header, PacketHeaders};
+pub use ref_slot_types::{HeaderEvent, RefSlotTypes};
 pub use sequence::{parse_sequence_header, Av1Profile, ColorConfig, SequenceHeader};
 pub use symbol::{update_cdf, ArithmeticDecoder, CdfContext, PartitionCdf, SymbolDecoder};
 pub use syntax_parser::{
