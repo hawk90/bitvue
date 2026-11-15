@@ -2,7 +2,7 @@
 //!
 //! Functions for extracting individual frames from H.264 bitstreams
 
-use crate::nal::{find_nal_units, parse_nal_header, NalUnitType};
+use crate::nal::{parse_nal_header, NalUnitType};
 use crate::parse_avc;
 use crate::slice::{SliceHeader, SliceType};
 use bitvue_engine::BitvueError;
@@ -246,29 +246,12 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
         .map(|sps| (sps.pic_width(), sps.pic_height()))
         .unwrap_or((0, 0));
 
-    // Find all NAL unit start positions
-    let nal_positions = find_nal_units(data);
+    // NAL units as (start code .. end of unit) byte ranges
+    let units = bitvue_engine::annex_b::find_nal_ranges(data);
 
-    if nal_positions.is_empty() {
+    if units.is_empty() {
         return Ok(Vec::new());
     }
-
-    // Build NAL unit ranges (start, end) by pairing positions
-    // OPTIMIZATION: Use iterator chain instead of manual indexing for better performance
-    let nal_ranges: Vec<(usize, usize)> = nal_positions
-        .iter()
-        .zip(
-            nal_positions
-                .iter()
-                .skip(1)
-                .chain(std::iter::once(&data.len())),
-        )
-        .map(|(&start, &end)| {
-            // Adjust for start code (include start code in range)
-            let adjusted_start = start.saturating_sub(4);
-            (adjusted_start, end)
-        })
-        .collect();
 
     let mut frames = Vec::new();
     let mut current_frame_nals: Vec<(usize, usize)> = Vec::new();
@@ -280,20 +263,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
     let mut current_frame_type = AvcFrameType::Unknown;
     let mut current_slice_header: Option<SliceHeader> = None;
 
-    for (nal_start, nal_end) in nal_ranges {
-        // Find the first byte after start code (actual NAL data)
-        let nal_data_start =
-            if nal_end - nal_start >= 4 && data[nal_start..nal_start + 4] == [0, 0, 0, 1] {
-                nal_start + 4
-            } else if nal_end - nal_start >= 3 && data[nal_start..nal_start + 3] == [0, 0, 1] {
-                nal_start + 3
-            } else {
-                nal_start
-            };
-
-        if nal_data_start >= nal_end {
-            continue;
-        }
+    for unit in units {
+        let (nal_start, nal_data_start, nal_end) = (unit.start_code, unit.start, unit.end);
 
         // Parse NAL header from first byte of NAL data
         let nal_header = match parse_nal_header(data[nal_data_start]) {

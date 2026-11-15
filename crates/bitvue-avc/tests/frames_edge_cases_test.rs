@@ -37,10 +37,8 @@ fn test_extract_annex_b_frames_only_start_codes() {
     // Consecutive start codes may be interpreted as a zero-length frame
     assert!(result.is_ok() || result.is_err());
     if let Ok(frames) = result {
-        // The first start code opens a zero-length frame that ends at the second
-        // start code; there is no payload after the second start code, so it does
-        // not open another frame. Net result: exactly one (empty) frame.
-        assert_eq!(frames.len(), 1);
+        // Start codes with nothing behind them hold no NAL unit, hence no frame.
+        assert!(frames.is_empty());
     }
 }
 
@@ -200,6 +198,24 @@ fn test_extract_annex_b_frames_trailing_ones() {
 
     let result = extract_annex_b_frames(&data);
     assert!(result.is_ok() || result.is_err());
+}
+
+#[test]
+fn test_extract_annex_b_frames_are_whole_nal_units_with_three_byte_start_codes() {
+    // x264 writes 3-byte start codes for slices after the first NAL unit of an access unit.
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/sample_h264.264");
+    let Ok(data) = std::fs::read(path) else {
+        return;
+    };
+    let frames = extract_annex_b_frames(&data).unwrap();
+    assert!(frames[0].is_idr, "the first picture is the IDR");
+    let nals = bitvue_avc::nal::parse_nal_units(&data).unwrap();
+    for f in &frames {
+        // a frame is a run of whole NAL units: it starts at one and ends where one ends
+        assert!(nals.iter().any(|n| n.offset == f.offset));
+        assert!(nals.iter().any(|n| n.offset + n.size == f.offset + f.size));
+    }
 }
 
 bitvue_test_alloc::install!();
