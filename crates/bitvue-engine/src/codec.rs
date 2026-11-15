@@ -47,6 +47,27 @@ impl Codec {
     ];
 }
 
+impl Codec {
+    /// The codec an IVF header's FourCC names, `None` for a FourCC this project does not decode.
+    pub fn from_ivf_fourcc(fourcc: &[u8; 4]) -> Option<Codec> {
+        match fourcc {
+            b"AV01" => Some(Codec::Av1),
+            b"VP90" | b"VP9 " => Some(Codec::Vp9),
+            _ => None,
+        }
+    }
+
+    /// The codec an MP4 sample entry (`avc1`, `hev1`, ...) names, `None` for an unknown entry.
+    pub fn from_mp4_sample_entry(entry: &str) -> Option<Codec> {
+        match entry {
+            "av01" => Some(Codec::Av1),
+            "avc1" | "avc3" => Some(Codec::Avc),
+            "hev1" | "hvc1" => Some(Codec::Hevc),
+            _ => None,
+        }
+    }
+}
+
 impl std::fmt::Display for Codec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -76,6 +97,33 @@ mod tests {
         names.sort();
         names.dedup();
         assert_eq!(names.len(), count);
+    }
+
+    #[test]
+    fn ivf_fourccs_name_their_codec() {
+        assert_eq!(Codec::from_ivf_fourcc(b"AV01"), Some(Codec::Av1));
+        assert_eq!(Codec::from_ivf_fourcc(b"VP90"), Some(Codec::Vp9));
+        assert_eq!(Codec::from_ivf_fourcc(b"VP9 "), Some(Codec::Vp9));
+        // Lower case is not a FourCC IVF writers produce, and VP8 has no decoder here.
+        assert_eq!(Codec::from_ivf_fourcc(b"av01"), None);
+        assert_eq!(Codec::from_ivf_fourcc(b"VP80"), None);
+        assert_eq!(Codec::from_ivf_fourcc(b"\0\0\0\0"), None);
+    }
+
+    #[test]
+    fn mp4_sample_entries_name_their_codec() {
+        for (entry, codec) in [
+            ("av01", Codec::Av1),
+            ("avc1", Codec::Avc),
+            ("avc3", Codec::Avc),
+            ("hev1", Codec::Hevc),
+            ("hvc1", Codec::Hevc),
+        ] {
+            assert_eq!(Codec::from_mp4_sample_entry(entry), Some(codec), "{entry}");
+        }
+        for unknown in ["AV01", "mp4a", "", "avc"] {
+            assert_eq!(Codec::from_mp4_sample_entry(unknown), None, "{unknown}");
+        }
     }
 
     #[test]

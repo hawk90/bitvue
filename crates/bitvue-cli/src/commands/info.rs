@@ -44,11 +44,10 @@ fn print_ivf_info(data: &[u8]) {
     match parse_ivf_header(data) {
         Ok(header) => {
             let fourcc = std::str::from_utf8(&header.fourcc).unwrap_or("????");
-            let codec = match &header.fourcc {
-                b"AV01" => "AV1",
-                b"VP90" => "VP9",
-                b"VP80" => "VP8",
-                _ => "Unknown",
+            let codec = match bitvue_engine::Codec::from_ivf_fourcc(&header.fourcc) {
+                Some(codec) => codec.to_string(),
+                None if &header.fourcc == b"VP80" => "VP8".to_string(),
+                None => "Unknown".to_string(),
             };
             println!("Codec:  {} (FourCC: {})", codec, fourcc);
             println!("Width:  {}", header.width);

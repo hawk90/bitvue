@@ -87,7 +87,9 @@ fn validate_ivf(data: &[u8], errors: &mut Vec<String>, warnings: &mut Vec<String
                 ));
             }
             let fourcc = std::str::from_utf8(&header.fourcc).unwrap_or("????");
-            if !matches!(&header.fourcc, b"AV01" | b"VP90" | b"VP80") {
+            if bitvue_engine::Codec::from_ivf_fourcc(&header.fourcc).is_none()
+                && &header.fourcc != b"VP80"
+            {
                 warnings.push(format!("Unknown FourCC: {} — may not be decodable", fourcc));
             }
         }
@@ -108,7 +110,9 @@ fn validate_ivf(data: &[u8], errors: &mut Vec<String>, warnings: &mut Vec<String
             }
 
             // For AV1, validate OBU structure in each frame
-            if &header.fourcc == b"AV01" {
+            if bitvue_engine::Codec::from_ivf_fourcc(&header.fourcc)
+                == Some(bitvue_engine::Codec::Av1)
+            {
                 let mut seq_header_seen = false;
                 for (idx, frame) in frames.iter().enumerate() {
                     let (parsed, diagnostics) = parse_all_obus_resilient(&frame.data, StreamId::A);

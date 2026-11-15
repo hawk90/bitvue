@@ -437,7 +437,7 @@ fn index_ivf_av1(
     // silently mis-parse every frame as AV1 with no indication why. Doesn't abort (this function
     // still attempts the parse, same as before -- adding real non-AV1 codec support here is a
     // separate, much larger scope), just makes the resulting garbage/partial data explicable.
-    if &header.fourcc != b"AV01" {
+    if bitvue_engine::Codec::from_ivf_fourcc(&header.fourcc) != Some(bitvue_engine::Codec::Av1) {
         let fourcc_str = String::from_utf8_lossy(&header.fourcc);
         diagnostics.push(diagnostic_event(
             stream,
