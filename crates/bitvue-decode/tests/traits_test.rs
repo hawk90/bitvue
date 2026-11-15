@@ -3,9 +3,7 @@
 //! structs and asserted on literals they had just written, #386.)
 
 use bitvue_decode::decoder::{ChromaFormat, DecodeError, DecodedFrame, FrameType};
-use bitvue_decode::traits::{
-    CodecRegistry, CodecType, Decoder, DecoderCapabilities, DecoderFactory,
-};
+use bitvue_decode::traits::{Codec, CodecRegistry, Decoder, DecoderCapabilities, DecoderFactory};
 
 fn clip() -> Vec<u8> {
     std::fs::read(concat!(
@@ -52,12 +50,12 @@ impl Scripted {
 }
 
 impl Decoder for Scripted {
-    fn codec_type(&self) -> CodecType {
-        CodecType::VP9
+    fn codec_type(&self) -> Codec {
+        Codec::Vp9
     }
     fn capabilities(&self) -> DecoderCapabilities {
         DecoderCapabilities {
-            codec: CodecType::VP9,
+            codec: Codec::Vp9,
             max_width: 64,
             max_height: 64,
             supported_bit_depths: vec![8],
@@ -80,10 +78,10 @@ impl Decoder for Scripted {
 
 #[test]
 fn the_factory_builds_an_av1_decoder_that_decodes_a_real_clip_twice() {
-    let mut decoder = DecoderFactory::create(CodecType::AV1).unwrap();
-    assert_eq!(decoder.codec_type(), CodecType::AV1);
+    let mut decoder = DecoderFactory::create(Codec::Av1).unwrap();
+    assert_eq!(decoder.codec_type(), Codec::Av1);
     let caps = decoder.capabilities();
-    assert_eq!(caps.codec, CodecType::AV1);
+    assert_eq!(caps.codec, Codec::Av1);
     assert!(caps.supported_bit_depths.contains(&8));
     assert!(caps.max_width >= 320 && caps.max_height >= 240, "{caps:?}");
 
@@ -105,25 +103,19 @@ fn codecs_that_need_a_feature_name_it_when_it_is_off() {
         Err(other) => panic!("{codec}: {other:?}"),
     };
     #[cfg(not(feature = "ffmpeg"))]
-    for codec in [CodecType::H264, CodecType::H265, CodecType::VP9] {
+    for codec in [Codec::Avc, Codec::Hevc, Codec::Vp9] {
         assert!(message(codec).contains("--features ffmpeg"), "{codec}");
     }
     #[cfg(not(feature = "vvdec"))]
-    assert!(message(CodecType::H266).contains("--features vvdec"));
+    assert!(message(Codec::Vvc).contains("--features vvdec"));
     let _ = message;
 }
 
 #[test]
 fn available_codecs_always_has_av1_and_matches_what_the_factory_can_build() {
     let available = DecoderFactory::available_codecs();
-    assert!(available.contains(&CodecType::AV1));
-    for codec in [
-        CodecType::AV1,
-        CodecType::H264,
-        CodecType::H265,
-        CodecType::H266,
-        CodecType::VP9,
-    ] {
+    assert!(available.contains(&Codec::Av1));
+    for codec in [Codec::Av1, Codec::Avc, Codec::Hevc, Codec::Vvc, Codec::Vp9] {
         assert_eq!(
             available.contains(&codec),
             DecoderFactory::create(codec).is_ok(),
@@ -135,11 +127,11 @@ fn available_codecs_always_has_av1_and_matches_what_the_factory_can_build() {
 #[test]
 fn codec_names_are_the_display_strings() {
     for (codec, name) in [
-        (CodecType::AV1, "AV1"),
-        (CodecType::H264, "H.264/AVC"),
-        (CodecType::H265, "H.265/HEVC"),
-        (CodecType::H266, "H.266/VVC"),
-        (CodecType::VP9, "VP9"),
+        (Codec::Av1, "AV1"),
+        (Codec::Avc, "H.264/AVC"),
+        (Codec::Hevc, "H.265/HEVC"),
+        (Codec::Vvc, "H.266/VVC"),
+        (Codec::Vp9, "VP9"),
     ] {
         assert_eq!(codec.to_string(), name);
     }
@@ -148,34 +140,34 @@ fn codec_names_are_the_display_strings() {
 #[test]
 fn a_registry_registers_a_codec_once_and_builds_from_it() {
     let mut registry = CodecRegistry::default();
-    assert!(!registry.is_registered(CodecType::VP9));
+    assert!(!registry.is_registered(Codec::Vp9));
     assert!(registry.registered_codecs().is_empty());
-    match registry.create(CodecType::VP9) {
+    match registry.create(Codec::Vp9) {
         Err(DecodeError::Init(m)) => assert!(m.contains("No decoder registered"), "{m}"),
         other => panic!("{:?}", other.map(|_| ())),
     }
 
     registry
         .register(
-            CodecType::VP9,
+            Codec::Vp9,
             Box::new(|| Ok(Box::new(Scripted::new(vec![])) as Box<dyn Decoder>)),
         )
         .unwrap();
-    assert!(registry.is_registered(CodecType::VP9));
-    assert_eq!(registry.registered_codecs(), vec![CodecType::VP9]);
+    assert!(registry.is_registered(Codec::Vp9));
+    assert_eq!(registry.registered_codecs(), vec![Codec::Vp9]);
     assert_eq!(
-        registry.create(CodecType::VP9).unwrap().codec_type(),
-        CodecType::VP9
+        registry.create(Codec::Vp9).unwrap().codec_type(),
+        Codec::Vp9
     );
     // a second factory for the same codec is refused and the first one stays
     let err = registry
         .register(
-            CodecType::VP9,
+            Codec::Vp9,
             Box::new(|| Err(DecodeError::Init("second".into()))),
         )
         .unwrap_err();
     assert!(err.contains("already registered"), "{err}");
-    assert!(registry.create(CodecType::VP9).is_ok());
+    assert!(registry.create(Codec::Vp9).is_ok());
 }
 
 #[test]
@@ -183,11 +175,11 @@ fn a_failing_factory_reports_its_own_error() {
     let mut registry = CodecRegistry::default();
     registry
         .register(
-            CodecType::H265,
+            Codec::Hevc,
             Box::new(|| Err(DecodeError::Init("no hardware".into()))),
         )
         .unwrap();
-    match registry.create(CodecType::H265) {
+    match registry.create(Codec::Hevc) {
         Err(DecodeError::Init(m)) => assert_eq!(m, "no hardware"),
         other => panic!("{:?}", other.map(|_| ())),
     }

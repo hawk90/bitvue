@@ -2,32 +2,8 @@
 
 use crate::decoder::{DecodeError, DecodedFrame, Result};
 
-/// Codec type enumeration for decoder selection
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CodecType {
-    /// AV1 codec
-    AV1,
-    /// H.264/AVC codec
-    H264,
-    /// H.265/HEVC codec
-    H265,
-    /// H.266/VVC codec
-    H266,
-    /// VP9 codec
-    VP9,
-}
-
-impl std::fmt::Display for CodecType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CodecType::AV1 => write!(f, "AV1"),
-            CodecType::H264 => write!(f, "H.264/AVC"),
-            CodecType::H265 => write!(f, "H.265/HEVC"),
-            CodecType::H266 => write!(f, "H.266/VVC"),
-            CodecType::VP9 => write!(f, "VP9"),
-        }
-    }
-}
+/// The codec identifier shared by every crate (`bitvue_engine::Codec`).
+pub use bitvue_engine::Codec;
 
 /// Codec registry for decoder factory functions
 ///
@@ -37,20 +13,18 @@ impl std::fmt::Display for CodecType {
 /// # Example
 ///
 /// ```ignore
-/// use bitvue_decode::traits::{CodecRegistry, CodecType};
+/// use bitvue_decode::traits::{CodecRegistry, Codec};
 /// use std::sync::Mutex;
 ///
 /// // Register a custom decoder
-/// CodecRegistry::register(CodecType::Custom, Box::new(||
+/// CodecRegistry::register(Codec::Custom, Box::new(||
 ///     Ok(Box::new(MyCustomDecoder::new()) as Box<dyn Decoder>)
 /// ));
 /// ```
 #[derive(Default)]
 pub struct CodecRegistry {
-    factories: std::collections::HashMap<
-        CodecType,
-        Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>,
-    >,
+    factories:
+        std::collections::HashMap<Codec, Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>>,
 }
 
 impl CodecRegistry {
@@ -74,7 +48,7 @@ impl CodecRegistry {
     /// was already registered.
     pub fn register(
         &mut self,
-        codec: CodecType,
+        codec: Codec,
         factory: Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>,
     ) -> std::result::Result<(), String> {
         if self.factories.contains_key(&codec) {
@@ -85,19 +59,19 @@ impl CodecRegistry {
     }
 
     /// Create a decoder using a registered factory function
-    pub fn create(&self, codec: CodecType) -> Result<Box<dyn Decoder>> {
+    pub fn create(&self, codec: Codec) -> Result<Box<dyn Decoder>> {
         self.factories.get(&codec).ok_or_else(|| {
             DecodeError::Init(format!("No decoder registered for codec {:?}", codec))
         })?()
     }
 
     /// Check if a codec is registered
-    pub fn is_registered(&self, codec: CodecType) -> bool {
+    pub fn is_registered(&self, codec: Codec) -> bool {
         self.factories.contains_key(&codec)
     }
 
     /// Get all registered codec types
-    pub fn registered_codecs(&self) -> Vec<CodecType> {
+    pub fn registered_codecs(&self) -> Vec<Codec> {
         self.factories.keys().copied().collect()
     }
 }
@@ -109,7 +83,7 @@ pub type DecoderFactoryFn = Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sy
 #[derive(Debug, Clone)]
 pub struct DecoderCapabilities {
     /// Supported codec
-    pub codec: CodecType,
+    pub codec: Codec,
     /// Maximum supported resolution width
     pub max_width: u32,
     /// Maximum supported resolution height
@@ -126,7 +100,7 @@ pub struct DecoderCapabilities {
 /// across different codecs (AV1, H.264, H.265, VP9, etc.).
 pub trait Decoder: Send {
     /// Get the codec type this decoder handles
-    fn codec_type(&self) -> CodecType;
+    fn codec_type(&self) -> Codec;
 
     /// Get decoder capabilities
     fn capabilities(&self) -> DecoderCapabilities;
@@ -198,14 +172,14 @@ impl DecoderFactory {
         let mut guard = registry.lock().unwrap();
 
         // Check if already initialized by checking for AV1
-        if guard.is_registered(CodecType::AV1) {
+        if guard.is_registered(Codec::Av1) {
             return;
         }
 
         // Register built-in codecs
         // AV1 is always available
         let _ = guard.register(
-            CodecType::AV1,
+            Codec::Av1,
             Box::new(|| {
                 let decoder = crate::decoder::Av1Decoder::new()?;
                 Ok(Box::new(decoder))
@@ -216,7 +190,7 @@ impl DecoderFactory {
         #[cfg(feature = "ffmpeg")]
         {
             let _ = guard.register(
-                CodecType::H264,
+                Codec::Avc,
                 Box::new(|| {
                     let decoder = crate::ffmpeg::H264Decoder::new()?;
                     Ok(Box::new(decoder))
@@ -228,7 +202,7 @@ impl DecoderFactory {
         #[cfg(feature = "ffmpeg")]
         {
             let _ = guard.register(
-                CodecType::H265,
+                Codec::Hevc,
                 Box::new(|| {
                     let decoder = crate::ffmpeg::HevcDecoder::new()?;
                     Ok(Box::new(decoder))
@@ -240,7 +214,7 @@ impl DecoderFactory {
         #[cfg(feature = "ffmpeg")]
         {
             let _ = guard.register(
-                CodecType::VP9,
+                Codec::Vp9,
                 Box::new(|| {
                     let decoder = crate::ffmpeg::Vp9Decoder::new()?;
                     Ok(Box::new(decoder))
@@ -252,7 +226,7 @@ impl DecoderFactory {
         #[cfg(feature = "vvdec")]
         {
             let _ = guard.register(
-                CodecType::H266,
+                Codec::Vvc,
                 Box::new(|| {
                     let decoder = crate::vvdec::VvcDecoder::new()?;
                     Ok(Box::new(decoder))
@@ -279,14 +253,14 @@ impl DecoderFactory {
     /// # Example
     ///
     /// ```ignore
-    /// use bitvue_decode::traits::{DecoderFactory, CodecType, CodecRegistry};
+    /// use bitvue_decode::traits::{DecoderFactory, Codec, CodecRegistry};
     ///
-    /// DecoderFactory::register_codec(CodecType::Custom, || {
+    /// DecoderFactory::register_codec(Codec::Custom, || {
     ///     Ok(Box::new(MyCustomDecoder::new()))
     /// });
     /// ```
     pub fn register_codec(
-        codec: CodecType,
+        codec: Codec,
         factory: DecoderFactoryFn,
     ) -> std::result::Result<(), String> {
         let registry = CodecRegistry::global();
@@ -308,11 +282,11 @@ impl DecoderFactory {
     /// # Example
     ///
     /// ```
-    /// use bitvue_decode::traits::{DecoderFactory, CodecType};
+    /// use bitvue_decode::traits::{DecoderFactory, Codec};
     ///
-    /// let decoder = DecoderFactory::create(CodecType::AV1).unwrap();
+    /// let decoder = DecoderFactory::create(Codec::Av1).unwrap();
     /// ```
-    pub fn create(codec: CodecType) -> Result<Box<dyn Decoder>> {
+    pub fn create(codec: Codec) -> Result<Box<dyn Decoder>> {
         // Ensure registry is initialized with built-in codecs
         Self::init_registry();
 
@@ -326,64 +300,65 @@ impl DecoderFactory {
 
         // Fall back to builtin implementations
         match codec {
-            CodecType::AV1 => {
+            Codec::Av1 => {
                 let decoder = crate::decoder::Av1Decoder::new()?;
                 Ok(Box::new(decoder))
             }
             #[cfg(feature = "ffmpeg")]
-            CodecType::H264 => {
+            Codec::Avc => {
                 let decoder = crate::ffmpeg::H264Decoder::new()?;
                 Ok(Box::new(decoder))
             }
             #[cfg(not(feature = "ffmpeg"))]
-            CodecType::H264 => Err(DecodeError::Init(
+            Codec::Avc => Err(DecodeError::Init(
                 "H.264 decoder requires ffmpeg feature (rebuild with --features ffmpeg)"
                     .to_string(),
             )),
             #[cfg(feature = "ffmpeg")]
-            CodecType::H265 => {
+            Codec::Hevc => {
                 let decoder = crate::ffmpeg::HevcDecoder::new()?;
                 Ok(Box::new(decoder))
             }
             #[cfg(not(feature = "ffmpeg"))]
-            CodecType::H265 => Err(DecodeError::Init(
+            Codec::Hevc => Err(DecodeError::Init(
                 "H.265 decoder requires ffmpeg feature (rebuild with --features ffmpeg)"
                     .to_string(),
             )),
             #[cfg(feature = "ffmpeg")]
-            CodecType::VP9 => {
+            Codec::Vp9 => {
                 let decoder = crate::ffmpeg::Vp9Decoder::new()?;
                 Ok(Box::new(decoder))
             }
             #[cfg(not(feature = "ffmpeg"))]
-            CodecType::VP9 => Err(DecodeError::Init(
+            Codec::Vp9 => Err(DecodeError::Init(
                 "VP9 decoder requires ffmpeg feature (rebuild with --features ffmpeg)".to_string(),
             )),
             #[cfg(feature = "vvdec")]
-            CodecType::H266 => {
+            Codec::Vvc => {
                 let decoder = crate::vvdec::VvcDecoder::new()?;
                 Ok(Box::new(decoder))
             }
             #[cfg(not(feature = "vvdec"))]
-            CodecType::H266 => Err(DecodeError::Init(
+            Codec::Vvc => Err(DecodeError::Init(
                 "VVC decoder requires vvdec feature (rebuild with --features vvdec)".to_string(),
             )),
+            other => Err(DecodeError::Init(format!("No decoder for {other}"))),
         }
     }
 
     /// List all available decoders
     #[allow(unused_mut)]
-    pub fn available_codecs() -> Vec<CodecType> {
-        let mut codecs = vec![CodecType::AV1];
+    pub fn available_codecs() -> Vec<Codec> {
+        let mut codecs = vec![Codec::Av1];
 
         #[cfg(feature = "ffmpeg")]
         {
-            codecs.extend([CodecType::H264, CodecType::H265, CodecType::VP9]);
+            codecs.extend([Codec::Avc, Codec::Hevc, Codec::Vp9]);
         }
 
         #[cfg(feature = "vvdec")]
         {
-            codecs.push(CodecType::H266);
+            codecs.push(Codec::Vvc);
         }
 
         codecs
@@ -396,96 +371,110 @@ mod tests {
 
     #[test]
     fn test_codec_type_display() {
-        assert_eq!(format!("{}", CodecType::AV1), "AV1");
-        assert_eq!(format!("{}", CodecType::H264), "H.264/AVC");
-        assert_eq!(format!("{}", CodecType::H265), "H.265/HEVC");
-        assert_eq!(format!("{}", CodecType::H266), "H.266/VVC");
-        assert_eq!(format!("{}", CodecType::VP9), "VP9");
+        assert_eq!(format!("{}", Codec::Av1), "AV1");
+        assert_eq!(format!("{}", Codec::Avc), "H.264/AVC");
+        assert_eq!(format!("{}", Codec::Hevc), "H.265/HEVC");
+        assert_eq!(format!("{}", Codec::Vvc), "H.266/VVC");
+        assert_eq!(format!("{}", Codec::Vp9), "VP9");
     }
 
     #[test]
     fn test_decoder_factory_av1() {
-        let result = DecoderFactory::create(CodecType::AV1);
+        let result = DecoderFactory::create(Codec::Av1);
         assert!(result.is_ok());
         let decoder = result.unwrap();
-        assert_eq!(decoder.codec_type(), CodecType::AV1);
+        assert_eq!(decoder.codec_type(), Codec::Av1);
     }
 
     #[test]
     #[cfg(feature = "ffmpeg")]
     fn test_decoder_factory_h264() {
-        let result = DecoderFactory::create(CodecType::H264);
+        let result = DecoderFactory::create(Codec::Avc);
         assert!(result.is_ok());
         let decoder = result.unwrap();
-        assert_eq!(decoder.codec_type(), CodecType::H264);
+        assert_eq!(decoder.codec_type(), Codec::Avc);
     }
 
     #[test]
     #[cfg(feature = "ffmpeg")]
     fn test_decoder_factory_hevc() {
-        let result = DecoderFactory::create(CodecType::H265);
+        let result = DecoderFactory::create(Codec::Hevc);
         assert!(result.is_ok());
         let decoder = result.unwrap();
-        assert_eq!(decoder.codec_type(), CodecType::H265);
+        assert_eq!(decoder.codec_type(), Codec::Hevc);
     }
 
     #[test]
     #[cfg(not(feature = "ffmpeg"))]
     fn test_decoder_factory_unsupported_without_ffmpeg() {
-        let result = DecoderFactory::create(CodecType::H264);
+        let result = DecoderFactory::create(Codec::Avc);
         assert!(result.is_err());
 
-        let result = DecoderFactory::create(CodecType::H265);
+        let result = DecoderFactory::create(Codec::Hevc);
         assert!(result.is_err());
     }
 
     #[test]
     #[cfg(feature = "ffmpeg")]
     fn test_decoder_factory_vp9() {
-        let result = DecoderFactory::create(CodecType::VP9);
+        let result = DecoderFactory::create(Codec::Vp9);
         assert!(result.is_ok());
         let decoder = result.unwrap();
-        assert_eq!(decoder.codec_type(), CodecType::VP9);
+        assert_eq!(decoder.codec_type(), Codec::Vp9);
     }
 
     #[test]
     #[cfg(not(feature = "ffmpeg"))]
     fn test_decoder_factory_vp9_unsupported() {
-        let result = DecoderFactory::create(CodecType::VP9);
+        let result = DecoderFactory::create(Codec::Vp9);
         assert!(result.is_err());
     }
 
     #[test]
     #[cfg(feature = "vvdec")]
     fn test_decoder_factory_vvc() {
-        let result = DecoderFactory::create(CodecType::H266);
+        let result = DecoderFactory::create(Codec::Vvc);
         assert!(result.is_ok());
         let decoder = result.unwrap();
-        assert_eq!(decoder.codec_type(), CodecType::H266);
+        assert_eq!(decoder.codec_type(), Codec::Vvc);
     }
 
     #[test]
     #[cfg(not(feature = "vvdec"))]
     fn test_decoder_factory_vvc_unsupported() {
-        let result = DecoderFactory::create(CodecType::H266);
+        let result = DecoderFactory::create(Codec::Vvc);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_available_codecs() {
         let codecs = DecoderFactory::available_codecs();
-        assert!(codecs.contains(&CodecType::AV1));
+        assert!(codecs.contains(&Codec::Av1));
 
         #[cfg(feature = "ffmpeg")]
         {
-            assert!(codecs.contains(&CodecType::H264));
-            assert!(codecs.contains(&CodecType::H265));
-            assert!(codecs.contains(&CodecType::VP9));
+            assert!(codecs.contains(&Codec::Avc));
+            assert!(codecs.contains(&Codec::Hevc));
+            assert!(codecs.contains(&Codec::Vp9));
         }
 
         #[cfg(feature = "vvdec")]
         {
-            assert!(codecs.contains(&CodecType::H266));
+            assert!(codecs.contains(&Codec::Vvc));
+        }
+    }
+
+    #[test]
+    fn a_codec_without_a_decoder_is_an_error() {
+        for codec in [
+            Codec::Mpeg2,
+            Codec::Avs3,
+            Codec::JpegXs,
+            Codec::Vc3,
+            Codec::Unknown,
+        ] {
+            let err = DecoderFactory::create(codec).err().expect("no decoder");
+            assert!(err.to_string().contains(&codec.to_string()), "{err}");
         }
     }
 }

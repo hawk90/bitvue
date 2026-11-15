@@ -5,17 +5,17 @@
 #![cfg(not(feature = "vvdec"))]
 
 use bitvue_decode::decoder::{DecodeError, DecodedFrame};
-use bitvue_decode::traits::{CodecType, Decoder, DecoderCapabilities, DecoderFactory};
+use bitvue_decode::traits::{Codec, Decoder, DecoderCapabilities, DecoderFactory};
 
 struct Nothing;
 
 impl Decoder for Nothing {
-    fn codec_type(&self) -> CodecType {
-        CodecType::H266
+    fn codec_type(&self) -> Codec {
+        Codec::Vvc
     }
     fn capabilities(&self) -> DecoderCapabilities {
         DecoderCapabilities {
-            codec: CodecType::H266,
+            codec: Codec::Vvc,
             max_width: 16,
             max_height: 16,
             supported_bit_depths: vec![8],
@@ -37,19 +37,19 @@ impl Decoder for Nothing {
 #[test]
 fn registering_through_the_factory_makes_the_codec_buildable_once() {
     // the default build cannot create H.266 ...
-    assert!(DecoderFactory::create(CodecType::H266).is_err());
-    DecoderFactory::register_codec(CodecType::H266, Box::new(|| Ok(Box::new(Nothing)))).unwrap();
+    assert!(DecoderFactory::create(Codec::Vvc).is_err());
+    DecoderFactory::register_codec(Codec::Vvc, Box::new(|| Ok(Box::new(Nothing)))).unwrap();
     // ... and can after the registration
-    let decoder = DecoderFactory::create(CodecType::H266).unwrap();
-    assert_eq!(decoder.codec_type(), CodecType::H266);
+    let decoder = DecoderFactory::create(Codec::Vvc).unwrap();
+    assert_eq!(decoder.codec_type(), Codec::Vvc);
     // a second registration of the same codec is refused
     let err = DecoderFactory::register_codec(
-        CodecType::H266,
+        Codec::Vvc,
         Box::new(|| Err(DecodeError::Init("again".into()))),
     )
     .unwrap_err();
     assert!(err.contains("already registered"), "{err}");
-    assert!(DecoderFactory::create(CodecType::H266).is_ok());
+    assert!(DecoderFactory::create(Codec::Vvc).is_ok());
 }
 
 bitvue_test_alloc::install!();

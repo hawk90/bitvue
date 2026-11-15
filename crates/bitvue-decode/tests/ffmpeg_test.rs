@@ -7,7 +7,7 @@
 
 use bitvue_decode::annex_b::{split_access_units, AnnexBCodec};
 use bitvue_decode::decoder::{validate_frame, ChromaFormat};
-use bitvue_decode::traits::{CodecType, Decoder, DecoderFactory};
+use bitvue_decode::traits::{Codec, Decoder, DecoderFactory};
 use bitvue_decode::{H264Decoder, HevcDecoder, Vp9Decoder};
 
 fn clip(name: &str) -> Vec<u8> {
@@ -20,10 +20,10 @@ fn clip(name: &str) -> Vec<u8> {
 
 #[test]
 fn each_decoder_reports_its_codec_and_capabilities() {
-    let decoders: [(Box<dyn Decoder>, CodecType); 3] = [
-        (Box::new(H264Decoder::new().unwrap()), CodecType::H264),
-        (Box::new(HevcDecoder::new().unwrap()), CodecType::H265),
-        (Box::new(Vp9Decoder::new().unwrap()), CodecType::VP9),
+    let decoders: [(Box<dyn Decoder>, Codec); 3] = [
+        (Box::new(H264Decoder::new().unwrap()), Codec::Avc),
+        (Box::new(HevcDecoder::new().unwrap()), Codec::Hevc),
+        (Box::new(Vp9Decoder::new().unwrap()), Codec::Vp9),
     ];
     for (decoder, codec) in decoders {
         assert_eq!(decoder.codec_type(), codec);
@@ -36,7 +36,7 @@ fn each_decoder_reports_its_codec_and_capabilities() {
 
 #[test]
 fn the_factory_builds_the_ffmpeg_decoders() {
-    for codec in [CodecType::H264, CodecType::H265, CodecType::VP9] {
+    for codec in [Codec::Avc, Codec::Hevc, Codec::Vp9] {
         assert_eq!(DecoderFactory::create(codec).unwrap().codec_type(), codec);
         assert!(DecoderFactory::available_codecs().contains(&codec));
     }
