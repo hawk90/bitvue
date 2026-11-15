@@ -408,6 +408,7 @@ version = "0.12.0"
 dependencies = [
  "anyhow",
  "bitvue-av1-codec",
+ "bitvue-engine",
  "bitvue-test-alloc",
  "serde",
  "thiserror",

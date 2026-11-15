@@ -8,6 +8,7 @@ authors.workspace = true
 [dependencies]
 # Internal crates (will integrate bitvue-av1-codec later)
 bitvue-av1-codec = { workspace = true }
+bitvue-engine = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
