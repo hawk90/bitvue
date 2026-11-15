@@ -8,8 +8,7 @@
     "font-family-name-quotes": null,
     "custom-property-pattern": null,
     "keyframes-name-pattern": null,
-    "no-duplicate-selectors": null,
-    "declaration-block-single-line-max-declarations": null
+    "no-duplicate-selectors": null
   },
   "ignoreFiles": ["node_modules/**", "dist/**", "build/**"]
 }
