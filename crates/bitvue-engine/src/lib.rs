@@ -10,6 +10,7 @@
 
 pub mod annex_b;
 pub mod bitreader;
+pub mod codec;
 pub mod codec_error;
 pub mod error;
 pub mod frame;
