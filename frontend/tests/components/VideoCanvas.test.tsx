@@ -195,7 +195,8 @@ describe("VideoCanvas with frame image", () => {
     const { container } = render(<VideoCanvas {...defaultProps} />);
 
     const canvas = container.querySelector(".yuv-canvas");
-    expect(canvas?.style.transformOrigin).toBe("top left");
+    // "top left" and "left top" are the same origin; jsdom 31 serializes it as "left top".
+    expect(canvas?.style.transformOrigin).toMatch(/^(top left|left top)$/);
   });
 });
 
