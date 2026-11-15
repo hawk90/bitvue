@@ -985,7 +985,9 @@ async function main(): Promise<void> {
   // overridden here. Packaged builds don't need this: electron-builder bakes the real icon
   // (`build.icon` in package.json) into the .app bundle's Info.plist at build time.
   if (!app.isPackaged && process.platform === "darwin") {
-    app.dock?.setIcon(path.join(here, "..", "..", "build", "icon.png"));
+    // resources/bitvue-icon.png is the tracked source of the mark (also the packaged build.icon);
+    // bitvue-desktop/build/ is gitignored, so a fresh checkout had no icon there and startup threw.
+    app.dock?.setIcon(path.join(repoRoot, "resources", "bitvue-icon.png"));
   }
 
   if (!existsSync(sidecarBinaryPath)) {
