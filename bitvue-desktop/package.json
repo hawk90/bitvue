@@ -6,12 +6,12 @@
   "type": "module",
   "packageManager": "npm@12.2.2",
   "engines": {
-    "node": ">=24.22.2"
+    "node": ">=26.13.1"
   },
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "^24.22.2",
+      "version": "^26.13.1",
       "onFail": "error"
     },
     "packageManager": {
@@ -36,7 +36,7 @@
     "package:win": "npm run build:electron && electron-builder --win --publish=never"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "electron": "^45.3.1",
     "electron-builder": "^26.18.0",
     "typescript": "^7.0.2",
