@@ -71,7 +71,7 @@ Tauri in August 2026).
 
 | Platform | Dependencies |
 |----------|--------------|
-| **All platforms** | [Rust](https://rustup.rs/) (stable), [Node.js](https://nodejs.org/) 18+ |
+| **All platforms** | [Rust](https://rustup.rs/) (stable), [Node.js](https://nodejs.org/) 26.13.1+ |
 | **macOS** | `brew install dav1d` |
 | **Ubuntu/Debian** | `sudo apt install libdav1d-dev build-essential` |
 | **Fedora** | `sudo dnf install dav1d-devel` |
