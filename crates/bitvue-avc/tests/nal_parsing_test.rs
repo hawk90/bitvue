@@ -897,9 +897,10 @@ fn test_find_nal_units_overlapping_patterns() {
 
 #[test]
 fn test_find_nal_units_at_end_of_data() {
+    // a start code with nothing behind it holds no NAL unit
     let data = [0x00, 0x00, 0x00, 0x01];
     let positions = find_nal_units(&data);
-    assert_eq!(positions, vec![4]);
+    assert!(positions.is_empty());
 }
 
 // ============================================================================
@@ -959,12 +960,13 @@ fn test_nal_unit_payload_processing() {
     // Emulation prevention: 0x00 0x00 0x03 -> 0x00 0x00
     let data = [
         0x00, 0x00, 0x01, 0x67, // start code + header
-        0x42, 0x00, 0x00, 0x03, 0x00, // payload with emulation prevention (00 00 03)
+        // payload with emulation prevention (00 00 03); a NAL unit never ends in a 00 byte
+        0x42, 0x00, 0x00, 0x03, 0x01,
     ];
     let result = parse_nal_units(&data).unwrap();
 
-    assert_eq!(result[0].raw_payload, vec![0x42, 0x00, 0x00, 0x03, 0x00]);
-    assert_eq!(result[0].payload, vec![0x42, 0x00, 0x00, 0x00]);
+    assert_eq!(result[0].raw_payload, vec![0x42, 0x00, 0x00, 0x03, 0x01]);
+    assert_eq!(result[0].payload, vec![0x42, 0x00, 0x00, 0x01]);
 }
 
 bitvue_test_alloc::install!();

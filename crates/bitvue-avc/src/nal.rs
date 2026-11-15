@@ -206,72 +206,21 @@ pub fn parse_nal_header(byte: u8) -> Result<NalUnitHeader> {
 /// Find NAL unit start codes in Annex B byte stream.
 /// Returns offsets pointing to the first byte after the start code.
 ///
-/// SECURITY: Limits scan distance to prevent DoS via malicious files with
-/// long sequences of non-start-code bytes.
+/// Start codes with no NAL unit behind them (back to back start codes, or one at the very end)
+/// are not reported; see [`bitvue_engine::annex_b`] for the exact rule.
 pub fn find_nal_units(data: &[u8]) -> Vec<usize> {
-    // SECURITY: Limit scan distance to prevent DoS via unbounded loops
-    // Similar to VVC/HEVC NAL finding - max 100MB scan per NAL unit
-    const MAX_NAL_SCAN_DISTANCE: usize = 100 * 1024 * 1024;
-
-    let mut positions = Vec::new();
-    let mut i = 0;
-    let mut last_nal_pos = 0;
-
-    while i < data.len() {
-        // Limit scan distance to prevent DoS
-        if i > last_nal_pos && i - last_nal_pos > MAX_NAL_SCAN_DISTANCE {
-            break; // Give up after scanning 100MB without finding NAL
-        }
-
-        // Look for start code: 0x000001 or 0x00000001
-        if i + 2 < data.len() && data[i] == 0 && data[i + 1] == 0 {
-            if data[i + 2] == 1 {
-                // 3-byte start code
-                positions.push(i + 3);
-                last_nal_pos = i;
-                i += 3;
-                continue;
-            } else if i + 3 < data.len() && data[i + 2] == 0 && data[i + 3] == 1 {
-                // 4-byte start code
-                positions.push(i + 4);
-                last_nal_pos = i;
-                i += 4;
-                continue;
-            }
-        }
-        i += 1;
-    }
-
-    positions
+    bitvue_engine::annex_b::find_nal_ranges(data)
+        .into_iter()
+        .map(|unit| unit.start)
+        .collect()
 }
 
 /// Parse all NAL units from Annex B byte stream.
 pub fn parse_nal_units(data: &[u8]) -> Result<Vec<NalUnit>> {
-    let positions = find_nal_units(data);
     let mut nal_units = Vec::new();
 
-    for (idx, &start) in positions.iter().enumerate() {
-        if start >= data.len() {
-            continue;
-        }
-
-        // Determine end of NAL unit
-        let end = if idx + 1 < positions.len() {
-            // Find the start code before next NAL
-            let next_start = positions[idx + 1];
-            // Go back to find the 0x000001 or 0x00000001
-            if next_start >= 4 && data[next_start - 4] == 0 {
-                next_start - 4
-            } else {
-                next_start - 3
-            }
-        } else {
-            data.len()
-        };
-
-        if start >= end {
-            continue;
-        }
+    for unit in bitvue_engine::annex_b::find_nal_ranges(data) {
+        let (start, end) = (unit.start, unit.end);
 
         // Parse header
         let header = parse_nal_header(data[start])?;
@@ -280,12 +229,9 @@ pub fn parse_nal_units(data: &[u8]) -> Result<Vec<NalUnit>> {
         let raw_payload = data[start + 1..end].to_vec();
         let payload = remove_emulation_prevention_bytes(&raw_payload);
 
-        // Calculate offset (pointing to header byte)
-        let offset = if start >= 4 && data[start - 4] == 0 {
-            start - 4
-        } else {
-            start - 3
-        };
+        // The unit starts at its start code (offset 0 for a 3-byte code at the very start of the
+        // data, otherwise the leading zero_byte if there is one)
+        let offset = unit.start_code;
 
         nal_units.push(NalUnit {
             header,
@@ -308,6 +254,25 @@ mod tests {
         let data = [0x00, 0x00, 0x01, 0x67, 0x00, 0x00, 0x00, 0x01, 0x68];
         let positions = find_nal_units(&data);
         assert_eq!(positions, vec![3, 8]);
+    }
+
+    #[test]
+    fn nal_units_end_before_the_zero_bytes_in_front_of_the_next_start_code() {
+        // 4-byte start code, SPS, trailing_zero_8bits + 3-byte start code, PPS, 3 zeros at the end
+        let data = [0, 0, 0, 1, 0x67, 0x42, 0, 0, 0, 0, 1, 0x68, 0xCE, 0, 0, 0];
+        assert_eq!(find_nal_units(&data), vec![4, 11]);
+        let units = parse_nal_units(&data).unwrap();
+        let spans: Vec<_> = units.iter().map(|u| (u.offset, u.size)).collect();
+        assert_eq!(spans, vec![(0, 6), (7, 6)]);
+        assert_eq!(units[0].raw_payload, vec![0x42]);
+        assert_eq!(units[1].raw_payload, vec![0xCE]);
+    }
+
+    #[test]
+    fn start_codes_with_nothing_behind_them_hold_no_nal_unit() {
+        assert!(find_nal_units(&[0, 0, 1, 0, 0, 1]).is_empty());
+        assert_eq!(find_nal_units(&[0, 0, 1, 0x67, 0, 0, 1]), vec![3]);
+        assert!(parse_nal_units(&[0, 0, 0, 1]).unwrap().is_empty());
     }
 
     #[test]
