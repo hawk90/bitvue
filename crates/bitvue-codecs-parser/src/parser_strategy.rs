@@ -6,43 +6,16 @@
 //! # Example
 //!
 //! ```ignore
-//! use bitvue_codecs::{ParserStrategy, ParserFactory, CodecType};
+//! use bitvue_codecs::{ParserStrategy, ParserFactory, Codec};
 //!
-//! let parser = ParserFactory::create(CodecType::AV1)?;
+//! let parser = ParserFactory::create(Codec::Av1)?;
 //! let result = parser.parse_header(data)?;
 //! ```
 
 use std::fmt;
 
-/// Codec type enumeration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CodecType {
-    /// AV1 codec
-    AV1,
-    /// H.264/AVC codec
-    AVC,
-    /// H.265/HEVC codec
-    HEVC,
-    /// H.266/VVC codec
-    VVC,
-    /// VP9 codec
-    VP9,
-    /// MPEG2 codec
-    MPEG2,
-}
-
-impl fmt::Display for CodecType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CodecType::AV1 => write!(f, "AV1"),
-            CodecType::AVC => write!(f, "AVC"),
-            CodecType::HEVC => write!(f, "HEVC"),
-            CodecType::VVC => write!(f, "VVC"),
-            CodecType::VP9 => write!(f, "VP9"),
-            CodecType::MPEG2 => write!(f, "MPEG2"),
-        }
-    }
-}
+/// The codec identifier shared by every crate (`bitvue_engine::Codec`).
+pub use bitvue_engine::Codec;
 
 /// Parse result containing parsed data and metadata
 #[derive(Debug, Clone)]
@@ -125,7 +98,7 @@ impl ParseResult {
 #[derive(Debug, Clone)]
 pub struct ParserCapabilities {
     /// Supported codec type
-    pub codec_type: CodecType,
+    pub codec_type: Codec,
     /// Supports incremental parsing
     pub incremental_parsing: bool,
     /// Supports seeking within stream
@@ -221,7 +194,7 @@ pub struct ParserStateFlags {
 /// Each codec implements this trait to provide its parsing logic.
 pub trait ParserStrategy: Send + Sync {
     /// Get the codec type
-    fn codec_type(&self) -> CodecType;
+    fn codec_type(&self) -> Codec;
 
     /// Get parser capabilities
     fn capabilities(&self) -> ParserCapabilities;
@@ -289,14 +262,14 @@ pub trait ParserStrategy: Send + Sync {
 /// Base parser providing common functionality
 #[derive(Debug)]
 pub struct BaseParser {
-    codec_type: CodecType,
+    codec_type: Codec,
     state: ParserState,
     capabilities: ParserCapabilities,
 }
 
 impl BaseParser {
     /// Create a new base parser
-    pub fn new(codec_type: CodecType, capabilities: ParserCapabilities) -> Self {
+    pub fn new(codec_type: Codec, capabilities: ParserCapabilities) -> Self {
         Self {
             codec_type,
             state: ParserState::default(),
@@ -305,15 +278,15 @@ impl BaseParser {
     }
 
     /// Create parser with default capabilities for a codec type
-    pub fn with_codec_type(codec_type: CodecType) -> Self {
+    pub fn with_codec_type(codec_type: Codec) -> Self {
         let capabilities = ParserCapabilities {
             codec_type,
             incremental_parsing: true,
             seeking: false,
             max_frame_size: 0, // Unlimited
-            temporal_layers: matches!(codec_type, CodecType::AV1 | CodecType::VP9 | CodecType::VVC),
-            spatial_layers: matches!(codec_type, CodecType::AV1 | CodecType::VP9 | CodecType::VVC),
-            quality_layers: matches!(codec_type, CodecType::AV1 | CodecType::VP9),
+            temporal_layers: matches!(codec_type, Codec::Av1 | Codec::Vp9 | Codec::Vvc),
+            spatial_layers: matches!(codec_type, Codec::Av1 | Codec::Vp9 | Codec::Vvc),
+            quality_layers: matches!(codec_type, Codec::Av1 | Codec::Vp9),
         };
 
         Self {
@@ -325,7 +298,7 @@ impl BaseParser {
 }
 
 impl ParserStrategy for BaseParser {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.codec_type
     }
 
@@ -384,7 +357,7 @@ impl Av1ParserStrategy {
     /// Create a new AV1 parser
     pub fn new() -> Self {
         Self {
-            base: BaseParser::with_codec_type(CodecType::AV1),
+            base: BaseParser::with_codec_type(Codec::Av1),
             sequence_header_parsed: false,
         }
     }
@@ -397,7 +370,7 @@ impl Default for Av1ParserStrategy {
 }
 
 impl ParserStrategy for Av1ParserStrategy {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.base.codec_type()
     }
 
@@ -500,7 +473,7 @@ impl AvcParserStrategy {
     /// Create a new AVC parser
     pub fn new() -> Self {
         Self {
-            base: BaseParser::with_codec_type(CodecType::AVC),
+            base: BaseParser::with_codec_type(Codec::Avc),
             nal_prefix_length: 4, // Default to 4-byte NAL prefixes
         }
     }
@@ -523,7 +496,7 @@ impl Default for AvcParserStrategy {
 }
 
 impl ParserStrategy for AvcParserStrategy {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.base.codec_type()
     }
 
@@ -608,7 +581,7 @@ impl HevcParserStrategy {
     /// Create a new HEVC parser
     pub fn new() -> Self {
         Self {
-            base: BaseParser::with_codec_type(CodecType::HEVC),
+            base: BaseParser::with_codec_type(Codec::Hevc),
         }
     }
 }
@@ -620,7 +593,7 @@ impl Default for HevcParserStrategy {
 }
 
 impl ParserStrategy for HevcParserStrategy {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.base.codec_type()
     }
 
@@ -676,7 +649,7 @@ impl VvcParserStrategy {
     /// Create a new VVC parser
     pub fn new() -> Self {
         Self {
-            base: BaseParser::with_codec_type(CodecType::VVC),
+            base: BaseParser::with_codec_type(Codec::Vvc),
         }
     }
 }
@@ -688,7 +661,7 @@ impl Default for VvcParserStrategy {
 }
 
 impl ParserStrategy for VvcParserStrategy {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.base.codec_type()
     }
 
@@ -742,7 +715,7 @@ impl Vp9ParserStrategy {
     /// Create a new VP9 parser
     pub fn new() -> Self {
         Self {
-            base: BaseParser::with_codec_type(CodecType::VP9),
+            base: BaseParser::with_codec_type(Codec::Vp9),
         }
     }
 }
@@ -754,7 +727,7 @@ impl Default for Vp9ParserStrategy {
 }
 
 impl ParserStrategy for Vp9ParserStrategy {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.base.codec_type()
     }
 
@@ -801,33 +774,30 @@ pub struct ParserFactory;
 
 impl ParserFactory {
     /// Create a parser for the specified codec type
-    pub fn create(codec_type: CodecType) -> ParseResultType<Box<dyn ParserStrategy>> {
+    pub fn create(codec_type: Codec) -> ParseResultType<Box<dyn ParserStrategy>> {
         match codec_type {
-            CodecType::AV1 => Ok(Box::new(Av1ParserStrategy::new())),
-            CodecType::AVC => Ok(Box::new(AvcParserStrategy::new())),
-            CodecType::HEVC => Ok(Box::new(HevcParserStrategy::new())),
-            CodecType::VVC => Ok(Box::new(VvcParserStrategy::new())),
-            CodecType::VP9 => Ok(Box::new(Vp9ParserStrategy::new())),
-            CodecType::MPEG2 => Err(ParseError::UnsupportedFeature {
-                feature: "MPEG2 parser not yet implemented".to_string(),
+            Codec::Av1 => Ok(Box::new(Av1ParserStrategy::new())),
+            Codec::Avc => Ok(Box::new(AvcParserStrategy::new())),
+            Codec::Hevc => Ok(Box::new(HevcParserStrategy::new())),
+            Codec::Vvc => Ok(Box::new(VvcParserStrategy::new())),
+            Codec::Vp9 => Ok(Box::new(Vp9ParserStrategy::new())),
+            other => Err(ParseError::UnsupportedFeature {
+                feature: format!("{other} parser not yet implemented"),
             }),
         }
     }
 
     /// Get list of supported codec types
-    pub fn supported_codecs() -> Vec<CodecType> {
-        vec![
-            CodecType::AV1,
-            CodecType::AVC,
-            CodecType::HEVC,
-            CodecType::VVC,
-            CodecType::VP9,
-        ]
+    pub fn supported_codecs() -> Vec<Codec> {
+        vec![Codec::Av1, Codec::Avc, Codec::Hevc, Codec::Vvc, Codec::Vp9]
     }
 
     /// Check if a codec type is supported
-    pub fn is_supported(codec_type: CodecType) -> bool {
-        !matches!(codec_type, CodecType::MPEG2)
+    pub fn is_supported(codec_type: Codec) -> bool {
+        matches!(
+            codec_type,
+            Codec::Av1 | Codec::Avc | Codec::Hevc | Codec::Vvc | Codec::Vp9
+        )
     }
 }
 
@@ -841,11 +811,11 @@ mod tests {
 
     #[test]
     fn test_codec_type_display() {
-        assert_eq!(CodecType::AV1.to_string(), "AV1");
-        assert_eq!(CodecType::AVC.to_string(), "AVC");
-        assert_eq!(CodecType::HEVC.to_string(), "HEVC");
-        assert_eq!(CodecType::VVC.to_string(), "VVC");
-        assert_eq!(CodecType::VP9.to_string(), "VP9");
+        assert_eq!(Codec::Av1.to_string(), "AV1");
+        assert_eq!(Codec::Avc.to_string(), "H.264/AVC");
+        assert_eq!(Codec::Hevc.to_string(), "H.265/HEVC");
+        assert_eq!(Codec::Vvc.to_string(), "H.266/VVC");
+        assert_eq!(Codec::Vp9.to_string(), "VP9");
     }
 
     #[test]
@@ -880,51 +850,68 @@ mod tests {
 
     #[test]
     fn test_av1_parser_creation() {
-        let parser = ParserFactory::create(CodecType::AV1).unwrap();
-        assert_eq!(parser.codec_type(), CodecType::AV1);
+        let parser = ParserFactory::create(Codec::Av1).unwrap();
+        assert_eq!(parser.codec_type(), Codec::Av1);
         assert_eq!(parser.frame_count(), 0);
         assert!(!parser.is_complete());
     }
 
     #[test]
     fn test_avc_parser_creation() {
-        let parser = ParserFactory::create(CodecType::AVC).unwrap();
-        assert_eq!(parser.codec_type(), CodecType::AVC);
+        let parser = ParserFactory::create(Codec::Avc).unwrap();
+        assert_eq!(parser.codec_type(), Codec::Avc);
     }
 
     #[test]
     fn test_hevc_parser_creation() {
-        let parser = ParserFactory::create(CodecType::HEVC).unwrap();
-        assert_eq!(parser.codec_type(), CodecType::HEVC);
+        let parser = ParserFactory::create(Codec::Hevc).unwrap();
+        assert_eq!(parser.codec_type(), Codec::Hevc);
     }
 
     #[test]
     fn test_vvc_parser_creation() {
-        let parser = ParserFactory::create(CodecType::VVC).unwrap();
-        assert_eq!(parser.codec_type(), CodecType::VVC);
+        let parser = ParserFactory::create(Codec::Vvc).unwrap();
+        assert_eq!(parser.codec_type(), Codec::Vvc);
     }
 
     #[test]
     fn test_vp9_parser_creation() {
-        let parser = ParserFactory::create(CodecType::VP9).unwrap();
-        assert_eq!(parser.codec_type(), CodecType::VP9);
+        let parser = ParserFactory::create(Codec::Vp9).unwrap();
+        assert_eq!(parser.codec_type(), Codec::Vp9);
     }
 
     #[test]
     fn test_unsupported_codec() {
-        let result = ParserFactory::create(CodecType::MPEG2);
+        let result = ParserFactory::create(Codec::Mpeg2);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn is_supported_agrees_with_create_for_every_codec() {
+        let all = Codec::KNOWN.iter().copied().chain([Codec::Unknown]);
+        for codec in all {
+            assert_eq!(
+                ParserFactory::is_supported(codec),
+                ParserFactory::create(codec).is_ok(),
+                "{codec}"
+            );
+            assert_eq!(
+                ParserFactory::is_supported(codec),
+                ParserFactory::supported_codecs().contains(&codec),
+                "{codec}"
+            );
+        }
     }
 
     #[test]
     fn test_supported_codecs() {
         let codecs = ParserFactory::supported_codecs();
         assert_eq!(codecs.len(), 5);
-        assert!(codecs.contains(&CodecType::AV1));
-        assert!(codecs.contains(&CodecType::AVC));
-        assert!(codecs.contains(&CodecType::HEVC));
-        assert!(codecs.contains(&CodecType::VVC));
-        assert!(codecs.contains(&CodecType::VP9));
+        assert!(codecs.contains(&Codec::Av1));
+        assert!(codecs.contains(&Codec::Avc));
+        assert!(codecs.contains(&Codec::Hevc));
+        assert!(codecs.contains(&Codec::Vvc));
+        assert!(codecs.contains(&Codec::Vp9));
     }
 
     #[test]
@@ -959,6 +946,6 @@ mod tests {
     fn test_av1_with_nal_prefix_length() {
         let parser = AvcParserStrategy::new().with_nal_prefix_length(3);
         // Parser created successfully
-        assert_eq!(parser.codec_type(), CodecType::AVC);
+        assert_eq!(parser.codec_type(), Codec::Avc);
     }
 }
