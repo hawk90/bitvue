@@ -107,5 +107,16 @@
   "allowScripts": {
     "esbuild": true,
     "fsevents": true
+  },
+  "overrides": {
+    "app-builder-lib": {
+      "minimatch": "^11.0.1"
+    },
+    "@electron/universal": {
+      "minimatch": "^11.0.1",
+      "dir-compare": {
+        "minimatch": "^3.0.5"
+      }
+    }
   }
 }
