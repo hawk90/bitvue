@@ -53,35 +53,17 @@ fn classify(codec: AnnexBCodec, nal: &[u8]) -> NalRole {
     }
 }
 
-/// `(offset of the start code, offset of the NAL unit)` for every NAL unit, in order. A 3-byte
-/// start code preceded by a zero byte counts as the 4-byte form.
-fn nal_offsets(data: &[u8]) -> Vec<(usize, usize)> {
-    let mut found = Vec::new();
-    let mut i = 0;
-    while i + 3 <= data.len() {
-        if data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 {
-            let start = if i > 0 && data[i - 1] == 0 { i - 1 } else { i };
-            found.push((start, i + 3));
-            i += 3;
-        } else {
-            i += 1;
-        }
-    }
-    found
-}
-
 /// Splits `data` into access units. The pieces are consecutive, cover all of `data`, and each
 /// begins at a start code (bytes before the first start code stay with the first piece). Data
 /// with no start code, or with a single access unit, comes back whole.
 pub fn split_access_units(codec: AnnexBCodec, data: &[u8]) -> Vec<&[u8]> {
-    let nals = nal_offsets(data);
     let mut units = Vec::new();
     let mut unit_start = 0;
     let mut has_slice = false;
 
-    for (idx, &(start_code, nal_start)) in nals.iter().enumerate() {
-        let end = nals.get(idx + 1).map_or(data.len(), |&(next, _)| next);
-        let role = classify(codec, &data[nal_start..end]);
+    for nal in bitvue_engine::annex_b::find_nal_ranges(data) {
+        let start_code = nal.start_code;
+        let role = classify(codec, &data[nal.start..nal.end]);
         let opens_unit = has_slice && matches!(role, NalRole::FirstSlice | NalRole::LeadingNonVcl);
         if opens_unit {
             units.push(&data[unit_start..start_code]);
@@ -200,6 +182,33 @@ mod tests {
             ])
         );
         assert_eq!(units[1], cat(&[&SC4, &trail_first]));
+    }
+
+    #[test]
+    fn zero_bytes_between_start_codes_are_not_a_nal_unit() {
+        // HEVC: header `00 00` would read as a TRAIL_N slice; it is just padding, no unit at all
+        let data = cat(&[
+            &SC4,
+            &[0x40, 0x01, 0x0C],
+            &SC3,
+            &[0, 0, 0],
+            &SC4,
+            &[0x26, 0x01, 0x80],
+        ]);
+        let units = split_access_units(AnnexBCodec::Hevc, &data);
+        assert_eq!(units.concat(), data);
+        assert_eq!(units.len(), 1);
+        // a unit is never opened by trailing zero bytes of the one before it
+        let data = cat(&[
+            &SC4,
+            &[0x26, 0x01, 0x80],
+            &[0, 0],
+            &SC4,
+            &[0x40, 0x01, 0x0C],
+        ]);
+        let units = split_access_units(AnnexBCodec::Hevc, &data);
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[1], cat(&[&SC4, &[0x40, 0x01, 0x0C]]));
     }
 
     #[test]
