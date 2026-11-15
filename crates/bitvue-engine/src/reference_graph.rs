@@ -226,10 +226,7 @@ impl ReferenceFilter {
 
     /// Check if an edge passes the filter
     pub fn matches_edge(&self, edge: &ReferenceEdge) -> bool {
-        if !self.ref_types.is_empty() && !self.ref_types.contains(&edge.ref_type) {
-            return false;
-        }
-        true
+        self.ref_types.is_empty() || self.ref_types.contains(&edge.ref_type)
     }
 }
 

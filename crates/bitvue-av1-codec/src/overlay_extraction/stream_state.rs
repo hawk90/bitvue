@@ -248,9 +248,9 @@ impl StreamDecodeState {
 
     /// Makes every reference slot the frame refreshes hold it.
     fn refresh_slots(&mut self, parsed: &Arc<ParsedFrame>) {
-        for slot in 0..8 {
-            if parsed.refresh_frame_flags & (1 << slot) != 0 {
-                self.slots[slot] = Some(Arc::clone(parsed));
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            if parsed.refresh_frame_flags & (1 << index) != 0 {
+                *slot = Some(Arc::clone(parsed));
             }
         }
     }

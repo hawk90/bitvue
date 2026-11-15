@@ -7,7 +7,6 @@ impl TileContext {
     /// Record a decoded **inter** block's ref/mode state for future `inter_mode`/`compound_mode`
     /// context lookups -- see `SpatialRefContext::set_block`'s doc (never call for intra blocks).
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub fn set_spatial_ref_block(
         &mut self,
         x4: u32,

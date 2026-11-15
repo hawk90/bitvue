@@ -296,8 +296,8 @@ impl TileContext {
         self.left_ref0.iter_mut().for_each(|v| *v = 0);
         self.left_ref1.iter_mut().for_each(|v| *v = 0);
         self.left_comp_type.iter_mut().for_each(|v| *v = 0);
-        for dir in 0..2 {
-            self.left_filter[dir].iter_mut().for_each(|v| *v = 3);
+        for filter in &mut self.left_filter {
+            filter.iter_mut().for_each(|v| *v = 3);
         }
         self.left_tx_class.iter_mut().for_each(|v| *v = -1);
         self.left_cul_level.iter_mut().for_each(|v| *v = 0);
@@ -315,13 +315,11 @@ impl TileContext {
         // `seg_id_grid` deliberately NOT reset here -- it's a real per-tile grid (this field's
         // doc), not an above/left strip; positions above the current row must stay readable for
         // `segment_id_context`'s above/above-left lookups.
-        for plane in 0..2 {
-            self.left_pal_sz[plane].iter_mut().for_each(|v| *v = 0);
+        for sizes in &mut self.left_pal_sz {
+            sizes.iter_mut().for_each(|v| *v = 0);
         }
-        for plane in 0..3 {
-            self.left_pal_colors[plane]
-                .iter_mut()
-                .for_each(|v| *v = [0; 8]);
+        for colors in &mut self.left_pal_colors {
+            colors.iter_mut().for_each(|v| *v = [0; 8]);
         }
     }
 }

@@ -165,9 +165,9 @@ impl RefFrameState {
     }
 
     pub fn apply_refresh(&mut self, refresh_frame_flags: u8, order_hint: u32) {
-        for i in 0..NUM_REF_FRAMES {
+        for (i, hint) in self.ref_order_hint.iter_mut().enumerate() {
             if (refresh_frame_flags >> i) & 1 == 1 {
-                self.ref_order_hint[i] = order_hint;
+                *hint = order_hint;
             }
         }
     }
