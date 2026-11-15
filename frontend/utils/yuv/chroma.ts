@@ -6,7 +6,10 @@
  * Extracted from yuvRenderer.ts for better modularity.
  */
 
+import { createLogger } from "../logger";
 import type { ChromaSubsampling, YUVFrame } from "../../types/yuv";
+
+const CHROMA_LOGGER = createLogger("ChromaStrategyFactory");
 
 /**
  * Strategy interface for calculating chroma pixel indices
@@ -76,17 +79,14 @@ export const ChromaStrategyFactory = {
       );
       return this.strategies["420"];
     }
-    console.debug(
-      "[ChromaStrategyFactory] Returning strategy for subsampling:",
-      subsampling,
-    );
+    CHROMA_LOGGER.debug("Returning strategy for subsampling:", subsampling);
     return strategy;
   },
 
   /** Get a strategy from a YUVFrame */
   getStrategyForFrame(frame: YUVFrame): ChromaIndexStrategy {
     const subsampling = frame.chromaSubsampling || "420";
-    console.debug("[ChromaStrategyFactory] getStrategyForFrame:", {
+    CHROMA_LOGGER.debug("getStrategyForFrame:", {
       chromaSubsampling: frame.chromaSubsampling,
       usingSubsampling: subsampling,
     });

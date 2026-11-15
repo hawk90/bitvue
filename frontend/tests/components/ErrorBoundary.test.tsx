@@ -1465,6 +1465,7 @@ describe("ErrorBoundary integration scenarios", () => {
   it("should handle errors in useEffect hooks", () => {
     // Note: Error boundaries don't catch errors in useEffect
     // This test verifies that behavior
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const UseEffectErrorComponent = () => {
       React.useEffect(() => {
         // This won't be caught by error boundary
@@ -1486,6 +1487,9 @@ describe("ErrorBoundary integration scenarios", () => {
 
     expect(screen.getByText("Component with useEffect")).toBeInTheDocument();
 
+    expect(logSpy).toHaveBeenCalledWith("useEffect called");
+
+    logSpy.mockRestore();
     consoleErrorSpy.mockRestore();
   });
 });

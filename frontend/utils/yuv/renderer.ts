@@ -7,6 +7,7 @@
 
 import type { YUVFrame } from "../../types/yuv";
 import { Colorspace } from "../../types/yuv";
+import { createLogger } from "../logger";
 import { YUVCache } from "./cache";
 import { ChromaStrategyFactory, getYIndex } from "./chroma";
 import { setPixelBlack, yuvToRgbaArray } from "./conversion";
@@ -14,11 +15,7 @@ import { setPixelBlack, yuvToRgbaArray } from "./conversion";
 /**
  * Logger for YUV renderer
  */
-const YUV_LOGGER = {
-  error: (...args: unknown[]) => console.error("[yuvRenderer]", ...args),
-  warn: (...args: unknown[]) => console.warn("[yuvRenderer]", ...args),
-  debug: (...args: unknown[]) => console.debug("[yuvRenderer]", ...args),
-};
+const YUV_LOGGER = createLogger("yuvRenderer");
 
 /**
  * Convert YUV frame to RGB ImageData
