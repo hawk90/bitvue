@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@/test/test-utils";
+import { renderAct, screen, waitFor } from "@/test/test-utils";
 import { ResidualsView } from "../ResidualsView";
 import type { FrameInfo } from "@/types/video";
 import type { ResidualAnalysisWireResult } from "../../services/electronBridgeService";
@@ -63,20 +63,26 @@ describe("ResidualsView", () => {
     ref_frames: [99],
   };
 
-  it("renders without crashing", () => {
-    render(<ResidualsView frame={mockFrame} width={1920} height={1080} />);
+  it("renders without crashing", async () => {
+    await renderAct(
+      <ResidualsView frame={mockFrame} width={1920} height={1080} />,
+    );
     expect(screen.getByText("Residuals Analysis")).toBeInTheDocument();
   });
 
-  it("displays frame information", () => {
-    render(<ResidualsView frame={mockFrame} width={1920} height={1080} />);
+  it("displays frame information", async () => {
+    await renderAct(
+      <ResidualsView frame={mockFrame} width={1920} height={1080} />,
+    );
 
     expect(screen.getByText("Frame 100")).toBeInTheDocument();
     expect(screen.getByText("P")).toBeInTheDocument();
   });
 
   it("displays coefficient statistics", async () => {
-    render(<ResidualsView frame={mockFrame} width={1920} height={1080} />);
+    await renderAct(
+      <ResidualsView frame={mockFrame} width={1920} height={1080} />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText(/Non-Zero Coeffs:/)).toBeInTheDocument(),
@@ -85,8 +91,8 @@ describe("ResidualsView", () => {
     expect(screen.getByText("Zero Coeffs:")).toBeInTheDocument();
   });
 
-  it("renders heatmap view when showHeatmap is true", () => {
-    render(
+  it("renders heatmap view when showHeatmap is true", async () => {
+    await renderAct(
       <ResidualsView
         frame={mockFrame}
         width={1920}
@@ -99,8 +105,8 @@ describe("ResidualsView", () => {
     expect(screen.getByText("Residual Energy Heatmap")).toBeInTheDocument();
   });
 
-  it("renders histogram view when showHistogram is true", () => {
-    render(
+  it("renders histogram view when showHistogram is true", async () => {
+    await renderAct(
       <ResidualsView
         frame={mockFrame}
         width={1920}
@@ -113,8 +119,8 @@ describe("ResidualsView", () => {
     expect(screen.getByText("Coefficient Distribution")).toBeInTheDocument();
   });
 
-  it("renders both views when both are enabled", () => {
-    render(
+  it("renders both views when both are enabled", async () => {
+    await renderAct(
       <ResidualsView
         frame={mockFrame}
         width={1920}
@@ -128,14 +134,14 @@ describe("ResidualsView", () => {
     expect(screen.getByText("Coefficient Distribution")).toBeInTheDocument();
   });
 
-  it("handles null frame gracefully", () => {
-    render(<ResidualsView frame={null} width={1920} height={1080} />);
+  it("handles null frame gracefully", async () => {
+    await renderAct(<ResidualsView frame={null} width={1920} height={1080} />);
 
     expect(screen.getByText("No frame selected")).toBeInTheDocument();
   });
 
-  it("displays heatmap color scale legend", () => {
-    render(
+  it("displays heatmap color scale legend", async () => {
+    await renderAct(
       <ResidualsView
         frame={mockFrame}
         width={1920}

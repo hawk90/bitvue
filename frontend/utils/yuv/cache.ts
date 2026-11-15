@@ -5,6 +5,7 @@
  * Extracted from yuvRenderer.ts for better modularity.
  */
 
+import { createLogger } from "../logger";
 import { LRUCache } from "../lruCache";
 import type { YUVFrame } from "../../types/yuv";
 import { Colorspace } from "../../types/yuv";
@@ -12,11 +13,7 @@ import { Colorspace } from "../../types/yuv";
 /**
  * Logger for YUV cache
  */
-const YUV_CACHE_LOGGER = {
-  error: (...args: unknown[]) => console.error("[YUVCache]", ...args),
-  warn: (...args: unknown[]) => console.warn("[YUVCache]", ...args),
-  debug: (...args: unknown[]) => console.debug("[YUVCache]", ...args),
-};
+const YUV_CACHE_LOGGER = createLogger("YUVCache");
 
 /** Default maximum cache size (number of ImageData objects) */
 const DEFAULT_YUV_CACHE_SIZE = 50;

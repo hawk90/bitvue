@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
 import { HexViewTab } from "../HexViewTab";
+import { muteBridgeUnavailableLogs } from "@/test/muteBridgeUnavailable";
 
 const { getHexRange, getContextMenuItems } = vi.hoisted(() => ({
   getHexRange: vi.fn(),
@@ -52,6 +53,8 @@ const mockFrames = [
   { frame_index: 1, size: 200, offset: 2000 },
   { frame_index: 2, size: 150, offset: 3000 },
 ];
+
+muteBridgeUnavailableLogs();
 
 describe("HexViewTab", () => {
   beforeEach(() => {

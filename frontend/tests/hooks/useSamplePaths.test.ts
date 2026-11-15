@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { useSamplePaths } from "@/hooks/useSamplePaths";
 import { getSamplePath } from "@/services/electronBridgeService";
 
@@ -40,9 +40,13 @@ describe("useSamplePaths", () => {
     });
   });
 
-  it("returns an empty map for an empty filenames list", () => {
+  it("returns an empty map for an empty filenames list", async () => {
     const filenames: string[] = [];
-    const { result } = renderHook(() => useSamplePaths(filenames));
+    let hook!: ReturnType<typeof renderHook<Record<string, string>, unknown>>;
+    await act(async () => {
+      hook = renderHook(() => useSamplePaths(filenames));
+    });
+    const { result } = hook;
     expect(result.current).toEqual({});
     expect(getSamplePath).not.toHaveBeenCalled();
   });

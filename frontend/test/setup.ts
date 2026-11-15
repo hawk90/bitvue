@@ -2,6 +2,12 @@ import "@testing-library/jest-dom";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 import React from "react";
+import { setLogLevel } from "../utils/logger";
+
+// The app logger defaults to "info" under vitest, so routine info/debug lines (HexViewTab,
+// FileStateContext, yuv renderer, ...) flood stdout. Warnings and errors still print; tests of
+// the logger itself set their own level.
+setLogLevel("warn");
 
 // Clean up after each test
 afterEach(() => {

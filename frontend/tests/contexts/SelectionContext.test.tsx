@@ -22,6 +22,7 @@ import {
   selectBitRange,
   selectSpatialBlock,
 } from "@/services/electronBridgeService";
+import { muteBridgeUnavailableLogs } from "@/test/muteBridgeUnavailable";
 
 // setBitRangeSelection/setSpatialBlockSelection call real bridge round trips (see
 // SelectionContext.tsx's doc) -- mocked here so tests control what they resolve to instead of
@@ -34,6 +35,8 @@ vi.mock("@/services/electronBridgeService", () => ({
     .fn()
     .mockRejectedValue(new Error("no bridge in tests")),
 }));
+
+muteBridgeUnavailableLogs();
 
 describe("SelectionContext", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (

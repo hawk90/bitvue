@@ -1876,7 +1876,9 @@ describe("YuvViewerPanel frame load error handling", () => {
     const retryButton = await findByText(/Retry/i);
     const callCountBefore = sharedGetDecodedFrameYuvMock.mock.calls.length;
 
-    fireEvent.click(retryButton);
+    await act(async () => {
+      fireEvent.click(retryButton);
+    });
 
     // After click, the bridge should have been called at least once more
     await vi.waitFor(() => {
@@ -1920,7 +1922,9 @@ describe("YuvViewerPanel playback edge cases", () => {
     fireEvent.click(playButton!);
 
     // Advance timer so the playback effect fires
-    vi.runAllTimers();
+    await act(async () => {
+      vi.runAllTimers();
+    });
 
     // onFrameChange should NOT have been called (already at last frame)
     expect(onFrameChange).not.toHaveBeenCalled();
@@ -2131,19 +2135,21 @@ describe("YuvViewerPanel loading and placeholder states", () => {
     // Loading overlay should be present while the promise is pending
     expect(container.querySelector(".yuv-loading-overlay")).toBeInTheDocument();
 
-    // Resolve to avoid hanging promise warning
-    resolveDecode({
-      width: 16,
-      height: 16,
-      bitDepth: 8,
-      chromaSubsampling: "420",
-      yStride: 16,
-      uStride: 8,
-      vStride: 8,
-      yLen: 4,
-      uLen: 2,
-      vLen: 2,
-      bytes: new Uint8Array(8),
+    // Resolve to avoid hanging promise warning; inside act() so the resulting state update is tracked
+    await act(async () => {
+      resolveDecode({
+        width: 16,
+        height: 16,
+        bitDepth: 8,
+        chromaSubsampling: "420",
+        yStride: 16,
+        uStride: 8,
+        vStride: 8,
+        yLen: 4,
+        uLen: 2,
+        vLen: 2,
+        bytes: new Uint8Array(8),
+      });
     });
   });
 });

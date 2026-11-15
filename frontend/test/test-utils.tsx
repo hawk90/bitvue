@@ -1,4 +1,8 @@
-import { render as rtlRender, RenderOptions } from "@testing-library/react";
+import {
+  act,
+  render as rtlRender,
+  RenderOptions,
+} from "@testing-library/react";
 import { ReactElement } from "react";
 import { ModeProvider } from "../contexts/ModeContext";
 import { SelectionProvider } from "../contexts/SelectionContext";
@@ -51,6 +55,22 @@ export function render(
   options?: Omit<RenderOptions, "wrapper">,
 ) {
   return rtlRender(ui, { wrapper: AllTheProviders, ...options });
+}
+
+/**
+ * render() that lets mount-time async effects (bridge loads etc.) settle inside act().
+ * With a bare render() they resolve after the synchronous test body, outside act(), and
+ * React logs "not wrapped in act(...)" for every test.
+ */
+export async function renderAct(
+  ui: ReactElement,
+  options?: Omit<RenderOptions, "wrapper">,
+) {
+  let result!: ReturnType<typeof render>;
+  await act(async () => {
+    result = render(ui, options);
+  });
+  return result;
 }
 
 /**

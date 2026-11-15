@@ -11,6 +11,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useFilmstripState } from "@/components/useFilmstripState";
 import type { FrameInfo } from "@/types/video";
 import type { BridgeThumbnailResult } from "@/services/electronBridgeService";
+import { muteBridgeUnavailableLogs } from "@/test/muteBridgeUnavailable";
 
 const { getThumbnails } = vi.hoisted(() => ({
   getThumbnails: vi.fn(),
@@ -33,6 +34,8 @@ function thumb(index: number): BridgeThumbnailResult {
     success: true,
   };
 }
+
+muteBridgeUnavailableLogs();
 
 describe("useFilmstripState", () => {
   beforeEach(() => {
