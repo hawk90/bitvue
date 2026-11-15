@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@/test/test-utils";
+import { act, renderAct, screen, fireEvent } from "@/test/test-utils";
 import { FrameSizesLegend } from "@/components/FrameSizesLegend";
 
 type SizeMetrics = {
@@ -29,8 +29,8 @@ const mockSizeMetrics: SizeMetrics = {
 };
 
 describe("FrameSizesLegend", () => {
-  it("should render floating legend panel", () => {
-    render(
+  it("should render floating legend panel", async () => {
+    await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -41,8 +41,8 @@ describe("FrameSizesLegend", () => {
     expect(legend).toBeInTheDocument();
   });
 
-  it("should render drag handle", () => {
-    const { container } = render(
+  it("should render drag handle", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -52,8 +52,8 @@ describe("FrameSizesLegend", () => {
     expect(container.querySelector(".legend-drag-handle")).toBeInTheDocument();
   });
 
-  it("should render drag gripper icon", () => {
-    const { container } = render(
+  it("should render drag gripper icon", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -63,8 +63,8 @@ describe("FrameSizesLegend", () => {
     expect(container.querySelector(".codicon-gripper")).toBeInTheDocument();
   });
 
-  it("should render all metric items", () => {
-    const { container } = render(
+  it("should render all metric items", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -75,8 +75,8 @@ describe("FrameSizesLegend", () => {
     expect(items).toHaveLength(8);
   });
 
-  it("should render metric labels", () => {
-    render(
+  it("should render metric labels", async () => {
+    await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -93,8 +93,8 @@ describe("FrameSizesLegend", () => {
     expect(screen.getByText("Block Max QP")).toBeInTheDocument();
   });
 
-  it("should render color indicators", () => {
-    const { container } = render(
+  it("should render color indicators", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -105,8 +105,8 @@ describe("FrameSizesLegend", () => {
     expect(indicators).toHaveLength(8);
   });
 
-  it("should apply active class to enabled metrics", () => {
-    const { container } = render(
+  it("should apply active class to enabled metrics", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -117,8 +117,8 @@ describe("FrameSizesLegend", () => {
     expect(activeItems).toHaveLength(4); // showBitrateBar, showAvgSize, showMaxSize, showMovingAvg
   });
 
-  it("should not apply active class to disabled metrics", () => {
-    const { container } = render(
+  it("should not apply active class to disabled metrics", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -131,9 +131,9 @@ describe("FrameSizesLegend", () => {
     expect(inactiveItems).toHaveLength(4);
   });
 
-  it("should call onToggleMetric when item clicked", () => {
+  it("should call onToggleMetric when item clicked", async () => {
     const onToggleMetric = vi.fn();
-    const { container } = render(
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={onToggleMetric}
@@ -147,8 +147,8 @@ describe("FrameSizesLegend", () => {
     }
   });
 
-  it("should start with default position", () => {
-    const { container } = render(
+  it("should start with default position", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -162,8 +162,8 @@ describe("FrameSizesLegend", () => {
     expect(legend.style.top).toContain("px");
   });
 
-  it("should update position when dragging", () => {
-    const { container } = render(
+  it("should update position when dragging", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -179,7 +179,9 @@ describe("FrameSizesLegend", () => {
         clientX: 150,
         clientY: 150,
       });
-      document.dispatchEvent(mouseMoveEvent);
+      act(() => {
+        document.dispatchEvent(mouseMoveEvent);
+      });
 
       fireEvent.mouseUp(handle);
     }
@@ -191,7 +193,7 @@ describe("FrameSizesLegend", () => {
     expect(legend.style.left).toBeTruthy();
   });
 
-  it("should clamp position within window bounds", () => {
+  it("should clamp position within window bounds", async () => {
     // Mock window size
     const originalInnerWidth = window.innerWidth;
     const originalInnerHeight = window.innerHeight;
@@ -205,7 +207,7 @@ describe("FrameSizesLegend", () => {
       configurable: true,
     });
 
-    const { container } = render(
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -221,7 +223,9 @@ describe("FrameSizesLegend", () => {
         clientX: -1000,
         clientY: -1000,
       });
-      document.dispatchEvent(mouseMoveEvent);
+      act(() => {
+        document.dispatchEvent(mouseMoveEvent);
+      });
 
       fireEvent.mouseUp(handle);
     }
@@ -246,8 +250,8 @@ describe("FrameSizesLegend", () => {
     expect(y).toBeGreaterThanOrEqual(0);
   });
 
-  it("should set cursor to grabbing when dragging", () => {
-    const { container } = render(
+  it("should set cursor to grabbing when dragging", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -267,8 +271,8 @@ describe("FrameSizesLegend", () => {
     }
   });
 
-  it("should have fixed positioning", () => {
-    const { container } = render(
+  it("should have fixed positioning", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -281,8 +285,8 @@ describe("FrameSizesLegend", () => {
     expect(legend.style.position).toBe("fixed");
   });
 
-  it("should have high z-index", () => {
-    const { container } = render(
+  it("should have high z-index", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -295,8 +299,8 @@ describe("FrameSizesLegend", () => {
     expect(legend.style.zIndex).toBe("1000");
   });
 
-  it("should render all 8 metrics with correct colors", () => {
-    const { container } = render(
+  it("should render all 8 metrics with correct colors", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -322,8 +326,8 @@ describe("FrameSizesLegend", () => {
     });
   });
 
-  it("should render legend content wrapper", () => {
-    const { container } = render(
+  it("should render legend content wrapper", async () => {
+    const { container } = await renderAct(
       <FrameSizesLegend
         sizeMetrics={mockSizeMetrics}
         onToggleMetric={vi.fn()}
@@ -333,7 +337,7 @@ describe("FrameSizesLegend", () => {
     expect(container.querySelector(".legend-content")).toBeInTheDocument();
   });
 
-  it("should handle all metrics disabled", () => {
+  it("should handle all metrics disabled", async () => {
     const allDisabled: SizeMetrics = {
       showBitrateBar: false,
       showBitrateCurve: false,
@@ -345,7 +349,7 @@ describe("FrameSizesLegend", () => {
       showBlockMaxQP: false,
     };
 
-    const { container } = render(
+    const { container } = await renderAct(
       <FrameSizesLegend sizeMetrics={allDisabled} onToggleMetric={vi.fn()} />,
     );
 
@@ -353,7 +357,7 @@ describe("FrameSizesLegend", () => {
     expect(activeItems).toHaveLength(0);
   });
 
-  it("should handle all metrics enabled", () => {
+  it("should handle all metrics enabled", async () => {
     const allEnabled: SizeMetrics = {
       showBitrateBar: true,
       showBitrateCurve: true,
@@ -365,7 +369,7 @@ describe("FrameSizesLegend", () => {
       showBlockMaxQP: true,
     };
 
-    const { container } = render(
+    const { container } = await renderAct(
       <FrameSizesLegend sizeMetrics={allEnabled} onToggleMetric={vi.fn()} />,
     );
 

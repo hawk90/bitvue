@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render } from "@/test/test-utils";
+import { renderAct } from "@/test/test-utils";
 import { TimelineFilmstrip } from "../TimelineFilmstrip";
 import type { FrameInfo } from "@/types/video";
 import { useSelection } from "@/contexts/SelectionContext";
@@ -41,14 +41,14 @@ describe("TimelineFilmstrip", () => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(mockSelectionContext);
   });
-  it("should render timeline filmstrip", () => {
-    render(<TimelineFilmstrip frames={mockFrames} />);
+  it("should render timeline filmstrip", async () => {
+    await renderAct(<TimelineFilmstrip frames={mockFrames} />);
 
     expect(document.querySelector(".timeline-filmstrip")).toBeInTheDocument();
   });
 
-  it("should display frame thumbnails", () => {
-    render(<TimelineFilmstrip frames={mockFrames} />);
+  it("should display frame thumbnails", async () => {
+    await renderAct(<TimelineFilmstrip frames={mockFrames} />);
 
     const thumbnails = document.querySelectorAll(
       ".timeline-thumb, .filmstrip-thumb",
@@ -56,35 +56,37 @@ describe("TimelineFilmstrip", () => {
     expect(thumbnails.length).toBeGreaterThan(0);
   });
 
-  it("should highlight current frame", () => {
+  it("should highlight current frame", async () => {
     vi.mocked(useSelection).mockReturnValue({
       ...mockSelectionContext,
       selection: { stream: "A", frameIndex: 1 },
     });
 
-    render(<TimelineFilmstrip frames={mockFrames} />);
+    await renderAct(<TimelineFilmstrip frames={mockFrames} />);
 
     // Check that the component renders without error
     expect(document.querySelector(".timeline-filmstrip")).toBeInTheDocument();
   });
 
-  it("should use React.memo for performance", () => {
-    const { rerender } = render(<TimelineFilmstrip frames={mockFrames} />);
+  it("should use React.memo for performance", async () => {
+    const { rerender } = await renderAct(
+      <TimelineFilmstrip frames={mockFrames} />,
+    );
 
     rerender(<TimelineFilmstrip frames={mockFrames} />);
 
     expect(document.querySelector(".timeline-filmstrip")).toBeInTheDocument();
   });
 
-  it("should show frame numbers", () => {
-    render(<TimelineFilmstrip frames={mockFrames} />);
+  it("should show frame numbers", async () => {
+    await renderAct(<TimelineFilmstrip frames={mockFrames} />);
 
     // Frame numbers may be rendered as visual elements; check that filmstrip renders with frames
     expect(document.querySelector(".timeline-filmstrip")).toBeInTheDocument();
   });
 
-  it("should handle empty frames", () => {
-    render(<TimelineFilmstrip frames={[]} />);
+  it("should handle empty frames", async () => {
+    await renderAct(<TimelineFilmstrip frames={[]} />);
 
     expect(document.querySelector(".timeline-filmstrip")).toBeInTheDocument();
   });
@@ -96,15 +98,15 @@ describe("TimelineFilmstrip navigation", () => {
     vi.mocked(useSelection).mockReturnValue(mockSelectionContext);
   });
 
-  it("should support frame navigation", () => {
-    render(<TimelineFilmstrip frames={mockFrames} />);
+  it("should support frame navigation", async () => {
+    await renderAct(<TimelineFilmstrip frames={mockFrames} />);
 
     const filmstrip = document.querySelector(".timeline-filmstrip");
     expect(filmstrip).toBeInTheDocument();
   });
 
-  it("should display scrollbar for many frames", () => {
-    render(<TimelineFilmstrip frames={mockFrames} />);
+  it("should display scrollbar for many frames", async () => {
+    await renderAct(<TimelineFilmstrip frames={mockFrames} />);
 
     // The scrollbar might not exist, but the component should render
     expect(document.querySelector(".timeline-filmstrip")).toBeInTheDocument();
@@ -117,8 +119,8 @@ describe("TimelineFilmstrip visual features", () => {
     vi.mocked(useSelection).mockReturnValue(mockSelectionContext);
   });
 
-  it("should show frame type indicators", () => {
-    render(<TimelineFilmstrip frames={mockFrames} />);
+  it("should show frame type indicators", async () => {
+    await renderAct(<TimelineFilmstrip frames={mockFrames} />);
 
     // Check for frame type classes or elements
     const timelineBars = document.querySelectorAll(
@@ -127,8 +129,8 @@ describe("TimelineFilmstrip visual features", () => {
     expect(timelineBars.length).toBeGreaterThan(0);
   });
 
-  it("should display frame sizes", () => {
-    render(<TimelineFilmstrip frames={mockFrames} />);
+  it("should display frame sizes", async () => {
+    await renderAct(<TimelineFilmstrip frames={mockFrames} />);
 
     expect(document.querySelector(".timeline-filmstrip")).toBeInTheDocument();
   });

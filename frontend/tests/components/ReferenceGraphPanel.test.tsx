@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@/test/test-utils";
+import { act, renderAct, screen, waitFor } from "@/test/test-utils";
 import { ReferenceGraphPanel } from "../ReferenceGraphPanel";
 
 // Same reasoning as BitrateGraphPanel.test.tsx: the component calls `invoke("get_frames")` and
@@ -51,7 +51,7 @@ describe("ReferenceGraphPanel", () => {
   });
 
   it("should render reference graph panel", async () => {
-    render(<ReferenceGraphPanel />);
+    await renderAct(<ReferenceGraphPanel />);
 
     await waitFor(() =>
       expect(screen.getByText("Reference Graph")).toBeInTheDocument(),
@@ -59,14 +59,14 @@ describe("ReferenceGraphPanel", () => {
   });
 
   it("should display GOP stats", async () => {
-    render(<ReferenceGraphPanel />);
+    await renderAct(<ReferenceGraphPanel />);
 
     await waitFor(() => expect(screen.getByText("GOPs")).toBeInTheDocument());
     expect(screen.getByText("Frames")).toBeInTheDocument();
   });
 
   it("should use React.memo for performance", async () => {
-    const { rerender } = render(<ReferenceGraphPanel />);
+    const { rerender } = await renderAct(<ReferenceGraphPanel />);
 
     await waitFor(() =>
       expect(screen.getByText("Reference Graph")).toBeInTheDocument(),
@@ -78,7 +78,7 @@ describe("ReferenceGraphPanel", () => {
   });
 
   it("should render frame overview dots for the loaded stream", async () => {
-    const { container } = render(<ReferenceGraphPanel />);
+    const { container } = await renderAct(<ReferenceGraphPanel />);
 
     await waitFor(() =>
       expect(screen.getByText("Reference Graph")).toBeInTheDocument(),
@@ -89,14 +89,16 @@ describe("ReferenceGraphPanel", () => {
   });
 
   it("should show frame detail on click", async () => {
-    const { container } = render(<ReferenceGraphPanel />);
+    const { container } = await renderAct(<ReferenceGraphPanel />);
 
     await waitFor(() =>
       expect(screen.getByText("Reference Graph")).toBeInTheDocument(),
     );
     const firstFrame = container.querySelector(".rg-frame");
     expect(firstFrame).toBeInTheDocument();
-    firstFrame?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    act(() => {
+      firstFrame?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
 
     await waitFor(() =>
       expect(container.querySelector(".rg-detail")).toBeInTheDocument(),

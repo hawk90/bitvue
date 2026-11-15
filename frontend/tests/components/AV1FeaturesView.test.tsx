@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderAct } from "@/test/test-utils";
 import { AV1FeaturesView } from "../AV1FeaturesView";
 import type { FrameInfo } from "@/types/video";
 import type { Av1FeaturesWireResult } from "../../services/electronBridgeService";
@@ -73,20 +74,24 @@ describe("AV1FeaturesView", () => {
     mockGetAv1Features.mockResolvedValue(mockWireResult);
   });
 
-  it("renders without crashing", () => {
-    render(<AV1FeaturesView frame={mockFrame} width={64} height={64} />);
+  it("renders without crashing", async () => {
+    await renderAct(
+      <AV1FeaturesView frame={mockFrame} width={64} height={64} />,
+    );
     expect(screen.getByText("AV1 Advanced Features")).toBeInTheDocument();
   });
 
-  it("displays frame information", () => {
-    render(<AV1FeaturesView frame={mockFrame} width={64} height={64} />);
+  it("displays frame information", async () => {
+    await renderAct(
+      <AV1FeaturesView frame={mockFrame} width={64} height={64} />,
+    );
 
     expect(screen.getByText("Frame 100")).toBeInTheDocument();
     expect(screen.getByText("P")).toBeInTheDocument();
   });
 
-  it("displays CDEF section when enabled", () => {
-    render(
+  it("displays CDEF section when enabled", async () => {
+    await renderAct(
       <AV1FeaturesView
         frame={mockFrame}
         width={64}
@@ -101,8 +106,8 @@ describe("AV1FeaturesView", () => {
     expect(screen.getByText(/Blocks:/)).toBeInTheDocument();
   });
 
-  it("displays Loop Restoration section when enabled", () => {
-    render(
+  it("displays Loop Restoration section when enabled", async () => {
+    await renderAct(
       <AV1FeaturesView
         frame={mockFrame}
         width={64}
@@ -115,7 +120,7 @@ describe("AV1FeaturesView", () => {
   });
 
   it("displays Film Grain section when enabled", async () => {
-    render(
+    await renderAct(
       <AV1FeaturesView
         frame={mockFrame}
         width={64}
@@ -130,7 +135,7 @@ describe("AV1FeaturesView", () => {
   });
 
   it("displays Super Resolution section when enabled", async () => {
-    render(
+    await renderAct(
       <AV1FeaturesView
         frame={mockFrame}
         width={64}
@@ -145,7 +150,7 @@ describe("AV1FeaturesView", () => {
   });
 
   it("displays film grain parameters", async () => {
-    render(
+    await renderAct(
       <AV1FeaturesView
         frame={mockFrame}
         width={64}
@@ -158,16 +163,18 @@ describe("AV1FeaturesView", () => {
     expect(screen.getByText(/AR Coeff Lag:/)).toBeInTheDocument();
   });
 
-  it("displays legend", () => {
-    render(<AV1FeaturesView frame={mockFrame} width={64} height={64} />);
+  it("displays legend", async () => {
+    await renderAct(
+      <AV1FeaturesView frame={mockFrame} width={64} height={64} />,
+    );
 
     expect(screen.getByText(/CDEF Direction/)).toBeInTheDocument();
     expect(screen.getByText(/Wiener Filter/)).toBeInTheDocument();
     expect(screen.getByText(/SgrProj Filter/)).toBeInTheDocument();
   });
 
-  it("handles null frame gracefully", () => {
-    render(<AV1FeaturesView frame={null} width={64} height={64} />);
+  it("handles null frame gracefully", async () => {
+    await renderAct(<AV1FeaturesView frame={null} width={64} height={64} />);
 
     expect(screen.getByText("No frame selected")).toBeInTheDocument();
   });

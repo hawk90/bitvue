@@ -98,11 +98,13 @@ describe("useWelcomeActions", () => {
     });
     expect(result.current.isOpening).toBe(true);
 
-    reject(new Error("open failed"));
-    // handleOpenFile itself doesn't catch -- the underlying onOpenFile (real: openFileAtPath's
-    // own try/catch) is what's responsible for not throwing. This hook only guarantees the
-    // `finally` cleanup runs regardless.
-    await expect(callPromise).rejects.toThrow("open failed");
+    await act(async () => {
+      reject(new Error("open failed"));
+      // handleOpenFile itself doesn't catch -- the underlying onOpenFile (real: openFileAtPath's
+      // own try/catch) is what's responsible for not throwing. This hook only guarantees the
+      // `finally` cleanup runs regardless.
+      await expect(callPromise).rejects.toThrow("open failed");
+    });
     await waitFor(() => expect(result.current.isOpening).toBe(false));
   });
 

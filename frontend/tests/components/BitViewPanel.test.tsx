@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@/test/test-utils";
+import { renderAct, screen } from "@/test/test-utils";
 import { BitViewPanel } from "../BitViewPanel";
 
 // BitViewPanel reads useFileState/useCurrentFrame from the StreamDataContext barrel directly
@@ -29,34 +29,34 @@ vi.mock("../../contexts/StreamDataContext", () => ({
 }));
 
 describe("BitViewPanel", () => {
-  it("should render bit view panel", () => {
-    render(<BitViewPanel />);
+  it("should render bit view panel", async () => {
+    await renderAct(<BitViewPanel />);
 
     expect(screen.getByText("Bit View")).toBeInTheDocument();
   });
 
-  it("should render frame navigation controls", () => {
-    render(<BitViewPanel />);
+  it("should render frame navigation controls", async () => {
+    await renderAct(<BitViewPanel />);
 
     expect(screen.getByText(/Frame 0/)).toBeInTheDocument();
   });
 
-  it("should use React.memo for performance", () => {
-    const { rerender } = render(<BitViewPanel />);
+  it("should use React.memo for performance", async () => {
+    const { rerender } = await renderAct(<BitViewPanel />);
 
     rerender(<BitViewPanel />);
 
     expect(screen.getByText("Bit View")).toBeInTheDocument();
   });
 
-  it("should render pin button", () => {
-    render(<BitViewPanel />);
+  it("should render pin button", async () => {
+    await renderAct(<BitViewPanel />);
 
     expect(screen.getByRole("button", { name: /pin/i })).toBeInTheDocument();
   });
 
   it("should show a load-failure state when no real bridge is available", async () => {
-    render(<BitViewPanel />);
+    await renderAct(<BitViewPanel />);
 
     // No window.bitvue in the test environment, so getFrameSyntax rejects -- BitViewPanel
     // surfaces this as a real error state rather than crashing, same contract every other

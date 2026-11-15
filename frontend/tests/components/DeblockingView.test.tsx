@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@/test/test-utils";
+import { renderAct, screen } from "@/test/test-utils";
 import { DeblockingView } from "../DeblockingView";
 import type { FrameInfo } from "@/types/video";
 
@@ -24,8 +24,8 @@ describe("DeblockingView", () => {
     ref_frames: [99],
   };
 
-  it("renders without crashing", () => {
-    render(
+  it("renders without crashing", async () => {
+    await renderAct(
       <DeblockingView
         frame={mockFrame}
         width={TEST_WIDTH}
@@ -36,8 +36,8 @@ describe("DeblockingView", () => {
     expect(screen.getByText("Deblocking Filter Analysis")).toBeInTheDocument();
   });
 
-  it("displays frame information", () => {
-    render(
+  it("displays frame information", async () => {
+    await renderAct(
       <DeblockingView
         frame={mockFrame}
         width={TEST_WIDTH}
@@ -51,8 +51,8 @@ describe("DeblockingView", () => {
     expect(screen.getByText("hevc")).toBeInTheDocument();
   });
 
-  it("displays deblocking statistics", () => {
-    render(
+  it("displays deblocking statistics", async () => {
+    await renderAct(
       <DeblockingView
         frame={mockFrame}
         width={TEST_WIDTH}
@@ -66,8 +66,8 @@ describe("DeblockingView", () => {
     expect(screen.getByText(/^Filtered:$/)).toBeInTheDocument();
   });
 
-  it("displays deblocking parameters", () => {
-    render(
+  it("displays deblocking parameters", async () => {
+    await renderAct(
       <DeblockingView
         frame={mockFrame}
         width={TEST_WIDTH}
@@ -82,8 +82,8 @@ describe("DeblockingView", () => {
     expect(screen.getByText(/Sharpness:/)).toBeInTheDocument();
   });
 
-  it("displays codec-specific notes for AV1", () => {
-    render(
+  it("displays codec-specific notes for AV1", async () => {
+    await renderAct(
       <DeblockingView
         frame={mockFrame}
         width={TEST_WIDTH}
@@ -97,8 +97,8 @@ describe("DeblockingView", () => {
     ).toBeInTheDocument();
   });
 
-  it("displays codec-specific notes for HEVC", () => {
-    render(
+  it("displays codec-specific notes for HEVC", async () => {
+    await renderAct(
       <DeblockingView
         frame={mockFrame}
         width={TEST_WIDTH}
@@ -110,8 +110,8 @@ describe("DeblockingView", () => {
     expect(screen.getByText(/HEVC.*8x8 block boundaries/i)).toBeInTheDocument();
   });
 
-  it("displays codec-specific notes for lowercase codec strings too (real activeCodec value from the sidecar is lowercase, e.g. 'hevc' not 'HEVC')", () => {
-    render(
+  it("displays codec-specific notes for lowercase codec strings too (real activeCodec value from the sidecar is lowercase, e.g. 'hevc' not 'HEVC')", async () => {
+    await renderAct(
       <DeblockingView
         frame={mockFrame}
         width={TEST_WIDTH}
@@ -123,8 +123,8 @@ describe("DeblockingView", () => {
     expect(screen.getByText(/HEVC.*8x8 block boundaries/i)).toBeInTheDocument();
   });
 
-  it("displays legend", () => {
-    render(
+  it("displays legend", async () => {
+    await renderAct(
       <DeblockingView
         frame={mockFrame}
         width={TEST_WIDTH}
@@ -140,8 +140,8 @@ describe("DeblockingView", () => {
     expect(screen.getByText("Not Filtered")).toBeInTheDocument();
   });
 
-  it("handles null frame gracefully", () => {
-    render(
+  it("handles null frame gracefully", async () => {
+    await renderAct(
       <DeblockingView
         frame={null}
         width={TEST_WIDTH}

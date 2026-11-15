@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@/test/test-utils";
+import { act, renderAct, screen, fireEvent } from "@/test/test-utils";
 import { SyntaxDetailPanel } from "../SyntaxDetailPanel";
 
 const mockFrames = [
@@ -65,14 +65,14 @@ vi.mock("@/contexts/FileStateContext", () => ({
 
 describe("SyntaxDetailPanel", () => {
   describe("SyntaxDetailPanel", () => {
-    it("should render syntax detail panel", () => {
-      render(<SyntaxDetailPanel />);
+    it("should render syntax detail panel", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       expect(screen.getByText("Syntax Detail")).toBeInTheDocument();
     });
 
-    it("should render all tab buttons", () => {
-      render(<SyntaxDetailPanel />);
+    it("should render all tab buttons", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       expect(screen.getByText("Frame")).toBeInTheDocument();
       expect(screen.getByText("Refs")).toBeInTheDocument();
@@ -80,26 +80,28 @@ describe("SyntaxDetailPanel", () => {
       expect(screen.getByText("Search")).toBeInTheDocument();
     });
 
-    it("should show Frame tab by default", () => {
-      render(<SyntaxDetailPanel />);
+    it("should show Frame tab by default", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       const frameTab = screen.getByText("Frame");
       const frameButton = frameTab.closest("button");
       expect(frameButton).toHaveClass("active");
     });
 
-    it("should switch tabs on click", () => {
-      render(<SyntaxDetailPanel />);
+    it("should switch tabs on click", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       const refsTab = screen.getByText("Refs");
-      fireEvent.click(refsTab);
+      await act(async () => {
+        fireEvent.click(refsTab);
+      });
 
       const refsButton = refsTab.closest("button");
       expect(refsButton).toHaveClass("active");
     });
 
-    it("should render tab icons", () => {
-      const { container } = render(<SyntaxDetailPanel />);
+    it("should render tab icons", async () => {
+      const { container } = await renderAct(<SyntaxDetailPanel />);
 
       expect(container.querySelector(".codicon-file")).toBeInTheDocument();
       // "Refs" tab's icon was renamed from "database" to "list-tree" (still lives at the same
@@ -109,16 +111,16 @@ describe("SyntaxDetailPanel", () => {
       expect(container.querySelector(".codicon-search")).toBeInTheDocument();
     });
 
-    it("should use stable callbacks (useCallback optimization)", () => {
-      const { rerender } = render(<SyntaxDetailPanel />);
+    it("should use stable callbacks (useCallback optimization)", async () => {
+      const { rerender } = await renderAct(<SyntaxDetailPanel />);
 
       rerender(<SyntaxDetailPanel />);
 
       expect(screen.getByText("Syntax Detail")).toBeInTheDocument();
     });
 
-    it("should use React.memo for performance", () => {
-      const { rerender } = render(<SyntaxDetailPanel />);
+    it("should use React.memo for performance", async () => {
+      const { rerender } = await renderAct(<SyntaxDetailPanel />);
 
       rerender(<SyntaxDetailPanel />);
 
@@ -127,26 +129,28 @@ describe("SyntaxDetailPanel", () => {
   });
 
   describe("SyntaxDetailPanel tabs", () => {
-    it("should display Frame tab content", () => {
-      render(<SyntaxDetailPanel />);
+    it("should display Frame tab content", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       // Frame tab is active by default
       const frameTab = screen.getByText("Frame");
       expect(frameTab).toBeInTheDocument();
     });
 
-    it("should display Refs tab content", () => {
-      render(<SyntaxDetailPanel />);
+    it("should display Refs tab content", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       const refsTab = screen.getByText("Refs");
-      fireEvent.click(refsTab);
+      await act(async () => {
+        fireEvent.click(refsTab);
+      });
 
       // Should switch to refs tab
       expect(refsTab.closest("button")).toHaveClass("active");
     });
 
-    it("should display Stats tab content", () => {
-      render(<SyntaxDetailPanel />);
+    it("should display Stats tab content", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       const statsTab = screen.getByText("Stats");
       fireEvent.click(statsTab);
@@ -154,8 +158,8 @@ describe("SyntaxDetailPanel", () => {
       expect(statsTab.closest("button")).toHaveClass("active");
     });
 
-    it("should display Search tab content", () => {
-      render(<SyntaxDetailPanel />);
+    it("should display Search tab content", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       const searchTab = screen.getByText("Search");
       fireEvent.click(searchTab);
@@ -165,8 +169,8 @@ describe("SyntaxDetailPanel", () => {
   });
 
   describe("SyntaxDetailPanel search", () => {
-    it("should filter by frame type", () => {
-      render(<SyntaxDetailPanel />);
+    it("should filter by frame type", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       const searchTab = screen.getByText("Search");
       fireEvent.click(searchTab);
@@ -180,8 +184,8 @@ describe("SyntaxDetailPanel", () => {
       }
     });
 
-    it("should filter by frame index", () => {
-      render(<SyntaxDetailPanel />);
+    it("should filter by frame index", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       const searchTab = screen.getByText("Search");
       fireEvent.click(searchTab);
@@ -194,8 +198,8 @@ describe("SyntaxDetailPanel", () => {
       }
     });
 
-    it("should clear search results", () => {
-      render(<SyntaxDetailPanel />);
+    it("should clear search results", async () => {
+      await renderAct(<SyntaxDetailPanel />);
 
       const searchTab = screen.getByText("Search");
       fireEvent.click(searchTab);
@@ -214,17 +218,17 @@ describe("SyntaxDetailPanel", () => {
   });
 
   describe("SyntaxDetailPanel edge cases", () => {
-    it("should handle empty frames array", () => {
+    it("should handle empty frames array", async () => {
       // Empty frames array is already mocked at the top
       // Just verify the component renders
-      render(<SyntaxDetailPanel />);
+      await renderAct(<SyntaxDetailPanel />);
 
       expect(screen.getByText("Syntax Detail")).toBeInTheDocument();
     });
 
-    it("should handle null current frame", () => {
+    it("should handle null current frame", async () => {
       // The component handles null currentFrame internally
-      render(<SyntaxDetailPanel />);
+      await renderAct(<SyntaxDetailPanel />);
 
       expect(screen.getByText("Syntax Detail")).toBeInTheDocument();
     });

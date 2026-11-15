@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
+import { act, render, screen, fireEvent, waitFor } from "@/test/test-utils";
 import App from "@/App";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useMode } from "@/contexts/ModeContext";
@@ -368,8 +368,11 @@ describe("App component", () => {
     });
   });
 
-  it("should render App component", () => {
-    render(<App />);
+  it("should render App component", async () => {
+    // First render of the lazily-loaded tree suspends; let it resolve inside act().
+    await act(async () => {
+      render(<App />);
+    });
 
     expect(document.querySelector(".app")).toBeInTheDocument();
   });
