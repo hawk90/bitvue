@@ -57,7 +57,7 @@ mod codec_tests {
             wrap_count: 0,
             is_wrap_boundary: false,
         });
-        assert_eq!(evidence.codec(), Codec::H264);
+        assert_eq!(evidence.codec(), Codec::Avc);
     }
 
     #[test]

@@ -11,34 +11,27 @@ use crate::BitvueError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Codec identifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Codec {
-    AV1,
-    H264,
-    HEVC,
-    VP9,
-    VVC,
-    AVS3,
+pub use crate::codec::Codec;
+
+/// Short display name of a codec as the frame extractors report it.
+pub fn codec_name(codec: Codec) -> &'static str {
+    match codec {
+        Codec::Av1 => "AV1",
+        Codec::Avc => "H.264",
+        Codec::Hevc => "HEVC",
+        Codec::Vp9 => "VP9",
+        Codec::Vvc => "VVC",
+        Codec::Avs3 => "AVS3",
+        Codec::Mpeg2 => "MPEG-2",
+        Codec::JpegXs => "JPEG XS",
+        Codec::Vc3 => "VC-3",
+        Codec::Unknown => "Unknown",
+    }
 }
 
-impl Codec {
-    /// Get codec name
-    pub fn name(&self) -> &'static str {
-        match self {
-            Codec::AV1 => "AV1",
-            Codec::H264 => "H.264",
-            Codec::HEVC => "HEVC",
-            Codec::VP9 => "VP9",
-            Codec::VVC => "VVC",
-            Codec::AVS3 => "AVS3",
-        }
-    }
-
-    /// Check if codec is supported for extraction
-    pub fn is_supported(&self) -> bool {
-        matches!(self, Codec::AV1)
-    }
+/// Whether frames can be extracted for the codec (only AV1 so far).
+pub fn is_extraction_supported(codec: Codec) -> bool {
+    matches!(codec, Codec::Av1)
 }
 
 /// Extracted frame metadata
@@ -294,7 +287,7 @@ impl Default for Av1Extractor {
 
 impl FrameExtractor for Av1Extractor {
     fn codec(&self) -> Codec {
-        Codec::AV1
+        Codec::Av1
     }
 
     fn extract(&self, data: &[u8]) -> ExtractionResult {
@@ -341,7 +334,7 @@ impl Default for H264Extractor {
 
 impl FrameExtractor for H264Extractor {
     fn codec(&self) -> Codec {
-        Codec::H264
+        Codec::Avc
     }
 
     fn extract(&self, _data: &[u8]) -> ExtractionResult {
@@ -368,7 +361,7 @@ impl Default for HevcExtractor {
 
 impl FrameExtractor for HevcExtractor {
     fn codec(&self) -> Codec {
-        Codec::HEVC
+        Codec::Hevc
     }
 
     fn extract(&self, _data: &[u8]) -> ExtractionResult {
@@ -395,7 +388,7 @@ impl Default for Vp9Extractor {
 
 impl FrameExtractor for Vp9Extractor {
     fn codec(&self) -> Codec {
-        Codec::VP9
+        Codec::Vp9
     }
 
     fn extract(&self, _data: &[u8]) -> ExtractionResult {
@@ -422,7 +415,7 @@ impl Default for VvcExtractor {
 
 impl FrameExtractor for VvcExtractor {
     fn codec(&self) -> Codec {
-        Codec::VVC
+        Codec::Vvc
     }
 
     fn extract(&self, _data: &[u8]) -> ExtractionResult {
@@ -449,7 +442,7 @@ impl Default for Avs3Extractor {
 
 impl FrameExtractor for Avs3Extractor {
     fn codec(&self) -> Codec {
-        Codec::AVS3
+        Codec::Avs3
     }
 
     fn extract(&self, _data: &[u8]) -> ExtractionResult {
@@ -500,12 +493,12 @@ impl ExtractorRegistry {
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
 
-        registry.register(Codec::AV1, Box::new(Av1Extractor::new()));
-        registry.register(Codec::H264, Box::new(H264Extractor::new()));
-        registry.register(Codec::HEVC, Box::new(HevcExtractor::new()));
-        registry.register(Codec::VP9, Box::new(Vp9Extractor::new()));
-        registry.register(Codec::VVC, Box::new(VvcExtractor::new()));
-        registry.register(Codec::AVS3, Box::new(Avs3Extractor::new()));
+        registry.register(Codec::Av1, Box::new(Av1Extractor::new()));
+        registry.register(Codec::Avc, Box::new(H264Extractor::new()));
+        registry.register(Codec::Hevc, Box::new(HevcExtractor::new()));
+        registry.register(Codec::Vp9, Box::new(Vp9Extractor::new()));
+        registry.register(Codec::Vvc, Box::new(VvcExtractor::new()));
+        registry.register(Codec::Avs3, Box::new(Avs3Extractor::new()));
 
         registry
     }
@@ -523,19 +516,19 @@ mod tests {
 
     #[test]
     fn test_codec_names() {
-        assert_eq!(Codec::AV1.name(), "AV1");
-        assert_eq!(Codec::H264.name(), "H.264");
-        assert_eq!(Codec::HEVC.name(), "HEVC");
-        assert_eq!(Codec::VP9.name(), "VP9");
-        assert_eq!(Codec::VVC.name(), "VVC");
-        assert_eq!(Codec::AVS3.name(), "AVS3");
+        assert_eq!(codec_name(Codec::Av1), "AV1");
+        assert_eq!(codec_name(Codec::Avc), "H.264");
+        assert_eq!(codec_name(Codec::Hevc), "HEVC");
+        assert_eq!(codec_name(Codec::Vp9), "VP9");
+        assert_eq!(codec_name(Codec::Vvc), "VVC");
+        assert_eq!(codec_name(Codec::Avs3), "AVS3");
     }
 
     #[test]
     fn test_codec_support() {
-        assert!(Codec::AV1.is_supported());
-        assert!(!Codec::H264.is_supported());
-        assert!(!Codec::HEVC.is_supported());
+        assert!(is_extraction_supported(Codec::Av1));
+        assert!(!is_extraction_supported(Codec::Avc));
+        assert!(!is_extraction_supported(Codec::Hevc));
     }
 
     #[test]
@@ -586,25 +579,25 @@ mod tests {
     #[test]
     fn test_registry_creation() {
         let registry = ExtractorRegistry::new();
-        assert!(!registry.supports(Codec::AV1));
+        assert!(!registry.supports(Codec::Av1));
     }
 
     #[test]
     fn test_registry_with_defaults() {
         let registry = ExtractorRegistry::with_defaults();
-        assert!(registry.supports(Codec::AV1));
-        assert!(registry.supports(Codec::H264));
-        assert!(registry.supports(Codec::HEVC));
+        assert!(registry.supports(Codec::Av1));
+        assert!(registry.supports(Codec::Avc));
+        assert!(registry.supports(Codec::Hevc));
     }
 
     #[test]
     fn test_registry_register_get() {
         let mut registry = ExtractorRegistry::new();
-        registry.register(Codec::AV1, Box::new(Av1Extractor::new()));
+        registry.register(Codec::Av1, Box::new(Av1Extractor::new()));
 
-        assert!(registry.supports(Codec::AV1));
-        assert!(registry.get(Codec::AV1).is_some());
-        assert!(registry.get(Codec::H264).is_none());
+        assert!(registry.supports(Codec::Av1));
+        assert!(registry.get(Codec::Av1).is_some());
+        assert!(registry.get(Codec::Avc).is_none());
     }
 
     #[test]
@@ -612,8 +605,8 @@ mod tests {
         let registry = ExtractorRegistry::with_defaults();
         let codecs = registry.supported_codecs();
 
-        assert!(codecs.contains(&Codec::AV1));
-        assert!(codecs.contains(&Codec::H264));
+        assert!(codecs.contains(&Codec::Av1));
+        assert!(codecs.contains(&Codec::Avc));
         assert_eq!(codecs.len(), 6);
     }
 

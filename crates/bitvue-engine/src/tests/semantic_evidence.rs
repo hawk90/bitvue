@@ -44,7 +44,7 @@ fn test_h264_poc_evidence() {
     };
 
     let evidence = SemanticEvidence::H264Poc(poc);
-    assert_eq!(evidence.codec(), Codec::H264);
+    assert_eq!(evidence.codec(), Codec::Avc);
     assert!(evidence.description().contains("POC"));
 }
 
