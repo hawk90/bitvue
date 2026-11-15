@@ -31,7 +31,7 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 use crate::decoder::{DecodeError, DecodedFrame, Result};
-use crate::traits::{CodecType, Decoder, DecoderCapabilities};
+use crate::traits::{Codec, Decoder, DecoderCapabilities};
 
 use convert::MAX_FRAME_DIMENSION;
 use handle::ErrorKind;
@@ -188,13 +188,13 @@ fn spawn_worker() -> Result<Worker> {
 }
 
 impl Decoder for VvcDecoder {
-    fn codec_type(&self) -> CodecType {
-        CodecType::H266
+    fn codec_type(&self) -> Codec {
+        Codec::Vvc
     }
 
     fn capabilities(&self) -> DecoderCapabilities {
         DecoderCapabilities {
-            codec: CodecType::H266,
+            codec: Codec::Vvc,
             max_width: MAX_FRAME_DIMENSION,
             max_height: MAX_FRAME_DIMENSION,
             supported_bit_depths: vec![8, 10, 12],

@@ -5,7 +5,7 @@ use ffmpeg_next as ffmpeg;
 
 use crate::decoder::{DecodeError, DecodedFrame, FrameType, Result};
 use crate::plane_utils;
-use crate::traits::{CodecType, Decoder, DecoderCapabilities};
+use crate::traits::{Codec, Decoder, DecoderCapabilities};
 use std::collections::VecDeque;
 use tracing::{debug, error, warn};
 
@@ -51,7 +51,7 @@ use ffmpeg::{codec, packet};
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegDecoder {
     /// Codec type (H264 or H265)
-    codec_type: CodecType,
+    codec_type: Codec,
     /// FFmpeg decoder context
     decoder: decoder::Video,
     /// Scaler context for converting to YUV420P
@@ -72,15 +72,15 @@ pub struct FfmpegDecoder {
 #[cfg(feature = "ffmpeg")]
 impl FfmpegDecoder {
     /// Create a new FFmpeg decoder for the specified codec
-    pub fn new(codec_type: CodecType) -> Result<Self> {
+    pub fn new(codec_type: Codec) -> Result<Self> {
         // Initialize FFmpeg (only needs to be called once, but safe to call multiple times)
         ffmpeg::init().map_err(|e| DecodeError::Init(format!("FFmpeg init failed: {}", e)))?;
 
         // Get codec ID
         let codec_id = match codec_type {
-            CodecType::H264 => codec::Id::H264,
-            CodecType::H265 => codec::Id::HEVC,
-            CodecType::VP9 => codec::Id::VP9,
+            Codec::Avc => codec::Id::H264,
+            Codec::Hevc => codec::Id::HEVC,
+            Codec::Vp9 => codec::Id::VP9,
             _ => {
                 return Err(DecodeError::Init(format!(
                     "Unsupported codec type for FFmpeg decoder: {}",
@@ -349,7 +349,7 @@ impl FfmpegDecoder {
 
 #[cfg(feature = "ffmpeg")]
 impl Decoder for FfmpegDecoder {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.codec_type
     }
 
@@ -460,14 +460,14 @@ pub struct H264Decoder {
 impl H264Decoder {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            inner: FfmpegDecoder::new(CodecType::H264)?,
+            inner: FfmpegDecoder::new(Codec::Avc)?,
         })
     }
 }
 
 #[cfg(feature = "ffmpeg")]
 impl Decoder for H264Decoder {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.inner.codec_type()
     }
 
@@ -511,14 +511,14 @@ pub struct HevcDecoder {
 impl HevcDecoder {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            inner: FfmpegDecoder::new(CodecType::H265)?,
+            inner: FfmpegDecoder::new(Codec::Hevc)?,
         })
     }
 }
 
 #[cfg(feature = "ffmpeg")]
 impl Decoder for HevcDecoder {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.inner.codec_type()
     }
 
@@ -562,14 +562,14 @@ pub struct Vp9Decoder {
 impl Vp9Decoder {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            inner: FfmpegDecoder::new(CodecType::VP9)?,
+            inner: FfmpegDecoder::new(Codec::Vp9)?,
         })
     }
 }
 
 #[cfg(feature = "ffmpeg")]
 impl Decoder for Vp9Decoder {
-    fn codec_type(&self) -> CodecType {
+    fn codec_type(&self) -> Codec {
         self.inner.codec_type()
     }
 

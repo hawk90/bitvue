@@ -234,13 +234,13 @@ pub struct Av1Decoder {
 
 // Implement the universal Decoder trait for Av1Decoder
 impl crate::traits::Decoder for Av1Decoder {
-    fn codec_type(&self) -> crate::traits::CodecType {
-        crate::traits::CodecType::AV1
+    fn codec_type(&self) -> crate::traits::Codec {
+        crate::traits::Codec::Av1
     }
 
     fn capabilities(&self) -> crate::traits::DecoderCapabilities {
         crate::traits::DecoderCapabilities {
-            codec: crate::traits::CodecType::AV1,
+            codec: crate::traits::Codec::Av1,
             max_width: 8192,
             max_height: 8192,
             supported_bit_depths: vec![8, 10, 12],
