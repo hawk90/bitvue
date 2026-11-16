@@ -559,23 +559,23 @@ fn parse_loop_filter(reader: &mut BitReader, header: &mut FrameHeader) -> Result
         if header.loop_filter.mode_ref_delta_update {
             // Reference deltas (6-bit signed: range [-64, +63])
             // The 6-bit signed read already ensures valid range per VP9 spec
-            for i in 0..4 {
+            for slot in &mut header.loop_filter.ref_deltas {
                 let update = reader.read_literal(1)? != 0;
                 if update {
                     let delta = read_signed_literal(reader, 6)?;
                     // Valid range is already enforced by 6-bit read
-                    header.loop_filter.ref_deltas[i] = delta;
+                    *slot = delta;
                 }
             }
 
             // Mode deltas (6-bit signed: range [-64, +63])
             // The 6-bit signed read already ensures valid range per VP9 spec
-            for i in 0..2 {
+            for slot in &mut header.loop_filter.mode_deltas {
                 let update = reader.read_literal(1)? != 0;
                 if update {
                     let delta = read_signed_literal(reader, 6)?;
                     // Valid range is already enforced by 6-bit read
-                    header.loop_filter.mode_deltas[i] = delta;
+                    *slot = delta;
                 }
             }
         }

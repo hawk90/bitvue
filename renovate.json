@@ -127,6 +127,19 @@
       "allowedVersions": "<25"
     },
     {
+      "description": "The minimatch entries in package.json `overrides` are hand-picked to keep npm's tree valid: bitvue-desktop pins app-builder-lib / @electron/universal to ^11 but dir-compare to ^3 (it needs the 3.x API), and frontend pins @typescript-eslint/typescript-estree to ^11. Renovate saw the nested dir-compare entry as a plain dependency, bumped it ^3.0.5 -> ^11.0.8 and left the lock file unable to satisfy `npm ci`. The lock file's resolved versions still move through lock-file maintenance",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchDepTypes": [
+        "overrides"
+      ],
+      "matchPackageNames": [
+        "minimatch"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Rust toolchain pin (rust-toolchain.toml): manual, one PR per release",
       "matchDepNames": [
         "rust-toolchain"

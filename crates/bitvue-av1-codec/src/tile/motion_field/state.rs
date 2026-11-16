@@ -55,9 +55,9 @@ impl MotionFieldState {
     /// Saves `cdf` into every slot set in `refresh_frame_flags`.
     pub fn store_cdf(&mut self, refresh_frame_flags: u8, cdf: &crate::symbol::CdfContext) {
         let shared = std::sync::Arc::new(cdf.clone());
-        for slot in 0..8 {
-            if refresh_frame_flags & (1 << slot) != 0 {
-                self.cdfs[slot] = Some(std::sync::Arc::clone(&shared));
+        for (index, slot) in self.cdfs.iter_mut().enumerate() {
+            if refresh_frame_flags & (1 << index) != 0 {
+                *slot = Some(std::sync::Arc::clone(&shared));
             }
         }
     }

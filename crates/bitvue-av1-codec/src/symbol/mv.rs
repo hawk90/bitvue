@@ -36,8 +36,8 @@ impl<'a> SymbolDecoder<'a> {
             }
         } else {
             let mut bits = 1i32 << class;
-            for n in 0..class {
-                bits |= (self.decoder.read_symbol_adaptive(&mut cdfs.class_n[n])? as i32) << n;
+            for (n, cdf) in cdfs.class_n.iter_mut().enumerate().take(class) {
+                bits |= (self.decoder.read_symbol_adaptive(cdf)? as i32) << n;
             }
             up = bits;
             if mv_prec >= 0 {
