@@ -75,7 +75,7 @@ pub fn run(cfg: DecodeConfig) -> Result<()> {
         .with_context(|| format!("Cannot mmap: {}", cfg.file.display()))?;
 
     // Determine effective codec
-    let effective_codec = resolve_codec(&cfg, &file_data);
+    let effective_codec = resolve_codec(&cfg, &file_data)?;
 
     if !cfg.regress {
         println!(
@@ -189,23 +189,29 @@ pub fn run(cfg: DecodeConfig) -> Result<()> {
 
 // ─── Codec resolution ─────────────────────────────────────────────────────────
 
-fn resolve_codec(cfg: &DecodeConfig, data: &[u8]) -> Codec {
+/// The codec to decode as: `--codec-*` if given, else what the container says.
+///
+/// A codec that cannot be told is an error, not a guess: decoding with the wrong one only
+/// produces misleading parse errors further on.
+fn resolve_codec(cfg: &DecodeConfig, data: &[u8]) -> Result<Codec> {
     if let Some(forced) = cfg.force_codec {
-        return forced;
+        return Ok(forced);
     }
-    // Auto-detect from file
     let container = detect_container_format(&cfg.file).unwrap_or(ContainerFormat::Unknown);
-    match container {
-        ContainerFormat::IVF => {
-            // Peek FourCC from IVF header
-            data.get(8..12)
-                .and_then(|fourcc| <&[u8; 4]>::try_from(fourcc).ok())
-                .and_then(Codec::from_ivf_fourcc)
-                .unwrap_or(Codec::Av1) // default
-        }
-        ContainerFormat::AnnexB => Codec::Hevc,
-        _ => Codec::Av1, // fallback
-    }
+    let detected = match container {
+        ContainerFormat::IVF => data
+            .get(8..12)
+            .and_then(|fourcc| <&[u8; 4]>::try_from(fourcc).ok())
+            .and_then(Codec::from_ivf_fourcc),
+        ContainerFormat::AnnexB => Some(Codec::Hevc),
+        _ => None,
+    };
+    detected.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Cannot tell the codec of {}; pass it with --av1, --hevc, --avc, --vp9, --vvc, --mpeg2 or --avs3",
+            cfg.file.display()
+        )
+    })
 }
 
 pub(super) fn codec_name(c: Codec) -> &'static str {
@@ -226,6 +232,50 @@ pub(super) fn codec_name(c: Codec) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cfg_for(name: &str, bytes: &[u8]) -> (tempfile::TempDir, DecodeConfig) {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(name);
+        std::fs::write(&file, bytes).unwrap();
+        (
+            dir,
+            DecodeConfig {
+                file,
+                ..Default::default()
+            },
+        )
+    }
+
+    fn ivf(fourcc: &[u8; 4]) -> Vec<u8> {
+        let mut h = vec![0u8; 32];
+        h[..4].copy_from_slice(b"DKIF");
+        h[8..12].copy_from_slice(fourcc);
+        h
+    }
+
+    #[test]
+    fn an_ivf_names_its_codec() {
+        let data = ivf(b"VP90");
+        let (_d, cfg) = cfg_for("a.ivf", &data);
+        assert_eq!(resolve_codec(&cfg, &data).unwrap(), Codec::Vp9);
+    }
+
+    #[test]
+    fn an_unknown_fourcc_is_an_error() {
+        let data = ivf(b"XXXX");
+        let (_d, cfg) = cfg_for("a.ivf", &data);
+        let e = resolve_codec(&cfg, &data).unwrap_err().to_string();
+        assert!(e.contains("--av1"), "{e}");
+    }
+
+    #[test]
+    fn an_unrecognised_file_is_an_error_unless_a_codec_is_forced() {
+        let data = vec![0xde, 0xad, 0xbe, 0xef];
+        let (_d, mut cfg) = cfg_for("a.bin", &data);
+        assert!(resolve_codec(&cfg, &data).is_err());
+        cfg.force_codec = Some(Codec::Av1);
+        assert_eq!(resolve_codec(&cfg, &data).unwrap(), Codec::Av1);
+    }
 
     #[test]
     fn every_codec_prints_a_distinct_name() {
