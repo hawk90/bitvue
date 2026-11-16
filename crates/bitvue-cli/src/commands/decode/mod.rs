@@ -198,15 +198,10 @@ fn resolve_codec(cfg: &DecodeConfig, data: &[u8]) -> Codec {
     match container {
         ContainerFormat::IVF => {
             // Peek FourCC from IVF header
-            if data.len() >= 12 {
-                match &data[8..12] {
-                    b"AV01" => Codec::Av1,
-                    b"VP90" | b"VP9 " => Codec::Vp9,
-                    _ => Codec::Av1, // default
-                }
-            } else {
-                Codec::Av1
-            }
+            data.get(8..12)
+                .and_then(|fourcc| <&[u8; 4]>::try_from(fourcc).ok())
+                .and_then(Codec::from_ivf_fourcc)
+                .unwrap_or(Codec::Av1) // default
         }
         ContainerFormat::AnnexB => Codec::Hevc,
         _ => Codec::Av1, // fallback
