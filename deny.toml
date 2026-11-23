@@ -9,19 +9,6 @@ ignore = [
     # paste is unmaintained but no safe upgrade exists (RUSTSEC-2024-0436)
     # Used by accesskit_windows, egui_dock, rav1e via ravif
     "RUSTSEC-2024-0436",
-    # gtk-rs GTK3 bindings are unmaintained (tauri dependencies, no safe upgrade)
-    "RUSTSEC-2024-0370",
-    "RUSTSEC-2024-0411",
-    "RUSTSEC-2024-0412",
-    "RUSTSEC-2024-0413",
-    "RUSTSEC-2024-0414",
-    "RUSTSEC-2024-0415",
-    "RUSTSEC-2024-0416",
-    "RUSTSEC-2024-0417",
-    "RUSTSEC-2024-0418",
-    "RUSTSEC-2024-0419",
-    "RUSTSEC-2024-0420",
-    "RUSTSEC-2024-0429",
 ]
 
 [licenses]

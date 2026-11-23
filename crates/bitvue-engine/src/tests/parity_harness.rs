@@ -545,7 +545,7 @@ fn test_harness_full_workflow() {
     harness.record_telemetry(PerfTelemetryEvent {
         event_type: PerfEventType::FrameTime,
         value_ms: 12.0,
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: jiff::Timestamp::now().to_string(),
         context: HashMap::new(),
     });
 
