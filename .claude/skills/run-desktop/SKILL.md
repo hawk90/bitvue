@@ -15,9 +15,10 @@ and exits. **Read the PNG** (Read tool) -- a blank or wrong frame is a failure.
 ```bash
 cargo build -p bitvue-sidecar                       # sidecar the app spawns (target/debug/bitvue-sidecar)
 cd bitvue-desktop && npm run build:electron         # tsc + copy; frontend/dist must exist (cd frontend && npm run build)
+BITVUE_ELECTRON_OFFSCREEN=1 \                       # always: see Gotchas (a visible window gets your real mouse/keys)
 BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH=$PWD/../test_data/av1_aomenc_testsrc2.ivf \
 BITVUE_ELECTRON_SCREENSHOT=/tmp/shot.png \
-  npx electron .                                     # exit 0 and "[screenshot] saved to" = captured
+  npx electron . --disable-gpu                       # exit 0 and "[screenshot] saved to" = captured
 ```
 
 Window is 1280x800 (2560x1600 PNG on retina); `BITVUE_ELECTRON_WINDOW_SIZE=900x600` for the minimum size.
@@ -37,6 +38,9 @@ Window is 1280x800 (2560x1600 PNG on retina); `BITVUE_ELECTRON_WINDOW_SIZE=900x6
 `BITVUE_SIDECAR_BIN=<path>` runs a different sidecar build: copy the binary before and after a change and take the
 same shot with each to compare.
 
+Expected behavior per panel and mode, and what has been verified so far, is in `docs/USER_MANUAL.md`: compare the screenshot
+against it, and fill in or correct the cell you checked.
+
 ## What exists per area
 
 | Area | Where to look | Source of truth |
@@ -52,9 +56,19 @@ AV1 has F1 Coding Flow ... F5 Loop Filter, F6 CDEF, F10 YUV and overlays HM/BT/E
 
 ## Gotchas
 
-- **The capture races with key/click hooks (#447).** About 1 in 8 runs shows the state before the key was applied
-  (or fails with `UnknownVizError`). Take the same shot at least 3 times and compare file sizes or `cmp` before
-  concluding anything from a difference.
+- **Use `BITVUE_ELECTRON_OFFSCREEN=1`.** In the default window mode the window really appears on screen, so your own
+  mouse and keyboard land in it: hover tooltips get captured and the current frame can change by itself (#447). With
+  offscreen the same shot came out byte-identical every time. Still take each shot twice and compare sizes.
+- **`--disable-gpu` shows the picture.** With WebGPU active the decoded picture is drawn on a WebGPU canvas under the 2D canvas, and
+  screenshot capture does not include it: the player is black while overlays still show (#456). `--disable-gpu` makes WebGPU fail
+  (`Failed to create WebGPU Context Provider`) and the app draws the picture on the 2D canvas, so it appears in the capture.
+- **Moving to a frame:** `KEY=ArrowRight,ArrowRight,...` works (`KEY=ArrowRight,ArrowRight,F2` = frame 2 in Predictions). Clicking a thumbnail
+  works too, but the selector must be narrow: `data-frame-index` also exists on the timeline cells, and `CLICK_SELECTOR` uses the first match,
+  so use `.filmstrip-frame[data-frame-index="N"]`.
+- **Clicks carry no coordinates** (`CLICK_SELECTOR` sends `mousedown` and `click` only), so a position inside a canvas (selecting a block)
+  cannot be clicked (#490). `MOUSEMOVE` and `CONTEXT_MENU` do use the element's center.
+- **Tab labels are the DOM text, not what you see:** CSS shows `REFS` but the text is `Refs`, so use
+  `CLICK_TAB=Refs` / `Stats` / `Search` / `Frame`. A wrong label aborts the capture ("tab not found").
 - A clip the decoder refuses (for example a stream with its sequence header removed) opens with every frame
   failing to load; the screenshot proves nothing about data in that case.
 - Native menu items are not DOM elements: use `DISPATCH`, not `CLICK_TAB`.
