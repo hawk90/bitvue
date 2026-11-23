@@ -9,10 +9,6 @@ ignore = [
     # paste is unmaintained but no safe upgrade exists (RUSTSEC-2024-0436)
     # Used by accesskit_windows, egui_dock, rav1e via ravif
     "RUSTSEC-2024-0436",
-    # chrono is unmaintained, all versions affected, no safe upgrade (RUSTSEC-2026-0543).
-    # Only bitvue-engine uses it, for UTC timestamps (Utc::now/to_rfc3339/format).
-    # Replace with jiff or time, then drop this entry.
-    "RUSTSEC-2026-0543",
 ]
 
 [licenses]
