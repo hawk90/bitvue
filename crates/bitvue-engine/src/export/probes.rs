@@ -52,7 +52,7 @@ impl SemanticProbeRunner {
         let probe_id = format!(
             "hit_test_{}_{}",
             panel,
-            chrono::Utc::now().timestamp_millis()
+            jiff::Timestamp::now().as_millisecond()
         );
         let mut violations = Vec::new();
 
@@ -70,7 +70,7 @@ impl SemanticProbeRunner {
 
         let result = ProbeResult {
             probe_id: probe_id.clone(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: jiff::Timestamp::now().to_string(),
             stream_id: self.stream_id.clone(),
             codec: self.codec.clone(),
             workspace: self.workspace.clone(),
@@ -102,7 +102,7 @@ impl SemanticProbeRunner {
         let probe_id = format!(
             "selection_{}_{}",
             origin_panel,
-            chrono::Utc::now().timestamp_millis()
+            jiff::Timestamp::now().as_millisecond()
         );
         let violations = Vec::new();
 
@@ -123,7 +123,7 @@ impl SemanticProbeRunner {
 
         let result = ProbeResult {
             probe_id: probe_id.clone(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: jiff::Timestamp::now().to_string(),
             stream_id: self.stream_id.clone(),
             codec: self.codec.clone(),
             workspace: self.workspace.clone(),
@@ -151,13 +151,13 @@ impl SemanticProbeRunner {
         let probe_id = format!(
             "tooltip_{}_{}",
             entity.id,
-            chrono::Utc::now().timestamp_millis()
+            jiff::Timestamp::now().as_millisecond()
         );
         let violations = Vec::new();
 
         let result = ProbeResult {
             probe_id: probe_id.clone(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: jiff::Timestamp::now().to_string(),
             stream_id: self.stream_id.clone(),
             codec: self.codec.clone(),
             workspace: self.workspace.clone(),

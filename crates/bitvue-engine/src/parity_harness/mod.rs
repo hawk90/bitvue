@@ -1289,7 +1289,7 @@ impl ParityHarness {
             .collect();
 
         ParityReport {
-            generated_at: chrono::Utc::now().to_rfc3339(),
+            generated_at: jiff::Timestamp::now().to_string(),
             matrix_version: self.config.matrix.meta.version.clone(),
             overall_score: score.percentage,
             parity_ready: score.parity_ready,
