@@ -57,6 +57,19 @@ function getFrameQP(frame: FrameInfo, maxSize: number): number {
   return Math.round(51 * (1 - normalizedSize * 0.7));
 }
 
+// H.264/HEVC QP tops out at 51; AV1's base_q_idx goes to 255. The view isn't told the codec, so
+// the axis widens to 255 only when a frame's QP actually exceeds 51.
+export const QP_AXIS_MAX_H26X = 51;
+export const QP_AXIS_MAX_AV1 = 255;
+
+export function qpAxisMax(frames: FrameInfo[], maxSize: number): number {
+  const highest = frames.reduce(
+    (m, f) => Math.max(m, getFrameQP(f, maxSize)),
+    0,
+  );
+  return highest > QP_AXIS_MAX_H26X ? QP_AXIS_MAX_AV1 : QP_AXIS_MAX_H26X;
+}
+
 // Headroom above the tallest bar/curve point, as a multiplier on the true max value used for
 // scaling. Without it, a bar for the single largest frame renders at exactly 100% height and
 // touches the chart container's top edge flush -- reading as "cut off" (found via a real
@@ -134,7 +147,7 @@ function FrameSizesView({
 
   // Calculate QP range for right Y-axis
   const minQP = 0;
-  const maxQP = 51;
+  const maxQP = useMemo(() => qpAxisMax(frames, maxSize), [frames, maxSize]);
 
   return (
     <div className="filmstrip-sizes">
@@ -275,7 +288,7 @@ function FrameSizesView({
         <div className="frame-sizes-chart-footer" />
       </div>
 
-      {/* Right Y-axis - QP (0-51) */}
+      {/* Right Y-axis - QP (0-51, or 0-255 when a frame's QP exceeds 51) */}
       <div className="frame-sizes-axis axis-right">
         <div className="axis-scale">
           <div className="axis-label max">{maxQP}</div>
