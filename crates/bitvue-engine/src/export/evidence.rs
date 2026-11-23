@@ -245,7 +245,7 @@ pub fn export_evidence_bundle(
     render_snapshots: &[RenderSnapshot],
     screenshots: &[Vec<u8>],
 ) -> EvidenceBundleExportResult {
-    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let timestamp = jiff::Timestamp::now().strftime("%Y%m%d_%H%M%S").to_string();
     let bundle_name = format!("bitvue_evidence_{}", timestamp);
     let bundle_dir = request.output_dir.join(&bundle_name);
 
@@ -349,7 +349,7 @@ fn write_metadata_files(
         os: manifest.os.clone(),
         arch: manifest.cpu.clone(),
         gpu: manifest.gpu.clone(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: jiff::Timestamp::now().to_string(),
     };
     writer.json("env.json", &env_info, "env.json")?;
 
@@ -608,7 +608,11 @@ mod tests {
         assert_eq!(env["os"], m["os"]);
         assert_eq!(env["arch"], m["cpu"]);
         assert_eq!(env["gpu"], m["gpu"]);
-        assert!(chrono::DateTime::parse_from_rfc3339(env["timestamp"].as_str().unwrap()).is_ok());
+        assert!(env["timestamp"]
+            .as_str()
+            .unwrap()
+            .parse::<jiff::Timestamp>()
+            .is_ok());
 
         let version = json(&b, "version.json");
         for key in [

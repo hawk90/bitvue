@@ -49,7 +49,7 @@ impl HardFailGate {
             kind,
             message: message.to_string(),
             context: HashMap::new(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: jiff::Timestamp::now().to_string(),
         });
     }
 
@@ -63,7 +63,7 @@ impl HardFailGate {
             kind,
             message: message.to_string(),
             context,
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: jiff::Timestamp::now().to_string(),
         });
     }
 }

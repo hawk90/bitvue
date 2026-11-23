@@ -350,7 +350,7 @@ fn test_baseline_parity_evaluation() {
     println!("╠══════════════════════════════════════════════════════════════════╣");
     println!(
         "║  Generated: {}                           ║",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M UTC")
+        jiff::Timestamp::now().strftime("%Y-%m-%d %H:%M UTC")
     );
     println!("║  Matrix Version: v14                                             ║");
     println!("║  Total Items: 31                                                 ║");
