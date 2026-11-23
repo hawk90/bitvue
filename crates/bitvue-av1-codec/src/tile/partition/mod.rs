@@ -40,7 +40,7 @@ mod parse;
 mod tree;
 mod types;
 
-pub(crate) use parse::parse_partition_recursive;
+pub(crate) use parse::{clipped_area, parse_partition_recursive};
 #[cfg(test)]
 use tree::child_position;
 pub(crate) use tree::mi_units;

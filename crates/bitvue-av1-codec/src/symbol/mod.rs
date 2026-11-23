@@ -58,6 +58,19 @@ pub struct SymbolDecoder<'a> {
     pub decoder: ArithmeticDecoder<'a>,
     /// CDF tables (probability distributions)
     pub cdf_context: CdfContext,
+    /// Cost per pixel of the partition symbols read above the block being parsed, handed from
+    /// `parse_partition_recursive` to the leaf callback (see `PartitionDensity`).
+    pub partition_density: PartitionDensity,
+}
+
+/// Entropy cost of the partition symbols that cover a block, per pixel of frame area.
+///
+/// A partition symbol describes the whole region of its node, so each leaf under it is charged
+/// `density * its area`. The densities of nested nodes add up on the way down the tree.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct PartitionDensity {
+    pub bits_per_px: f64,
+    pub symbols_per_px: f64,
 }
 
 impl<'a> SymbolDecoder<'a> {
@@ -80,6 +93,7 @@ impl<'a> SymbolDecoder<'a> {
         Ok(Self {
             decoder,
             cdf_context,
+            partition_density: PartitionDensity::default(),
         })
     }
 
@@ -95,6 +109,7 @@ impl<'a> SymbolDecoder<'a> {
         Ok(Self {
             decoder: ArithmeticDecoder::new(data)?,
             cdf_context,
+            partition_density: PartitionDensity::default(),
         })
     }
 

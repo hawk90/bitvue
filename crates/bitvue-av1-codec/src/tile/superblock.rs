@@ -145,7 +145,17 @@ pub fn parse_superblock(
                 width: leaf.size.width(),
                 height: leaf.size.height(),
             };
-            let (cu, new_qp) = parse_coding_unit(state, &mut sb_ctx, rect, frame, final_qp)?;
+            let (mut cu, new_qp) = parse_coding_unit(state, &mut sb_ctx, rect, frame, final_qp)?;
+            let area = crate::tile::partition::clipped_area(
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height,
+                frame.mi_rows,
+                frame.mi_cols,
+            );
+            cu.partition_bits = state.decoder.partition_density.bits_per_px * area;
+            cu.partition_symbols = state.decoder.partition_density.symbols_per_px * area;
             final_qp = new_qp;
             coding_units.push(cu);
             Ok(())
