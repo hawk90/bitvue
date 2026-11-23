@@ -3,7 +3,7 @@
   "version": "0.11.5",
   "description": "Bitvue workspace - video bitstream analyzer with Electron + React (migrated from Tauri 2026-08-08, see docs/DEVELOPMENT_PHASES.md)",
   "private": true,
-  "packageManager": "npm@12.2.2",
+  "packageManager": "npm@12.2.3",
   "engines": {
     "node": ">=26.13.1"
   },
@@ -40,8 +40,8 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.10",
+    "@testing-library/user-event": "^14.6.13",
     "@types/jsdom": "^30.0.0",
-    "jsdom": "^31.0.0"
+    "jsdom": "^31.0.1"
   }
 }
