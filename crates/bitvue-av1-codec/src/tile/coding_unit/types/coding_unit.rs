@@ -79,6 +79,34 @@ pub struct CodingUnit {
     /// for real bitstream sync but not retained here (matches `residual`'s aggregate-not-raw
     /// precedent -- no per-pixel/per-coefficient data is exposed on `CodingUnit` elsewhere either).
     pub palette: PaletteInfo,
+
+    /// Entropy-coded bits this CU's syntax consumed, fractional (`ArithmeticDecoder::bit_position`
+    /// difference over `parse_coding_unit`). Covers everything read inside that function (skip,
+    /// modes, MVs, tx sizes, residual, ...). The partition symbols that split a superblock into
+    /// CUs are read outside it and are not counted for any CU.
+    pub bits: f64,
+
+    /// Symbols the arithmetic decoder read for this CU (`ArithmeticDecoder::count` difference).
+    /// A multi-symbol read counts once, so this is not libaom's binarized bool count.
+    pub symbols: u32,
+}
+
+/// `{:?}` of coding units (one, or any collection of them) without each one's `bits`/`symbols`.
+///
+/// Those two are an analysis measure derived from the decoder position, not parsed syntax. The
+/// golden digests hash the `Debug` text of what the parse produced, so they leave the pair out:
+/// adding them left every recorded digest intact. Test support, not API.
+#[doc(hidden)]
+pub fn debug_without_cost_fields(coding_units: &impl std::fmt::Debug) -> String {
+    let mut text = format!("{coding_units:?}");
+    while let Some(start) = text.find(", bits: ") {
+        let end = start
+            + text[start..]
+                .find(" }")
+                .expect("`symbols` is the last field of CodingUnit");
+        text.replace_range(start..end, "");
+    }
+    text
 }
 
 /// One leaf transform block from a real `read_var_tx_size` walk (spec 5.11.17/18), in absolute
@@ -115,6 +143,8 @@ impl CodingUnit {
             qp: None,
             residual: None,
             palette: PaletteInfo::default(),
+            bits: 0.0,
+            symbols: 0,
         }
     }
 

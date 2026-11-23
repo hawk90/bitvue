@@ -302,7 +302,10 @@ fn digest(params: &FrameCodingParams, sb_size: u32, seeds: std::ops::Range<u64>)
                 let text = match &r {
                     Ok((sb, new_qp)) => {
                         qp = *new_qp;
-                        format!("{seed}:{sb_x},{sb_y}:{new_qp}:{:?}", sb.coding_units)
+                        format!(
+                            "{seed}:{sb_x},{sb_y}:{new_qp}:{}",
+                            bitvue_av1_codec::debug_without_cost_fields(&sb.coding_units)
+                        )
                     }
                     Err(e) => format!("{seed}:{sb_x},{sb_y}:err:{e:?}"),
                 };

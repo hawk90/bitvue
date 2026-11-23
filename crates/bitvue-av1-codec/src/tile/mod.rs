@@ -33,8 +33,8 @@ pub mod superblock;
 pub mod tile_state;
 
 pub use coding_unit::{
-    parse_coding_unit, CodingUnit, InterModeFlags, MotionVector, PaletteInfo, PredictionMode,
-    RefFrame, TxSize, TxTypeFrameFlags,
+    debug_without_cost_fields, parse_coding_unit, CodingUnit, InterModeFlags, MotionVector,
+    PaletteInfo, PredictionMode, RefFrame, TxSize, TxTypeFrameFlags,
 };
 pub use context::TileContext;
 pub use frame_params::FrameCodingParams;

@@ -71,7 +71,12 @@ fn frames(ivf: &[u8]) -> Vec<Frame> {
 fn digest(frames: &[Frame]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
     for (i, f) in frames.iter().enumerate() {
-        for b in format!("{i}:{:?}", f.units).bytes() {
+        for b in format!(
+            "{i}:{}",
+            bitvue_av1_codec::debug_without_cost_fields(&f.units)
+        )
+        .bytes()
+        {
             hash ^= u64::from(b);
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         }

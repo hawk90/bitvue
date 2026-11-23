@@ -226,6 +226,8 @@ mod tests {
             qp: None,
             residual: None,
             palette: crate::tile::PaletteInfo::default(),
+            bits: 0.0,
+            symbols: 0,
         }
     }
 

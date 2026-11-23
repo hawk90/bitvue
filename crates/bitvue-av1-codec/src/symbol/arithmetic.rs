@@ -72,6 +72,8 @@ pub struct ArithmeticDecoder<'a> {
     pub cnt: i32,
     /// Count of symbols read (for debugging)
     pub count: u64,
+    /// Total renormalization shift so far, in bits. With `range` it gives [`Self::bit_position`].
+    renorm_shift: u64,
     /// Enable CDF updates (adaptive probability)
     ///
     /// When true, CDF tables passed to `read_symbol_adaptive` are updated
@@ -156,6 +158,7 @@ impl<'a> ArithmeticDecoder<'a> {
             value: 0,
             cnt: -15, // Start with -15, will be updated by refill
             count: 0,
+            renorm_shift: 0,
             allow_update_cdf: true, // Enable adaptive CDFs
             #[cfg(test)]
             range_trace: None,
@@ -268,6 +271,17 @@ impl<'a> ArithmeticDecoder<'a> {
         Ok(symbol)
     }
 
+    /// Information consumed so far, in (fractional) bits, up to a constant offset: only
+    /// differences between two positions are meaningful.
+    ///
+    /// Decoding a symbol narrows the interval from `r` to `r'`, which costs `log2(r / r')` bits.
+    /// Renormalizing multiplies `range` by `2^d` and adds `d` to the shift total, so
+    /// `renorm_shift - log2(range)` grows by exactly that cost for every symbol, whether or not it
+    /// renormalized. A one-symbol alphabet leaves `range` unchanged and costs nothing.
+    pub fn bit_position(&self) -> f64 {
+        self.renorm_shift as f64 - (self.range as f64).log2()
+    }
+
     /// Configure whether CDF updates are applied by `read_symbol_adaptive`.
     ///
     /// Set to `false` for frames that signal `disable_cdf_update = 1` in
@@ -324,6 +338,7 @@ impl<'a> ArithmeticDecoder<'a> {
             self.range <<= d;
             self.value <<= d;
             self.cnt = cnt_old - d;
+            self.renorm_shift += d as u64;
 
             if (cnt_old as u32) < (d as u32) {
                 self.refill()?;
@@ -449,6 +464,55 @@ impl<'a> ArithmeticDecoder<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A fair coin costs one bit per read, and a one-symbol alphabet costs nothing.
+    #[test]
+    fn bit_position_charges_one_bit_per_fair_bool() {
+        let data: Vec<u8> = (0..64u32).map(|i| (i * 37 + 11) as u8).collect();
+        let mut d = ArithmeticDecoder::new(&data).unwrap();
+        let start = d.bit_position();
+        for _ in 0..200 {
+            d.read_bool(16384).unwrap();
+        }
+        let spent = d.bit_position() - start;
+        assert!(
+            (spent - 200.0).abs() < 2.0,
+            "200 fair bools cost {spent} bits"
+        );
+
+        let before = d.bit_position();
+        d.read_symbol(&[0, 0]).unwrap();
+        assert_eq!(d.bit_position(), before, "a one-symbol alphabet is free");
+    }
+
+    /// An unlikely symbol costs more than a likely one: the cost follows `-log2(p)`.
+    #[test]
+    fn bit_position_charges_rare_symbols_more() {
+        let data: Vec<u8> = (0..64u32).map(|i| (i * 37 + 11) as u8).collect();
+        // P(symbol 0) = 1/16 with the descending CDF convention: cdf[0] = 32768 * (1 - 1/16).
+        let cdf = [30720u16, 0, 0];
+        let mut d = ArithmeticDecoder::new(&data).unwrap();
+        let (mut rare, mut common) = (Vec::new(), Vec::new());
+        for _ in 0..300 {
+            let before = d.bit_position();
+            let sym = d.read_symbol(&cdf).unwrap();
+            let cost = d.bit_position() - before;
+            if sym == 0 {
+                rare.push(cost)
+            } else {
+                common.push(cost)
+            }
+        }
+        let mean = |v: &Vec<f64>| v.iter().sum::<f64>() / v.len() as f64;
+        assert!(!rare.is_empty() && !common.is_empty());
+        assert!(
+            mean(&rare) > 3.0 * mean(&common),
+            "{} vs {}",
+            mean(&rare),
+            mean(&common)
+        );
+        assert!(rare.iter().chain(&common).all(|&c| c >= 0.0));
+    }
 
     #[test]
     fn test_decoder_creation() {

@@ -76,8 +76,9 @@ pub use syntax_parser::{
     parse_sequence_header_syntax, TrackedBitReader,
 };
 pub use tile::{
-    parse_coding_unit, parse_superblock, BlockSize, CodingUnit, MotionVector, PartitionNode,
-    PartitionType, PredictionMode, RefFrame, Superblock, SuperblockSize, Tile,
+    debug_without_cost_fields, parse_coding_unit, parse_superblock, BlockSize, CodingUnit,
+    MotionVector, PartitionNode, PartitionType, PredictionMode, RefFrame, Superblock,
+    SuperblockSize, Tile,
 };
 pub use types::{Qp, QuarterPel, TimestampPts};
 

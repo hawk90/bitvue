@@ -74,7 +74,10 @@ fn digests() -> (Vec<u64>, usize) {
             let cus = parse_all_coding_units(parsed)
                 .unwrap_or_else(|e| panic!("frame {idx} failed to parse: {e:?}"));
             total.set(total.get() + cus.len());
-            format!("{idx}:{cus:?}")
+            format!(
+                "{idx}:{}",
+                bitvue_av1_codec::debug_without_cost_fields(&cus)
+            )
         } else {
             format!("{idx}:no-tile-data")
         }
