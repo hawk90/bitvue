@@ -69,7 +69,26 @@ where
         return Ok(None);
     }
 
+    let (bits_before, symbols_before) = (
+        state.decoder.decoder.bit_position(),
+        state.decoder.decoder.count,
+    );
     let partition = read_partition_type(state, x, y, block_size, (mi_rows, mi_cols))?;
+    // This node's symbol covers the part of it that lies inside the frame; hand the cost down to
+    // the leaves as a per-pixel density (restored below for the node's siblings).
+    let outer_density = state.decoder.partition_density;
+    let area = clipped_area(
+        x,
+        y,
+        block_size.width(),
+        block_size.height(),
+        mi_rows,
+        mi_cols,
+    );
+    state.decoder.partition_density.bits_per_px +=
+        (state.decoder.decoder.bit_position() - bits_before) / area;
+    state.decoder.partition_density.symbols_per_px +=
+        (state.decoder.decoder.count - symbols_before) as f64 / area;
     record_partition_context(state, x, y, block_size, partition);
 
     let mut node = PartitionNode::new(x, y, block_size, partition);
@@ -80,8 +99,25 @@ where
     } else {
         visit_leaf(state, &node)?;
     }
+    state.decoder.partition_density = outer_density;
 
     Ok(Some(node))
+}
+
+/// Pixels of the `width` x `height` block at `(x, y)` that lie inside the frame (`mi_rows`/
+/// `mi_cols` are in 4x4 units). At least one pixel: a block is only parsed when its origin is
+/// inside the frame.
+pub(crate) fn clipped_area(
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    mi_rows: u32,
+    mi_cols: u32,
+) -> f64 {
+    let w = (x + width).min(mi_cols * 4).saturating_sub(x).max(1);
+    let h = (y + height).min(mi_rows * 4).saturating_sub(y).max(1);
+    f64::from(w) * f64::from(h)
 }
 
 /// Reads and validates the `partition` symbol for the block at `(x, y)`.

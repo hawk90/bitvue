@@ -83,18 +83,26 @@ pub struct CodingUnit {
     /// Entropy-coded bits this CU's syntax consumed, fractional (`ArithmeticDecoder::bit_position`
     /// difference over `parse_coding_unit`). Covers everything read inside that function (skip,
     /// modes, MVs, tx sizes, residual, ...). The partition symbols that split a superblock into
-    /// CUs are read outside it and are not counted for any CU.
+    /// CUs are read outside it; their share is in `partition_bits`.
     pub bits: f64,
 
     /// Symbols the arithmetic decoder read for this CU (`ArithmeticDecoder::count` difference).
     /// A multi-symbol read counts once, so this is not libaom's binarized bool count.
     pub symbols: u32,
+
+    /// This CU's share of the partition symbols above it, in bits. Every partition node's cost
+    /// is spread over the area it covers inside the frame, so the shares of all leaves under a
+    /// node add up to that node's cost. `bits + partition_bits` is what the CU costs in total.
+    pub partition_bits: f64,
+
+    /// Same share, counted in symbols (fractional because a node's symbols are split by area).
+    pub partition_symbols: f64,
 }
 
-/// `{:?}` of coding units (one, or any collection of them) without each one's `bits`/`symbols`.
+/// `{:?}` of coding units (one, or any collection of them) without each one's `bits`/`symbols`/`partition_*` cost fields.
 ///
-/// Those two are an analysis measure derived from the decoder position, not parsed syntax. The
-/// golden digests hash the `Debug` text of what the parse produced, so they leave the pair out:
+/// Those four are an analysis measure derived from the decoder position, not parsed syntax. The
+/// golden digests hash the `Debug` text of what the parse produced, so they leave them out:
 /// adding them left every recorded digest intact. Test support, not API.
 #[doc(hidden)]
 pub fn debug_without_cost_fields(coding_units: &impl std::fmt::Debug) -> String {
@@ -103,7 +111,7 @@ pub fn debug_without_cost_fields(coding_units: &impl std::fmt::Debug) -> String 
         let end = start
             + text[start..]
                 .find(" }")
-                .expect("`symbols` is the last field of CodingUnit");
+                .expect("`partition_symbols` is the last field of CodingUnit");
         text.replace_range(start..end, "");
     }
     text
@@ -145,6 +153,8 @@ impl CodingUnit {
             palette: PaletteInfo::default(),
             bits: 0.0,
             symbols: 0,
+            partition_bits: 0.0,
+            partition_symbols: 0.0,
         }
     }
 

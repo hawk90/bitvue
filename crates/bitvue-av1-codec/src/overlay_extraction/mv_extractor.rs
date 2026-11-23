@@ -275,6 +275,8 @@ mod tests {
             palette: crate::tile::PaletteInfo::default(),
             bits: 0.0,
             symbols: 0,
+            partition_bits: 0.0,
+            partition_symbols: 0.0,
         }
     }
 
