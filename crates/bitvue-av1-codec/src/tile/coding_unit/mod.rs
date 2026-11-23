@@ -104,6 +104,8 @@ pub fn parse_coding_unit(
         skip_mode_present,
         ..
     } = *frame;
+    let start_bits = decoder.decoder.bit_position();
+    let start_symbols = decoder.decoder.count;
     let mut cu = CodingUnit::new(x, y, width, height);
     let (x4, y4) = (x / 4, y / 4);
     let (width_4x4, height_4x4) = (width.div_ceil(4).max(1), height.div_ceil(4).max(1));
@@ -171,6 +173,9 @@ pub fn parse_coding_unit(
         cu.residual = None;
         block_modes::clear_residual_contexts(tile_ctx, mi, frame);
     }
+
+    cu.bits = decoder.decoder.bit_position() - start_bits;
+    cu.symbols = (decoder.decoder.count - start_symbols) as u32;
 
     Ok((cu, new_qp))
 }

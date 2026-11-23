@@ -7,7 +7,7 @@ mod motion;
 mod prediction_mode;
 mod tx_size;
 
-pub use coding_unit::{CodingUnit, TxBlock};
+pub use coding_unit::{debug_without_cost_fields, CodingUnit, TxBlock};
 pub use frame_flags::{InterModeFlags, TxTypeFrameFlags};
 pub use motion::{MotionVector, RefFrame};
 pub use prediction_mode::{MvKind, PredictionMode};

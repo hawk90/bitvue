@@ -75,7 +75,10 @@ fn run(ivf: &[u8], max_frames: usize) -> (u64, usize) {
             decoded += 1;
             fnv(&mut hash, &[frame.refresh_frame_flags]);
             fnv(&mut hash, &frame.order_hint.to_le_bytes());
-            fnv(&mut hash, format!("{:?}", frame.decoded).as_bytes());
+            fnv(
+                &mut hash,
+                crate::debug_without_cost_fields(&frame.decoded).as_bytes(),
+            );
             fnv(&mut hash, format!("{:?}", state.last_trace).as_bytes());
             fold_state(&mut hash, &state);
         }
