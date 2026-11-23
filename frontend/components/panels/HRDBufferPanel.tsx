@@ -36,7 +36,7 @@ const HRDBufferPanelInternal = ({
   frameRate,
   targetBitrate,
   bufferSize = 1000000, // Default 1MB CPB
-}: HRDBufferPanelProps) => {
+}: HRDBufferPanelProps & { targetBitrate: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverData, setHoverData] = useState<{
@@ -45,24 +45,6 @@ const HRDBufferPanelInternal = ({
     overflow: boolean;
     underflow: boolean;
   } | null>(null);
-
-  // No caller currently passes a real signaled `targetBitrate` -- AV1's decoder_model_info /
-  // operating_parameters_info (the actual HRD bitrate/CPB-size syntax) isn't parsed anywhere in
-  // this codebase yet (a real gap, tracked separately, comparable in size to DIV-06's HRD/HDR
-  // scoping). Falling back to "drain exactly one frame's own bytes per frame" made the whole
-  // curve a mathematical no-op -- `occupancy - frameSize + frameSize` is always the starting
-  // value, so the buffer line was *always* perfectly flat regardless of stream content (found via
-  // a real Electron screenshot: a genuinely constant 50.0%/488KB line). An honest average-bitrate
-  // estimate (real per-frame sizes already loaded, no new backend work) at least reflects actual
-  // bursty/quiet frame-size variance; the UI labels it "(est.)" rather than "Target" so it isn't
-  // mistaken for a real signaled HRD parameter.
-  const isEstimatedBitrate = targetBitrate === undefined;
-  const effectiveTargetBitrate = useMemo(() => {
-    if (targetBitrate !== undefined) return targetBitrate;
-    if (frames.length === 0) return undefined;
-    const totalBytes = frames.reduce((sum, f) => sum + (f?.size || 0), 0);
-    return (totalBytes / frames.length) * frameRate * 8;
-  }, [targetBitrate, frames, frameRate]);
 
   // Calculate HRD buffer state for each frame
   const hrdState = useMemo(() => {
@@ -83,8 +65,8 @@ const HRDBufferPanelInternal = ({
       // Decoder drains at (real or estimated) target bitrate, then the frame's own bytes are
       // added -- a frame bigger than the average causes real net buildup, a smaller one real
       // net drain, unlike the old same-as-frameSize fallback (see doc above).
-      const drainPerFrame = effectiveTargetBitrate
-        ? effectiveTargetBitrate / frameRate / 8 // bytes drained per frame interval
+      const drainPerFrame = targetBitrate
+        ? targetBitrate / frameRate / 8 // bytes drained per frame interval
         : frameSize; // only reachable with zero frames loaded
       currentOccupancy = Math.max(0, currentOccupancy - drainPerFrame);
       currentOccupancy = Math.min(bufferSize, currentOccupancy + frameSize);
@@ -106,7 +88,7 @@ const HRDBufferPanelInternal = ({
 
     state.occupancy = currentOccupancy;
     return state;
-  }, [frames, bufferSize, effectiveTargetBitrate, frameRate]);
+  }, [frames, bufferSize, targetBitrate, frameRate]);
 
   // Draw HRD buffer graph — wrapped in useCallback so the ResizeObserver can
   // call it directly without re-subscribing on every render.
@@ -175,8 +157,8 @@ const HRDBufferPanelInternal = ({
 
     // Draw target/estimated-bitrate reference line: the occupancy simulation above starts at
     // `bufferSize * 0.5` and, every frame, subtracts `drainPerFrame` (derived from
-    // `effectiveTargetBitrate`) then adds that frame's real byte size. For the estimated case,
-    // `effectiveTargetBitrate` is defined as exactly `avgBytesPerFrame * frameRate * 8`, so
+    // `targetBitrate`) then adds that frame's real byte size. For the estimated case,
+    // `targetBitrate` is defined as exactly `avgBytesPerFrame * frameRate * 8`, so
     // `drainPerFrame === avgBytesPerFrame` -- a stream whose every frame matched that average
     // exactly would drain and add the same amount every time, leaving occupancy flat at its
     // starting point forever. So "the buffer level implied by the target rate" IS
@@ -184,7 +166,7 @@ const HRDBufferPanelInternal = ({
     // this fixture already hovers almost exactly there, since per-frame variance mostly averages
     // out over 250 frames. (Previous formula mixed bits and bytes with no conversion and an
     // unexplained `* 5` multiplier, rendering this line collided with the buffer-limit line.)
-    if (effectiveTargetBitrate) {
+    if (targetBitrate) {
       const targetY = yForOccupancy(bufferSize * 0.5);
       ctx.strokeStyle = "#51cf66";
       ctx.lineWidth = 1;
@@ -290,7 +272,7 @@ const HRDBufferPanelInternal = ({
       const x = margin.left + i * stepX;
       ctx.fillText(`${history[i].frame}`, x, margin.top + graphHeight + 8);
     }
-  }, [hrdState, currentFrameIndex, bufferSize, effectiveTargetBitrate]);
+  }, [hrdState, currentFrameIndex, bufferSize, targetBitrate]);
 
   // Redraw when data changes
   useEffect(() => {
@@ -359,13 +341,11 @@ const HRDBufferPanelInternal = ({
             <span className="stat-label">Buffer:</span>
             <span className="stat-value">{currentPercent.toFixed(1)}%</span>
           </span>
-          {effectiveTargetBitrate !== undefined && (
+          {targetBitrate !== undefined && (
             <span className="hrd-stat">
-              <span className="stat-label">
-                {isEstimatedBitrate ? "Avg bitrate (est.):" : "Target:"}
-              </span>
+              <span className="stat-label">Target:</span>
               <span className="stat-value">
-                {(effectiveTargetBitrate / 1000000).toFixed(2)} Mbps
+                {(targetBitrate / 1000000).toFixed(2)} Mbps
               </span>
             </span>
           )}
@@ -442,5 +422,28 @@ const HRDBufferPanelInternal = ({
   );
 };
 
-export const HRDBufferPanel = memo(HRDBufferPanelInternal);
+// HRD parameters (AV1 decoder_model_info / operating_parameters_info, AVC/HEVC hrd_parameters)
+// aren't parsed into anything the UI receives yet, so no real caller passes `targetBitrate`.
+// Simulating from an average-bitrate guess drew plausible-looking numbers the stream never
+// signaled (#461); without signaled parameters this view shows "no HRD info" instead, matching
+// the reference analyzer (HRD view greyed out when the stream has no HRD parameters).
+const HRDBufferPanelGate = (props: HRDBufferPanelProps) => {
+  if (props.targetBitrate === undefined) {
+    return (
+      <div className="hrd-buffer-panel hrd-unavailable" role="status">
+        <div className="hrd-header">
+          <h3>HRD Buffer</h3>
+        </div>
+        <p className="hrd-unavailable-message">
+          No HRD information in this stream.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <HRDBufferPanelInternal {...props} targetBitrate={props.targetBitrate} />
+  );
+};
+
+export const HRDBufferPanel = memo(HRDBufferPanelGate);
 export default HRDBufferPanel;

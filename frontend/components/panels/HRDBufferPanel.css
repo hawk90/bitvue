@@ -173,3 +173,9 @@
   border-radius: 50%;
   background: rgb(255 212 59 / 80%);
 }
+
+.hrd-buffer-panel.hrd-unavailable .hrd-unavailable-message {
+  margin: 8px 12px;
+  color: var(--text-secondary, #8b8b8b);
+  font-size: 12px;
+}

@@ -1,13 +1,11 @@
 /**
  * HRDBufferPanel tests.
  *
- * Covers a real bug found via a UI/UX parity screenshot comparison against VQ Analyzer's
- * equivalent Buffer(HRD) view: with no `targetBitrate` prop (true for every real call site --
- * `Filmstrip.tsx` never passes one, since real AV1 HRD/decoder_model_info parameters aren't
- * parsed anywhere in this codebase yet), the old fallback drained exactly one frame's own bytes
- * per frame interval -- `occupancy - frameSize + frameSize` is always the starting value, so the
- * buffer curve was *always* perfectly flat (confirmed via a real Electron screenshot: exactly
- * 50.0%/488KB across an entire 250-frame stream) regardless of actual frame-size variance.
+ * No real call site passes a signaled `targetBitrate` (AV1 decoder_model_info /
+ * operating_parameters_info aren't parsed into anything the UI receives), so the panel must say
+ * "no HRD information" rather than simulate from an average-bitrate guess (#461). With a real
+ * `targetBitrate` it still plots the buffer: the simulation must not be flat (an earlier bug
+ * drained exactly each frame's own size, so the curve never moved off 50%).
  */
 
 import { describe, it, expect } from "vitest";
@@ -26,9 +24,13 @@ function makeFrames(sizes: number[]): FrameInfo[] {
   );
 }
 
+// Bitrate whose per-frame drain equals the sizes' average, so occupancy moves with size variance.
+const avgBitrate = (sizes: number[], fps = 30) =>
+  (sizes.reduce((a, b) => a + b, 0) / sizes.length) * fps * 8;
+
 describe("HRDBufferPanel", () => {
-  it("labels the bitrate stat as an honest estimate when no real targetBitrate is provided", () => {
-    render(
+  it("shows 'No HRD information' and draws nothing when no targetBitrate is signaled", () => {
+    const { container } = render(
       <HRDBufferPanel
         frames={makeFrames([1000, 2000, 1500])}
         currentFrameIndex={0}
@@ -36,11 +38,18 @@ describe("HRDBufferPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Avg bitrate (est.):")).toBeInTheDocument();
-    expect(screen.queryByText("Target:")).not.toBeInTheDocument();
+    expect(screen.getByText(/No HRD information/)).toBeInTheDocument();
+    expect(container.querySelector("canvas")).toBeNull();
+    expect(screen.queryByText(/Buffer:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Mbps/)).not.toBeInTheDocument();
   });
 
-  it("labels the bitrate stat as a real Target when targetBitrate is explicitly provided", () => {
+  it("shows the same message for an empty frame list", () => {
+    render(<HRDBufferPanel frames={[]} currentFrameIndex={0} frameRate={30} />);
+    expect(screen.getByText(/No HRD information/)).toBeInTheDocument();
+  });
+
+  it("labels the bitrate stat as Target when targetBitrate is provided", () => {
     render(
       <HRDBufferPanel
         frames={makeFrames([1000, 2000, 1500])}
@@ -51,29 +60,18 @@ describe("HRDBufferPanel", () => {
     );
 
     expect(screen.getByText("Target:")).toBeInTheDocument();
-    expect(screen.queryByText("Avg bitrate (est.):")).not.toBeInTheDocument();
     expect(screen.getByText("5.00 Mbps")).toBeInTheDocument();
+    expect(screen.queryByText(/No HRD information/)).not.toBeInTheDocument();
   });
 
-  it("does not render a bitrate stat at all when there are no frames to estimate from", () => {
-    render(<HRDBufferPanel frames={[]} currentFrameIndex={0} frameRate={30} />);
-
-    expect(screen.queryByText("Avg bitrate (est.):")).not.toBeInTheDocument();
-    expect(screen.queryByText("Target:")).not.toBeInTheDocument();
-  });
-
-  it("produces a non-flat buffer occupancy when frame sizes vary (the real bug)", () => {
-    // Highly bursty sizes around a fixed average-derived drain rate -- under the old buggy
-    // fallback (drain == that same frame's own size every time), every single frame's step was a
-    // mathematical no-op (occupancy - frameSize + frameSize == occupancy unchanged), so the
-    // buffer never moved off its 50% starting point for ANY frame, ever. Reading frame 3 (right
-    // after the 50KB spike, before the average-based drain has had time to bring it back down)
-    // must show real buildup.
+  it("produces a non-flat buffer occupancy when frame sizes vary", () => {
+    const sizes = [100, 100, 100, 50_000, 100, 100, 100];
     const { container } = render(
       <HRDBufferPanel
-        frames={makeFrames([100, 100, 100, 50_000, 100, 100, 100])}
+        frames={makeFrames(sizes)}
         currentFrameIndex={3}
         frameRate={30}
+        targetBitrate={avgBitrate(sizes)}
       />,
     );
 
@@ -83,13 +81,25 @@ describe("HRDBufferPanel", () => {
   });
 
   it("tracks the currently viewed frame's occupancy, not always the stream's last frame", () => {
-    const frames = makeFrames([100, 100, 100, 50_000, 100, 100, 100]);
+    const sizes = [100, 100, 100, 50_000, 100, 100, 100];
+    const frames = makeFrames(sizes);
+    const targetBitrate = avgBitrate(sizes);
 
     const { container: atSpike } = render(
-      <HRDBufferPanel frames={frames} currentFrameIndex={3} frameRate={30} />,
+      <HRDBufferPanel
+        frames={frames}
+        currentFrameIndex={3}
+        frameRate={30}
+        targetBitrate={targetBitrate}
+      />,
     );
     const { container: atEnd } = render(
-      <HRDBufferPanel frames={frames} currentFrameIndex={6} frameRate={30} />,
+      <HRDBufferPanel
+        frames={frames}
+        currentFrameIndex={6}
+        frameRate={30}
+        targetBitrate={targetBitrate}
+      />,
     );
 
     const spikeStat = atSpike.querySelector(
@@ -99,14 +109,14 @@ describe("HRDBufferPanel", () => {
     expect(spikeStat).not.toBe(endStat);
   });
 
-  it("stays at the 50% starting point only in the degenerate all-frames-equal-size case", () => {
-    // Sanity check on the test methodology above: uniform sizes really should net to no change,
-    // confirming the *previous* test's divergence is caused by real size variance, not noise.
+  it("stays at the 50% starting point only when every frame equals the drain", () => {
+    const sizes = [1000, 1000, 1000, 1000];
     const { container } = render(
       <HRDBufferPanel
-        frames={makeFrames([1000, 1000, 1000, 1000])}
+        frames={makeFrames(sizes)}
         currentFrameIndex={0}
         frameRate={30}
+        targetBitrate={avgBitrate(sizes)}
       />,
     );
 
@@ -121,6 +131,7 @@ describe("HRDBufferPanel", () => {
           frames={makeFrames([1000, 2000])}
           currentFrameIndex={0}
           frameRate={30}
+          targetBitrate={1_000_000}
         />,
       ),
     ).not.toThrow();
