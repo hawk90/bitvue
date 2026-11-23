@@ -263,13 +263,28 @@ jobs:
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
       # MSVC 14.52 (VS 2026 runner image 20261116+) rejects libvmaf's
       # `#if defined(__clang__) && __has_include_next(<stdatomic.h>)` in compat/msvc/stdatomic.h
-      # with C7780 even though `__clang__` is undefined: it now parses the call of a function-like
-      # macro it does not know. Defining `__has_include_next` as 0 for cl.exe makes that line
-      # `... && 0`, which is what the short circuit meant. Drop this once vmaf-head-sys vendors a
-      # header that nests the `#if` (#535).
+      # (line 35) with C7780 even though `__clang__` is undefined: it now parses the call of a
+      # function-like macro it does not know, and it refuses `/D__has_include_next(x)=0` too
+      # (C5102). Until vmaf-head-sys vendors a header that nests the `#if`, replace the call with
+      # `0` in the fetched source, which is what the short circuit meant for cl.exe (#535).
+      - name: Patch libvmaf stdatomic.h for MSVC 14.52 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo fetch --locked
+          $files = Get-ChildItem "$env:USERPROFILE\.cargo\registry\src\*\vmaf-head-sys-*\vendored\vmaf\libvmaf\src\compat\msvc\stdatomic.h"
+          if (-not $files) { throw "vmaf-head-sys stdatomic.h not found; the patch step is out of date" }
+          $call = '__has_include_next(<stdatomic.h>)'
+          foreach ($f in $files) {
+            $text = [System.IO.File]::ReadAllText($f.FullName)
+            if ($text.Contains($call)) {
+              [System.IO.File]::WriteAllText($f.FullName, $text.Replace($call, '0'))
+              Write-Host "patched $($f.FullName)"
+            } else {
+              Write-Host "::notice::$($f.FullName) no longer calls __has_include_next; remove this step (#535)"
+            }
+          }
       - name: Test bitvue-metrics with VMAF
-        env:
-          CFLAGS: ${{ runner.os == 'Windows' && '/D__has_include_next(x)=0' || '' }}
         run: cargo test -p bitvue-metrics --features vmaf --no-fail-fast
       - name: Clippy bitvue-metrics with VMAF
         if: runner.os == 'Linux'
