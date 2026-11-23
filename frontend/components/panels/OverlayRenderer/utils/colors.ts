@@ -46,7 +46,7 @@ export const PREDICTION_MODE_COLORS: Record<number, string> = {
   64: "#2da44e", // NewMv - New motion vector
   65: "#3db45d", // NearestMv - Nearest reference
   66: "#4dc46c", // NearMv - Near reference
-  67: "#5dd47b", // ZeroMv - Zero motion vector
+  67: "#5dd47b", // unused (AV1 has no ZeroMV)
   68: "#6de48a", // GlobalMv - Global motion
   69: "#7df499", // Compound modes
 };
@@ -106,11 +106,13 @@ export function getPredictionModeName(mode: number): string {
     return intraNames[mode] || `Intra${mode}`;
   }
   // INTER modes
-  if (mode === 64) return "NewMV";
-  if (mode === 65) return "NearMV";
-  if (mode === 66) return "Near";
-  if (mode === 67) return "ZeroMV";
-  if (mode === 68) return "Global";
+  // Wire codes come from the sidecar's `prediction_mode_to_wire` (frame_analysis.rs). AV1 has no
+  // "ZeroMV" mode, so 67 is unused; all 8 compound modes share 69.
+  if (mode === 64) return "NEWMV";
+  if (mode === 65) return "NEARESTMV";
+  if (mode === 66) return "NEARMV";
+  if (mode === 68) return "GLOBALMV";
+  if (mode === 69) return "Compound";
   return `Inter${mode}`;
 }
 
