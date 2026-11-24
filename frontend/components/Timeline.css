@@ -144,27 +144,17 @@
   position: relative;
 }
 
+/* Hover/selected are marked without changing a bar's size: scaling the selected bar made it
+   taller than its neighbours, so the (usually red, frame 0) selected bar looked like a different
+   size from the green ones, and the glow + brightness boost tinted its color. */
 .timeline-thumb:hover {
   opacity: 0.9;
-  transform: scaleY(1.1);
 }
 
 .timeline-thumb.selected {
   opacity: 1;
-  transform: scaleY(1.15);
-  box-shadow:
-    0 0 8px rgb(117 190 255 / 80%),
-    0 0 4px rgb(255 255 255 / 40%);
+  outline: 2px solid var(--text-bright, #fff);
   z-index: 1;
-  filter: brightness(1.3);
-}
-
-/* Frame type color variables */
-:root {
-  --frame-i: #e03131;
-  --frame-p: #2da44e;
-  --frame-b: #1f77b4;
-  --frame-unknown: #666;
 }
 
 /* Frame type colors for compressed thumbnails */

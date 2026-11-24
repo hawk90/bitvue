@@ -247,6 +247,7 @@
   --frame-inter: #2da44e;
   --frame-intra: #1f7ad9;
   --frame-switch: #d4a717;
+  --frame-unknown: #666;
 
   /* ═════════════════════════════════════════════════════════════════════════
      Scrollbar Colors
