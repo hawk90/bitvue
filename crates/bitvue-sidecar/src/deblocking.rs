@@ -1,18 +1,16 @@
-//! `get_deblocking_analysis` command backing -- AV1 loop-filter boundary strength (BS) per coding-
-//! unit edge, plus real loop-filter parameters, for one frame of stream A. Feeds
-//! `frontend/components/Player/views/DeblockingView.tsx`. AV1/IVF only.
+//! `get_deblocking_analysis` command backing -- AV1 loop-filter edges (transform-block edges of the
+//! luma plane with the largest filter each allows and its level) plus the frame's loop-filter
+//! parameters, for one frame of stream A. Feeds `frontend/components/Player/views/DeblockingView.tsx`.
+//! AV1/IVF only.
 //!
-//! Two real gaps closed to make this possible (neither was "just wiring"):
-//!  - `bitvue_av1_codec::frame_header_full`'s `loop_filter_params()` used to discard every value
-//!    (`skip_loop_filter_params`) -- now parsed for real into `FrameHeader.loop_filter`.
-//!  - Boundary-strength derivation (AV1 spec 7.14.2) didn't exist anywhere in this workspace --
-//!    see `bitvue_av1_codec::overlay_extraction::deblocking`'s module doc for the algorithm and
-//!    its documented simplifications.
+//! The derivation follows spec 7.14.2-7.14.5 (see `bitvue_av1_codec::overlay_extraction::
+//! deblocking`'s module doc, which also lists what it cannot know: the filter actually applied
+//! per sample line, and the per-block `delta_lf`). AV1 has no HEVC-style boundary strength; the
+//! wire carries `filter_size` (4, 8 or 16 samples) and `level` instead.
 //!
-//! Same sequential-scan requirement as `av1_features`: `loop_filter_params()`'s bit layout
-//! doesn't depend on cross-frame state (unlike `skip_mode_params`), but `parse_frame_header_full`
-//! itself does, so this reuses the same `RefFrameState`-threading pattern to reach the target
-//! frame's real `FrameHeader`.
+//! Same sequential-scan requirement as `av1_features`: `parse_frame_header_full` needs the
+//! reference state of every earlier frame, so this reuses the same `RefFrameState`-threading
+//! pattern to reach the target frame's real `FrameHeader`.
 
 use bitvue_av1_codec::frame_header_full::{
     find_frame_header_payloads, parse_frame_header_full, thread_ref_state_before,
@@ -52,8 +50,8 @@ pub fn get_deblocking_analysis(data: &[u8], frame_index: usize) -> Result<Value,
     let parsed =
         crate::analysis_session::analyzed_frame(data, frame_index).map_err(|e| e.to_string())?;
 
-    let deblocking = extract_deblocking_data_from_parsed(&parsed, &header.loop_filter)
-        .map_err(|e| e.to_string())?;
+    let deblocking =
+        extract_deblocking_data_from_parsed(&parsed, &header).map_err(|e| e.to_string())?;
 
     let mut value = deblocking_to_json(frame_index, &deblocking);
     value["provenance"] =
@@ -67,17 +65,22 @@ fn edge_to_json(e: &DeblockingEdge) -> Value {
         "y": e.y,
         "length": e.length,
         "orientation": if e.vertical { "vertical" } else { "horizontal" },
-        "boundary_strength": e.boundary_strength,
+        "filter_size": e.filter_size,
         "filtered": e.filtered,
-        "strength": e.strength,
+        "level": e.level,
     })
 }
 
 fn deblocking_to_json(frame_index: usize, d: &DeblockingData) -> Value {
-    let total_edges = d.edges.len();
-    let filtered_edges = d.edges.iter().filter(|e| e.filtered).count();
-    let strong_edges = d.edges.iter().filter(|e| e.boundary_strength == 2).count();
-    let weak_edges = d.edges.iter().filter(|e| e.boundary_strength == 1).count();
+    let count = |keep: &dyn Fn(&DeblockingEdge) -> bool| -> usize {
+        d.edges
+            .iter()
+            .filter(|e| keep(e))
+            .map(|e| (e.length / 4) as usize)
+            .sum()
+    };
+    let total = count(&|_| true);
+    let filtered = count(&|e| e.filtered);
 
     json!({
         "frame_index": frame_index,
@@ -91,11 +94,15 @@ fn deblocking_to_json(frame_index: usize, d: &DeblockingData) -> Value {
             "ref_deltas": d.loop_filter.ref_deltas,
             "mode_deltas": d.loop_filter.mode_deltas,
         },
+        // The levels use DeltaLF = 0 when the frame signals per-block delta_lf (not kept by the parser).
+        "delta_lf_ignored": d.delta_lf_ignored,
         "stats": {
-            "total_edges": total_edges,
-            "filtered_edges": filtered_edges,
-            "strong_edges": strong_edges,
-            "weak_edges": weak_edges,
+            "edge_segments": total,
+            "filtered_segments": filtered,
+            "unfiltered_segments": total - filtered,
+            "filtered_16": count(&|e| e.filtered && e.filter_size == 16),
+            "filtered_8": count(&|e| e.filtered && e.filter_size == 8),
+            "filtered_4": count(&|e| e.filtered && e.filter_size == 4),
         },
     })
 }
@@ -105,7 +112,7 @@ struct GetDeblockingAnalysisParams {
     frame_index: usize,
 }
 
-/// AV1 loop-filter boundary strength + real loop-filter parameters for one frame of stream A --
+/// AV1 loop-filter edges + real loop-filter parameters for one frame of stream A --
 /// see this module's doc. Control-only, same reasoning as
 /// `frame_analysis::get_frame_analysis_command`.
 pub fn get_deblocking_analysis_command(
@@ -178,10 +185,86 @@ mod tests {
         assert_eq!(result["height"], 240);
         let edges = result["edges"].as_array().unwrap();
         assert!(!edges.is_empty(), "expected real boundary edges");
-        // boundary_strength must be a small numeric code (0-2), never a string.
-        let bs = edges[0]["boundary_strength"].as_u64().unwrap();
-        assert!(bs <= 2);
-        assert!(result["stats"]["total_edges"].as_u64().unwrap() > 0);
+        // AV1 has no boundary strength: an edge carries the largest filter it allows (4, 8 or 16
+        // samples) and its level, both numbers.
+        for e in edges {
+            assert!(
+                matches!(e["filter_size"].as_u64().unwrap(), 4 | 8 | 16),
+                "{e}"
+            );
+            assert!(e["level"].as_u64().unwrap() <= 63);
+            assert!(e["length"].as_u64().unwrap() % 4 == 0);
+        }
+        let stats = &result["stats"];
+        let total = stats["edge_segments"].as_u64().unwrap();
+        assert!(total > 0);
+        assert_eq!(
+            stats["filtered_segments"].as_u64().unwrap()
+                + stats["unfiltered_segments"].as_u64().unwrap(),
+            total
+        );
+        assert_eq!(
+            stats["filtered_16"].as_u64().unwrap()
+                + stats["filtered_8"].as_u64().unwrap()
+                + stats["filtered_4"].as_u64().unwrap(),
+            stats["filtered_segments"].as_u64().unwrap(),
+            "every filtered segment has one of the three sizes"
+        );
+        assert_eq!(result["delta_lf_ignored"], false);
+    }
+
+    /// Every edge of a real frame obeys what the spec derivation guarantees, key frame and inter
+    /// frame alike (spec 7.14.2-7.14.5), without re-deriving the values.
+    #[test]
+    fn real_frames_keep_the_loop_filter_invariants() {
+        for frame_index in [0usize, 1, 5, 20, 100] {
+            let result = get_deblocking_analysis(AV1_IVF_FIXTURE, frame_index).unwrap();
+            let (w, h) = (
+                result["width"].as_u64().unwrap(),
+                result["height"].as_u64().unwrap(),
+            );
+            let level = result["params"]["level"].clone();
+            for e in result["edges"].as_array().unwrap() {
+                let (x, y, len) = (
+                    e["x"].as_u64().unwrap(),
+                    e["y"].as_u64().unwrap(),
+                    e["length"].as_u64().unwrap(),
+                );
+                let vertical = e["orientation"] == "vertical";
+                let size = e["filter_size"].as_u64().unwrap();
+                assert!(matches!(size, 4 | 8 | 16), "frame {frame_index}: {e}");
+                assert!(x % 4 == 0 && y % 4 == 0 && len % 4 == 0 && len > 0, "{e}");
+                assert!(x < w && y < h, "on screen: {e}");
+                // never on the frame border: the border has no block across it
+                assert!(if vertical { x > 0 } else { y > 0 }, "{e}");
+                // a size-16 filter needs transforms of 16 or more on both sides, so the edge sits
+                // on a multiple of its size
+                let across = if vertical { x } else { y };
+                assert!(across % size == 0, "frame {frame_index}: {e}");
+                // a filtered edge has a positive level, an unfiltered one is either level 0 or a
+                // transform edge inside a skipped inter block
+                let lvl = e["level"].as_u64().unwrap();
+                if e["filtered"] == true {
+                    assert!(lvl > 0, "{e}");
+                }
+                // an edge of a direction whose frame level is 0 can only have a level from deltas
+                // or segments; with no deltas and no segmentation it is 0
+                let base = level[if vertical { 0 } else { 1 }].as_u64().unwrap();
+                if base == 0 && result["params"]["delta_enabled"] == false {
+                    assert_eq!(lvl, 0, "{e}");
+                }
+            }
+        }
+    }
+
+    /// Every block of a key frame is intra, so `applyFilter` is always 1: an edge is filtered
+    /// exactly when its level is above zero.
+    #[test]
+    fn on_a_key_frame_an_edge_is_filtered_exactly_when_its_level_is_positive() {
+        let result = get_deblocking_analysis(AV1_IVF_FIXTURE, 0).unwrap();
+        for e in result["edges"].as_array().unwrap() {
+            assert_eq!(e["filtered"], e["level"].as_u64().unwrap() > 0, "{e}");
+        }
     }
 
     #[test]
