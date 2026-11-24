@@ -504,8 +504,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     // frameAnalysis.ts, which is what reconstructs qp_grid.qp for real UI consumers), so it has
     // to know about qp_bytes rather than qp_grid.qp.
     const qpGrid = result.frameAnalysis?.qp_grid as
-      | { grid_w?: number; grid_h?: number }
-      | undefined;
+      { grid_w?: number; grid_h?: number } | undefined;
     const qpBytesLength = result.frameAnalysis?.qp_bytes?.length ?? 0;
     const frameAnalysisOk =
       result.frameAnalysis?.width === 320 &&
@@ -666,6 +665,54 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
 }
 
 /**
+ * Waits until the page has stopped changing: two animation frames, then no DOM mutation for
+ * `quietMs`, at most `maxMs` overall. Replaces fixed sleeps between screenshot steps -- a key sent
+ * while the previous step was still rendering was dropped (the capture showed the state before the
+ * key) or hit a half-built tree (#447).
+ */
+function settleScript(quietMs: number, maxMs: number): string {
+  return `new Promise((resolve) => {
+    const start = Date.now();
+    let last = Date.now();
+    const observer = new MutationObserver(() => { last = Date.now(); });
+    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const tick = () => {
+        const now = Date.now();
+        if (now - last >= ${quietMs} || now - start >= ${maxMs}) {
+          observer.disconnect();
+          resolve(undefined);
+        } else {
+          setTimeout(tick, 50);
+        }
+      };
+      tick();
+    }));
+  })`;
+}
+
+async function settle(win: BrowserWindow): Promise<void> {
+  await win.webContents.executeJavaScript(settleScript(400, 8000));
+}
+
+/** Waits for the opened stream's frames to be on screen; throws (-> exit 1) if they never are. */
+async function waitForFrames(win: BrowserWindow): Promise<void> {
+  const ready = await win.webContents
+    .executeJavaScript(`new Promise((resolve) => {
+    const deadline = Date.now() + 30000;
+    const poll = () => {
+      if (document.querySelector("[data-frame-index]")) resolve(true);
+      else if (Date.now() > deadline) resolve(false);
+      else setTimeout(poll, 100);
+    };
+    poll();
+  })`);
+  if (!ready) {
+    throw new Error("the opened stream's frames never appeared (30s)");
+  }
+}
+
+/**
  * Visual proof mode (`BITVUE_ELECTRON_SCREENSHOT=<output.png>`): drives the REAL production
  * "open file" code path -- App.tsx's `handleOpenFile`, triggered the same way a native menu
  * click would (dispatching the `"menu-open-bitstream"` DOM event it already listens for) -- with
@@ -687,7 +734,10 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * same idea as CLICK_TAB but for elements that aren't `<button>`s with matchable text (e.g. a
  * specific filmstrip thumbnail, which is a `<div data-frame-index="N">`) -- runs after all
  * CLICK_TAB clicks, in order, one `document.querySelector(selector)` + mousedown/click per
- * entry, waiting for each to render before the next.
+ * entry, waiting for each to render before the next. The events carry coordinates: the element's
+ * center, or `selector@x:y` for a spot x,y CSS pixels from its top-left (a block inside a canvas).
+ * Narrow `data-frame-index` selectors by class (`.filmstrip-frame[data-frame-index="N"]`): the
+ * timeline components carry the attribute too and `querySelector` returns the first match.
  *
  * `BITVUE_ELECTRON_SCREENSHOT_OPEN_DEPENDENT=1` (optional, Phase 7.5 compare workspace): after
  * stream A settles, also dispatches `"menu-open-dependent"` (same real code path as the "Open
@@ -759,19 +809,15 @@ async function runScreenshotAndExit(
     );
     if (process.env.BITVUE_ELECTRON_SCREENSHOT_SKIP_OPEN) {
       // Still give the initial React mount a moment to settle instead of racing it.
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 500))",
-      );
+      await settle(win);
     } else {
       await win.webContents.executeJavaScript(
         'window.dispatchEvent(new CustomEvent("menu-open-bitstream"))',
       );
-      // Real IPC round-trips here have all been sub-second in prior selftest runs -- a generous
-      // fixed wait for the open -> index -> refreshFrames chain + React re-render to settle,
-      // rather than guessing at a DOM-text heuristic that could false-positive on unrelated text.
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 3000))",
-      );
+      // Wait for the open -> index -> refreshFrames chain to put the frames on screen (a fixed
+      // 3 s wait let later steps run against a stream that was not loaded yet, #447).
+      await waitForFrames(win);
+      await settle(win);
     }
     // `BITVUE_ELECTRON_SCREENSHOT_OPEN_DEPENDENT=1` (optional, Phase 7.5 compare workspace):
     // dispatches "menu-open-dependent" the same way -- `showOpenDialog`'s
@@ -784,8 +830,9 @@ async function runScreenshotAndExit(
         'window.dispatchEvent(new CustomEvent("menu-open-dependent"))',
       );
       await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 3000))",
+        "new Promise((r) => setTimeout(r, 1000))",
       );
+      await settle(win);
     }
     const clickTabs = process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB?.split(
       ",",
@@ -813,26 +860,39 @@ async function runScreenshotAndExit(
           button.click();
         })()
       `);
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 500))",
-      );
+      await settle(win);
     }
     const clickSelectors =
       process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_SELECTOR?.split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-    for (const selector of clickSelectors ?? []) {
+    for (const entry of clickSelectors ?? []) {
+      // `selector@x:y` clicks x,y CSS pixels from the element's top-left (for a spot inside a
+      // canvas); without it the click lands on the element's center, like a real click on it.
+      const at = /^(.*)@(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/s.exec(entry);
+      const selector = at ? at[1].trim() : entry;
+      const offset = at
+        ? `{ x: ${Number(at[2])}, y: ${Number(at[3])} }`
+        : "null";
       await win.webContents.executeJavaScript(`
         (() => {
           const el = document.querySelector(${JSON.stringify(selector)});
           if (!el) throw new Error(${JSON.stringify(`selector not found: ${selector}`)});
-          el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-          el.click();
+          const rect = el.getBoundingClientRect();
+          const offset = ${offset};
+          const init = {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.left + (offset ? offset.x : rect.width / 2),
+            clientY: rect.top + (offset ? offset.y : rect.height / 2),
+          };
+          // The same sequence a real click produces, with coordinates on every event.
+          el.dispatchEvent(new MouseEvent("mousedown", init));
+          el.dispatchEvent(new MouseEvent("mouseup", init));
+          el.dispatchEvent(new MouseEvent("click", init));
         })()
       `);
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 500))",
-      );
+      await settle(win);
     }
     const keys = process.env.BITVUE_ELECTRON_SCREENSHOT_KEY?.split(",")
       .map((s) => s.trim())
@@ -855,9 +915,7 @@ async function runScreenshotAndExit(
           cancelable: true,
         }));
       `);
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 500))",
-      );
+      await settle(win);
     }
     const dispatches = process.env.BITVUE_ELECTRON_SCREENSHOT_DISPATCH?.split(
       ",",
@@ -871,9 +929,7 @@ async function runScreenshotAndExit(
       await win.webContents.executeJavaScript(
         `window.dispatchEvent(new CustomEvent(${JSON.stringify(eventName)}, { detail: ${JSON.stringify(detail)} }));`,
       );
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 500))",
-      );
+      await settle(win);
     }
     const contextMenuSelectors =
       process.env.BITVUE_ELECTRON_SCREENSHOT_CONTEXT_MENU?.split(",")
@@ -893,9 +949,7 @@ async function runScreenshotAndExit(
           }));
         })()
       `);
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 500))",
-      );
+      await settle(win);
     }
     // BITVUE_ELECTRON_SCREENSHOT_MOUSEMOVE=<css selector> (optional): same real-bubbling-event
     // pattern as CONTEXT_MENU above (getBoundingClientRect center -> clientX/clientY), for
@@ -919,9 +973,7 @@ async function runScreenshotAndExit(
           }));
         })()
       `);
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 500))",
-      );
+      await settle(win);
     }
     // BITVUE_ELECTRON_SCREENSHOT_CTRL_WHEEL=<css selector>[,<css selector>...] (optional): runs
     // last, right before capture -- dispatches a real Ctrl+wheel `WheelEvent` (bubbling,
@@ -947,10 +999,9 @@ async function runScreenshotAndExit(
           }));
         })()
       `);
-      await win.webContents.executeJavaScript(
-        "new Promise((r) => setTimeout(r, 500))",
-      );
+      await settle(win);
     }
+    await settle(win);
     const image = await win.webContents.capturePage();
     writeFileSync(outputPath, image.toPNG());
     console.log(`[screenshot] saved to ${outputPath}`);
@@ -1081,7 +1132,10 @@ app.setName("Bitvue");
 // state from an unrelated earlier run) -- see `feedback_no_neon_ai_dashboard_look.md`'s
 // WelcomeScreen redesign notes for how that leftover-state dependency wasted a long debugging
 // detour before this was found to be the real cause.
-if (process.env.BITVUE_ELECTRON_SCREENSHOT || process.env.BITVUE_ELECTRON_SELFTEST === "1") {
+if (
+  process.env.BITVUE_ELECTRON_SCREENSHOT ||
+  process.env.BITVUE_ELECTRON_SELFTEST === "1"
+) {
   app.setPath(
     "userData",
     mkdtempSync(path.join(tmpdir(), "bitvue-electron-test-")),
