@@ -362,11 +362,13 @@ describe("TimelineThumbnails edge cases", () => {
     );
   });
 
-  it("should handle frame types starting with B", () => {
+  it("colors B and B_* frames as B, but not other types that merely start with B", () => {
     const framesWithBTypes = [
       { frame_index: 0, frame_type: "B", size: 20000, poc: 0 },
       { frame_index: 1, frame_type: "b", size: 20000, poc: 1 },
-      { frame_index: 2, frame_type: "BLA", size: 20000, poc: 2 },
+      { frame_index: 2, frame_type: "B_FRAME", size: 20000, poc: 2 },
+      // HEVC BLA is an intra random-access picture, not a B frame.
+      { frame_index: 3, frame_type: "BLA", size: 20000, poc: 3 },
     ];
     const props = { ...defaultProps, frames: framesWithBTypes };
 
@@ -380,6 +382,9 @@ describe("TimelineThumbnails edge cases", () => {
     );
     expect(document.querySelector('[data-frame-index="2"]')).toHaveClass(
       "timeline-bar-b",
+    );
+    expect(document.querySelector('[data-frame-index="3"]')).toHaveClass(
+      "timeline-bar-unknown",
     );
   });
 });

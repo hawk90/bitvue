@@ -10,6 +10,7 @@
  */
 
 import { memo } from "react";
+import { frameKindClass } from "../../utils/frameType";
 import "./FrameTypeBadge.css";
 
 interface FrameTypeBadgeProps {
@@ -20,7 +21,9 @@ export const FrameTypeBadge = memo(function FrameTypeBadge({
   frameType,
 }: FrameTypeBadgeProps) {
   return (
-    <span className={`frame-type-badge frame-type-${frameType.toLowerCase()}`}>
+    <span
+      className={`frame-type-badge ${frameKindClass("frame-type", frameType)}`}
+    >
       {frameType}
     </span>
   );

@@ -11,8 +11,7 @@
   line-height: 1.4;
 }
 
-.frame-type-i,
-.frame-type-key {
+.frame-type-i {
   background: rgb(208 64 64 / 20%);
   color: var(--frame-i);
   border: 1px solid rgb(208 64 64 / 30%);

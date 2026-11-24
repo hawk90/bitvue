@@ -6,6 +6,7 @@
 
 import { forwardRef, useEffect, useRef } from "react";
 import { TimelineCursor } from "./TimelineCursor";
+import { frameKindClass } from "../utils/frameType";
 
 interface FrameInfo {
   frame_index: number;
@@ -65,13 +66,8 @@ export const TimelineThumbnails = forwardRef<
   ) => {
     const internalFrameRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-    const getFrameBarClass = (frameType: string) => {
-      const type = frameType.toLowerCase();
-      if (type === "i" || type === "key") return "timeline-bar-i";
-      if (type === "p" || type === "inter") return "timeline-bar-p";
-      if (type.startsWith("b")) return "timeline-bar-b";
-      return "timeline-bar-unknown";
-    };
+    const getFrameBarClass = (frameType: string) =>
+      frameKindClass("timeline-bar", frameType);
 
     // Notify parent when frame refs change
     useEffect(() => {

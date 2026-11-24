@@ -107,24 +107,9 @@
   text-transform: uppercase;
 }
 
-.frame-type-i,
-.frame-type-key {
-  background: rgb(224 49 49 / 25%);
-  color: #ff6b6b;
-  border: 1px solid rgb(224 49 49 / 40%);
-}
-
-.frame-type-p {
-  background: rgb(45 164 78 / 25%);
-  color: #6bcf7f;
-  border: 1px solid rgb(45 164 78 / 40%);
-}
-
-.frame-type-b {
-  background: rgb(31 119 180 / 25%);
-  color: #6db3f2;
-  border: 1px solid rgb(31 119 180 / 40%);
-}
+/* The I/P/B colors of these badges come from common/FrameTypeBadge.css (`.frame-type-i/p/b`);
+   a second copy of those global rules here, with different colors, made the badge color depend
+   on which stylesheet loaded last. */
 
 /* Frame info display */
 .frame-nav-info {
