@@ -1081,7 +1081,7 @@ fn reduced_still_picture_header_key_frame_has_far_fewer_elements() {
 /// would otherwise desync every later element.
 #[test]
 fn streams_it_cannot_parse_are_refused_with_a_reason() {
-    let mut seq = base_seq();
+    let seq = base_seq();
 
     // frame_refs_short_signaling
     let mut b = HeaderBits::default();
