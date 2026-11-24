@@ -219,6 +219,52 @@ export async function getFrameAnalysis(
   };
 }
 
+/** What `get_hrd_info` returns (`bitvue-sidecar`'s `hrd_info.rs`): the AV1 decoder model of stream A
+ *  and the buffer limits its operating points' levels imply. AV1 signals no bit rate or buffer
+ *  size -- both follow from level, tier and profile (spec Annex E.2/A.3), so `max_bitrate_bps` and
+ *  `buffer_size_bits` are `null` for a level the spec defines no limits for. */
+export interface HrdOperatingPointWire {
+  idc: number;
+  seq_level_idx: number;
+  level: string | null;
+  tier: "main" | "high";
+  max_bitrate_bps: number | null;
+  buffer_size_bits: number | null;
+  /** Present exactly when the operating point has a decoder model. */
+  decoder_model: {
+    decoder_buffer_delay: number;
+    encoder_buffer_delay: number;
+    low_delay_mode: boolean;
+  } | null;
+}
+
+export interface HrdInfoWireResult {
+  /** The first operating point has a decoder model: the stream signals something to show. */
+  present: boolean;
+  profile: string;
+  /** From `timing_info` with an equal picture interval; `null` for a variable display rate. */
+  frame_rate: number | null;
+  timing: {
+    num_units_in_display_tick: number;
+    time_scale: number;
+    equal_picture_interval: boolean;
+    num_ticks_per_picture: number | null;
+  } | null;
+  decoder_model: {
+    buffer_delay_length: number;
+    num_units_in_decoding_tick: number;
+    buffer_removal_time_length: number;
+    frame_presentation_time_length: number;
+  } | null;
+  operating_points: HrdOperatingPointWire[];
+}
+
+/** The decoder model of stream A. AV1/IVF only. Throws when no stream is open or its sequence
+ *  header cannot be read. */
+export async function getHrdInfo(): Promise<HrdInfoWireResult> {
+  return requireBridge().getHrdInfo();
+}
+
 /** CDEF/loop-restoration/film-grain/super-resolution data for one frame of stream A. AV1/IVF
  *  only. Throws on failure (frame out of range, stream not open, or a stream using short
  *  reference-frame signaling -- see bitvue_av1_codec::frame_header_full's module doc). */

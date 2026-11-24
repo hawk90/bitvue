@@ -3,7 +3,9 @@
 use bitvue_engine::Result;
 
 use super::color::parse_color_config;
-use super::types::{Av1Profile, DecoderModelInfo, OperatingPoint, SequenceHeader, TimingInfo};
+use super::types::{
+    Av1Profile, DecoderModelInfo, OperatingParameters, OperatingPoint, SequenceHeader, TimingInfo,
+};
 use crate::bitreader::BitReader;
 
 /// Parses a Sequence Header OBU payload
@@ -135,6 +137,7 @@ fn read_operating_section(
             seq_level_idx: reader.read_bits(5)? as u8,
             seq_tier: false,
             decoder_model_present: false,
+            operating_parameters: None,
             initial_display_delay: None,
         });
     } else {
@@ -172,16 +175,20 @@ fn read_operating_section(
                 false
             };
 
-            if decoder_model_present {
-                // Skip decoder model info for now
+            // operating_parameters_info( i ) (spec 5.5.5)
+            let operating_parameters = if decoder_model_present {
                 let n = decoder_model_info
                     .as_ref()
                     .map(|d| d.buffer_delay_length_minus_1 + 1)
                     .unwrap_or(0);
-                reader.skip_bits(n as u64)?; // decoder_buffer_delay
-                reader.skip_bits(n as u64)?; // encoder_buffer_delay
-                reader.read_bit()?; // low_delay_mode_flag
-            }
+                Some(OperatingParameters {
+                    decoder_buffer_delay: reader.read_bits_u64(n)? as u32,
+                    encoder_buffer_delay: reader.read_bits_u64(n)? as u32,
+                    low_delay_mode: reader.read_bit()?,
+                })
+            } else {
+                None
+            };
 
             let initial_display_delay = if initial_display_delay_present {
                 if reader.read_bit()? {
@@ -199,6 +206,7 @@ fn read_operating_section(
                 seq_level_idx,
                 seq_tier,
                 decoder_model_present,
+                operating_parameters,
                 initial_display_delay,
             });
         }

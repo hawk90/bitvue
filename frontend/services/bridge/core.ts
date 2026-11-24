@@ -17,7 +17,7 @@
  * feature area).
  */
 
-import type { Av1FeaturesWireResult } from "./frameAnalysis";
+import type { Av1FeaturesWireResult, HrdInfoWireResult } from "./frameAnalysis";
 import type { CodingFlowAnalysisWireResult } from "./frameAnalysis";
 import type { DeblockingAnalysisWireResult } from "./frameAnalysis";
 import type { CodecExtendedInfoWireResult } from "./frameAnalysis";
@@ -117,6 +117,7 @@ declare global {
         frameIndex: number,
       ) => Promise<FrameAnalysisWireResult>;
       getAv1Features: (frameIndex: number) => Promise<Av1FeaturesWireResult>;
+      getHrdInfo: () => Promise<HrdInfoWireResult>;
       getCodingFlowAnalysis: (
         frameIndex: number,
       ) => Promise<CodingFlowAnalysisWireResult>;

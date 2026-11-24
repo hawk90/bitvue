@@ -34,6 +34,10 @@ export function registerFrameAnalysisIpcHandlers(
     },
   );
 
+  ipcMain.handle("bitvue:getHrdInfo", async () => {
+    return requireSidecar().request("get_hrd_info", {});
+  });
+
   ipcMain.handle(
     "bitvue:getCodingFlowAnalysis",
     async (_event, frameIndex: number) => {

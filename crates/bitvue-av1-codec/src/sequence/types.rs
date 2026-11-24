@@ -61,6 +61,19 @@ pub struct DecoderModelInfo {
     pub frame_presentation_time_length_minus_1: u8,
 }
 
+/// `operating_parameters_info()` of an operating point (spec 5.5.5): present exactly when the
+/// operating point has a decoder model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatingParameters {
+    /// `decoder_buffer_delay`: the delay, in `num_units_in_decoding_tick` units, between a frame's
+    /// first bit arriving and the decoder starting on it (decoder model, spec Annex E)
+    pub decoder_buffer_delay: u32,
+    /// `encoder_buffer_delay`: the same delay as seen by the encoder
+    pub encoder_buffer_delay: u32,
+    /// `low_delay_mode_flag`: frames are removed from the buffer as soon as they are complete
+    pub low_delay_mode: bool,
+}
+
 /// Operating point
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperatingPoint {
@@ -68,6 +81,8 @@ pub struct OperatingPoint {
     pub seq_level_idx: u8,
     pub seq_tier: bool,
     pub decoder_model_present: bool,
+    /// `Some` exactly when `decoder_model_present`
+    pub operating_parameters: Option<OperatingParameters>,
     pub initial_display_delay: Option<u8>,
 }
 
