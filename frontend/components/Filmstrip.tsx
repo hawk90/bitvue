@@ -20,6 +20,7 @@ import { FilmstripTooltip } from "./FilmstripTooltip";
 import { EnhancedView } from "./EnhancedView";
 import { HRDBufferPanel } from "./panels/HRDBufferPanel";
 import { useFilmstripState } from "./useFilmstripState";
+import { hrdPanelParams, useHrdInfo } from "../hooks/useHrdInfo";
 import {
   getFrameTypeColorClass,
   getFrameTypeColor,
@@ -63,6 +64,13 @@ function Filmstrip({
   const [bpyramidShowAllArrows, setBpyramidShowAllArrows] = useState(false);
 
   const useVirtualizedView = frames.length >= VIRTUALIZATION_THRESHOLD;
+  // The decoder model is a property of the stream, fetched only for the HRD view (#538).
+  const hrdParams = hrdPanelParams(
+    useHrdInfo(
+      displayView === "hrdbuffer" && frames.length > 0,
+      `${frames.length}:${frames[0]?.size ?? 0}`,
+    ),
+  );
 
   const visibleFrameTypes = useMemo(() => new Set(["I", "P", "B"]), []);
 
@@ -317,7 +325,7 @@ function Filmstrip({
           <HRDBufferPanel
             frames={frames}
             currentFrameIndex={currentFrameIndex}
-            frameRate={30}
+            {...hrdParams}
           />
         ) : displayView === "enhanced" ? (
           <EnhancedView

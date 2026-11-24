@@ -3,12 +3,16 @@
 //! Reference: AV1 Specification Section 5.5
 
 mod color;
+mod levels;
 mod parse;
 mod types;
 
 pub use color::*;
+pub use levels::{buffer_limits, level_name, BufferLimits};
 pub use parse::parse_sequence_header;
-pub use types::{Av1Profile, DecoderModelInfo, OperatingPoint, SequenceHeader, TimingInfo};
+pub use types::{
+    Av1Profile, DecoderModelInfo, OperatingParameters, OperatingPoint, SequenceHeader, TimingInfo,
+};
 
 #[cfg(test)]
 mod tests {
@@ -540,8 +544,18 @@ mod tests {
         };
         assert_eq!((op0.idc, op0.seq_level_idx, op0.seq_tier), (0x0F, 3, false));
         assert!(op0.decoder_model_present);
+        // operating_parameters_info( 0 ): the delays and the low delay flag are kept
+        assert_eq!(
+            op0.operating_parameters,
+            Some(OperatingParameters {
+                decoder_buffer_delay: 0xAA,
+                encoder_buffer_delay: 0x55,
+                low_delay_mode: true,
+            })
+        );
         assert_eq!((op1.idc, op1.seq_level_idx, op1.seq_tier), (0x103, 9, true));
         assert!(!op1.decoder_model_present);
+        assert_eq!(op1.operating_parameters, None);
         assert_tail_is_intact(&seq);
     }
 

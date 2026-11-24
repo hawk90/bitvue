@@ -3134,6 +3134,9 @@ items:
     evidence:
       - frontend/components/panels/HRDBufferPanel.tsx::HRDBufferPanel
       - frontend/components/Filmstrip.tsx:316
+      - frontend/hooks/useHrdInfo.ts::hrdPanelParams
+      - crates/bitvue-sidecar/src/hrd_info.rs::get_hrd_info
+      - crates/bitvue-av1-codec/src/sequence/levels.rs::buffer_limits
       - crates/bitvue-engine/src/hrd.rs::HrdModel
     competitors:
       vqa: 'yes'
@@ -3157,7 +3160,10 @@ items:
       from frame sizes with assumed bitrate/CPB size — HRD params are not parsed. T-STD conformance part dropped (see QA-201).
       | Doc said ❌ disconnected mock. Code (841983e): simulation now uses an average-bitrate estimate from real frame sizes
       labeled ''(est.)''; signaled HRD params still discarded (AVC sps) and HrdModel has no production caller. | Panel (Filmstrip
-      dropdown) simulates occupancy from frame sizes with estimated bitrate labelled (est.); no signalled HRD parameters.
+      dropdown) simulates occupancy from frame sizes with estimated bitrate labelled (est.); no signalled HRD parameters. | AV1 (#538): the sequence
+      decoder model (delays, low_delay_mode) and the level/tier/profile limits (BitRate, BufferSize per spec Annex A.3/E.2) reach the panel
+      through get_hrd_info; the fullness curve is still a leaky-bucket simulation, not the Annex E timing model (#587); AVC/HEVC HRD
+      params are not read (#588).
       T-STD conformance out of scope.'
   - id: UI-009
     title: Per-frame PSNR/SSIM metrics graph in Stream View

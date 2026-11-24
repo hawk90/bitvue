@@ -137,6 +137,7 @@ fn model_seq(equal_picture_interval: bool, ops: &[(u16, bool)]) -> SequenceHeade
             seq_level_idx: 0,
             seq_tier: false,
             decoder_model_present,
+            operating_parameters: None,
             initial_display_delay: None,
         })
         .collect();

@@ -85,6 +85,7 @@ mod decode_bridge;
 mod decode_session;
 mod evidence_export;
 mod frame_analysis;
+mod hrd_info;
 mod request_dispatch;
 mod residual_analysis;
 #[cfg(test)]

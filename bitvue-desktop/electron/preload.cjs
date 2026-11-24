@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld("bitvue", {
     ipcRenderer.invoke("bitvue:getFrameAnalysis", frameIndex),
   getAv1Features: (frameIndex) =>
     ipcRenderer.invoke("bitvue:getAv1Features", frameIndex),
+  getHrdInfo: () => ipcRenderer.invoke("bitvue:getHrdInfo"),
   getCodingFlowAnalysis: (frameIndex) =>
     ipcRenderer.invoke("bitvue:getCodingFlowAnalysis", frameIndex),
   getDeblockingAnalysis: (frameIndex) =>

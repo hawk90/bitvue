@@ -6,6 +6,7 @@
 use crate::command_support::{
     event_to_json, panic_payload_message, parse_stream_id, single_control_frame,
 };
+use crate::hrd_info;
 use crate::{av1_features, codec_extended_info, coding_flow, commands, compare, context_menu};
 use crate::{deblocking, debug_yuv, decode_bridge, evidence_export, frame_analysis};
 use crate::{residual_analysis, write_frame};
@@ -513,6 +514,7 @@ pub fn dispatch(core: &Core, request: &Request) -> Response {
             decode_bridge::get_thumbnails_command(core, request, &AtomicBool::new(false))
         }
         "get_av1_features" => av1_features::get_av1_features_command(core, request),
+        "get_hrd_info" => hrd_info::get_hrd_info_command(core, request),
         "get_coding_flow_analysis" => coding_flow::get_coding_flow_analysis_command(core, request),
         "get_deblocking_analysis" => deblocking::get_deblocking_analysis_command(core, request),
         "get_codec_extended_info" => {
