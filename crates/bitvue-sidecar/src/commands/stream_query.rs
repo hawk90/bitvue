@@ -95,7 +95,10 @@ pub fn get_frames_chunk(core: &Core, request: &Request) -> Response {
     let state = stream_state.read();
     match &state.units {
         Some(unit_model) => {
-            let end = (params.offset + params.limit).min(unit_model.units.len());
+            let end = params
+                .offset
+                .saturating_add(params.limit)
+                .min(unit_model.units.len());
             let slice = if params.offset < unit_model.units.len() {
                 &unit_model.units[params.offset..end]
             } else {
@@ -324,6 +327,58 @@ mod tests {
         );
         let page_2_units = page_2.result.unwrap()["units"].as_array().unwrap().clone();
         assert_eq!(page_2_units[0]["frame_index"], 5);
+    }
+
+    #[test]
+    fn get_frames_chunk_huge_limit_does_not_panic_and_returns_remaining_units() {
+        // Regression test for issue #568: `offset + limit` was computed with a plain
+        // `usize` addition, so a very large `limit` (e.g. `usize::MAX`) wraps in release
+        // builds, making `end < offset` and panicking on the slice index. A valid offset
+        // with an absurd limit must return every unit from `offset` to the end, not panic.
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        crate::dispatch(
+            &core,
+            &Request {
+                id: 120,
+                method: "index_stream".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+
+        let total_count = crate::dispatch(
+            &core,
+            &Request {
+                id: 121,
+                method: "get_frames_chunk".to_string(),
+                params: serde_json::json!({"stream": "A", "offset": 0, "limit": 1}),
+            },
+        )
+        .result
+        .unwrap()["total_count"]
+            .as_u64()
+            .unwrap();
+
+        // Non-zero offset + usize::MAX limit: must not panic, must return the tail.
+        let offset = 3usize;
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 122,
+                method: "get_frames_chunk".to_string(),
+                params: serde_json::json!({"stream": "A", "offset": offset, "limit": usize::MAX}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(result["indexed"], true);
+        let units = result["units"].as_array().unwrap();
+        assert_eq!(
+            units.len() as u64,
+            total_count - offset as u64,
+            "huge limit should return every unit from offset to the end"
+        );
+        assert_eq!(units[0]["frame_index"], offset as u64);
     }
 
     #[test]
