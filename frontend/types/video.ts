@@ -149,6 +149,7 @@ export interface FrameInfo {
   // Analysis data (QP heatmap, MV field, partition grid, prediction mode, transform)
   qp_grid?: QPGrid; // QP grid data for heatmap visualization
   energy_grid?: EnergyGrid; // Real per-block residual energy for the Efficiency Map overlay
+  bit_grid?: BitGrid; // Measured per-cell coded bits for the Heat Map / Efficiency Map overlays
   mv_grid?: MVGrid; // MV grid data for motion vector field
   partition_grid?: PartitionGrid; // Partition grid for coding flow
   prediction_mode_grid?: PredictionModeGrid; // Prediction mode grid for prediction visualization
@@ -404,6 +405,21 @@ export interface EnergyGrid {
 }
 
 /**
+ * Per-cell entropy-coded bit cost, measured from the arithmetic decoder (not a QP or residual
+ * proxy). Same cell layout as QPGrid. Partition-symbol cost is attributed to the coding units
+ * it covers. `symbols_per_bit` counts decoder symbol reads (a multi-symbol read is one), so it is
+ * comparable within this app only, not with libaom's binarized-bool counts.
+ */
+export interface BitGrid {
+  grid_w: number;
+  grid_h: number;
+  block_w: number;
+  block_h: number;
+  bits_per_pixel: number[]; // Coded bits per visible pixel of the cell (row-major), 0 = nothing coded
+  symbols_per_bit: number[]; // Decoder symbols per coded bit, 0 for a cell with no bits
+}
+
+/**
  * Motion Vector data for a single block
  */
 export interface MotionVectorBlock {
@@ -587,6 +603,7 @@ export interface FrameAnalysisData {
   height: number;
   qp_grid?: QPGrid;
   energy_grid?: EnergyGrid; // Real per-block residual energy for the Efficiency Map overlay
+  bit_grid?: BitGrid; // Measured per-cell coded bits for the Heat Map / Efficiency Map overlays
   mv_grid?: MVGrid;
   partition_grid?: PartitionGrid; // Partition grid for coding flow
   prediction_mode_grid?: PredictionModeGrid; // Prediction mode grid for prediction overlay

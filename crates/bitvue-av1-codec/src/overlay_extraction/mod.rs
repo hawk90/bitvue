@@ -31,6 +31,7 @@
 mod cache;
 pub(crate) mod cu_parser;
 pub use cu_parser::MAX_FRAME_LUMA_SAMPLES;
+mod bit_extractor;
 pub(crate) mod cu_spatial_index;
 mod deblocking;
 mod energy_extractor;
@@ -46,6 +47,7 @@ mod stream_state;
 pub const OVERLAY_BLOCK_SIZE: u32 = 64;
 
 // Re-export public API
+pub use bit_extractor::{bit_grid_from_units, extract_bit_grid_from_parsed, BitGrid};
 pub use cache::ParsedCodingUnits;
 pub use cu_parser::{parse_all_coding_units, parse_coding_units_checked};
 pub use deblocking::{extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge};

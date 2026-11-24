@@ -20,10 +20,10 @@
 //! `main.rs`'s module doc gives for hand-mapping `bitvue-engine` types generally.
 
 use bitvue_av1_codec::overlay_extraction::{
-    extract_energy_grid_from_parsed, extract_mv_grid_from_parsed,
+    extract_bit_grid_from_parsed, extract_energy_grid_from_parsed, extract_mv_grid_from_parsed,
     extract_partition_grid_from_parsed, extract_prediction_mode_grid_from_parsed,
-    extract_qp_grid_from_parsed, extract_transform_grid_from_parsed, frame_provenance, EnergyGrid,
-    ParsedFrame, PredictionModeGrid, Provenance, TransformGrid,
+    extract_qp_grid_from_parsed, extract_transform_grid_from_parsed, frame_provenance, BitGrid,
+    EnergyGrid, ParsedFrame, PredictionModeGrid, Provenance, TransformGrid,
 };
 use bitvue_av1_codec::tile::PredictionMode;
 use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
@@ -73,6 +73,7 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
         extract_prediction_mode_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
     let transform_grid = extract_transform_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
     let energy_grid = extract_energy_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
+    let bit_grid = extract_bit_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
 
     Ok(json!({
         "frame_index": frame_index,
@@ -84,6 +85,7 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
         "prediction_mode_grid": prediction_mode_grid_to_json(&prediction_mode_grid),
         "transform_grid": transform_grid_to_json(&transform_grid),
         "energy_grid": energy_grid_to_json(&energy_grid),
+        "bit_grid": bit_grid_to_json(&bit_grid),
         "provenance": provenance.as_str(),
     }))
 }
@@ -107,6 +109,17 @@ fn energy_grid_to_json(g: &EnergyGrid) -> Value {
         "block_w": g.block_w,
         "block_h": g.block_h,
         "energy_bpp": g.energy_bpp,
+    })
+}
+
+fn bit_grid_to_json(g: &BitGrid) -> Value {
+    json!({
+        "grid_w": g.grid_w,
+        "grid_h": g.grid_h,
+        "block_w": g.block_w,
+        "block_h": g.block_h,
+        "bits_per_pixel": g.bits_per_pixel,
+        "symbols_per_bit": g.symbols_per_bit,
     })
 }
 
@@ -396,6 +409,7 @@ mod tests {
             "prediction_mode_grid",
             "transform_grid",
             "energy_grid",
+            "bit_grid",
         ] {
             assert!(result.get(grid).is_none(), "{grid} must not be sent");
         }
@@ -629,6 +643,37 @@ mod tests {
         assert!(
             energy.iter().any(|&v| v > 0.0),
             "expected at least one block with real residual energy on a real I-frame, got all zeros: {energy:?}"
+        );
+    }
+
+    #[test]
+    fn get_frame_analysis_bit_grid_carries_measured_bits_per_pixel() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        let frames = get_frame_analysis_command(
+            &core,
+            &Request {
+                id: 223,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        let (response, _qp_bytes) = decode_frame_analysis_response(frames);
+        let result = response.result.unwrap();
+        let grid = &result["bit_grid"];
+        let cells = (grid["grid_w"].as_u64().unwrap() * grid["grid_h"].as_u64().unwrap()) as usize;
+        let bpp: Vec<f64> = grid["bits_per_pixel"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect();
+        let spb = grid["symbols_per_bit"].as_array().unwrap();
+        assert_eq!(bpp.len(), cells);
+        assert_eq!(spb.len(), cells);
+        assert!(
+            bpp.iter().any(|&v| v > 0.0),
+            "a real key frame spends bits somewhere"
         );
     }
 
