@@ -6,16 +6,18 @@
 
 import type { OverlayRendererProps } from "../types";
 import { getCssVar } from "../../../../utils/css";
-import { qpToColor } from "../utils/helpers";
+import { drawInfoBadge, qpToColor } from "../utils/helpers";
 
-export function QPMapOverlay({ ctx, frame }: OverlayRendererProps) {
+export function QPMapOverlay({ ctx, width, frame }: OverlayRendererProps) {
   if (!frame.qp_grid) {
     // No QP data available - show message
-    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-    ctx.fillRect(10, 10, 220, 30);
-    ctx.fillStyle = getCssVar("--text-bright") || "#fff";
-    ctx.font = "12px sans-serif";
-    ctx.fillText("QP data not available for this frame", 20, 30);
+    drawInfoBadge(
+      ctx,
+      width,
+      ["QP data not available for this frame"],
+      "12px sans-serif",
+      getCssVar("--text-bright") || "#fff",
+    );
     return;
   }
 
@@ -38,10 +40,11 @@ export function QPMapOverlay({ ctx, frame }: OverlayRendererProps) {
   }
 
   // Draw QP value indicator
-  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-  ctx.fillRect(10, 10, 120, 50);
-  ctx.fillStyle = getCssVar("--text-bright") || "#fff";
-  ctx.font = "12px monospace";
-  ctx.fillText(`QP: ${qp_min} - ${qp_max}`, 20, 28);
-  ctx.fillText(`Blocks: ${grid_w}x${grid_h}`, 20, 48);
+  drawInfoBadge(
+    ctx,
+    width,
+    [`QP: ${qp_min} - ${qp_max}`, `Blocks: ${grid_w}x${grid_h}`],
+    "12px monospace",
+    getCssVar("--text-bright") || "#fff",
+  );
 }

@@ -45,3 +45,31 @@ export function qpToColor(qp: number, minQP: number, maxQP: number): string {
   // Fallback (shouldn't reach here)
   return "rgba(0, 70, 255, 0.63)";
 }
+
+/**
+ * Draws an info overlay's text badge in the top-right corner. Mode labels (Coding Flow's
+ * "Blocks: N / SB: Npx", Prediction, Transform) own the top-left, so an info overlay drawn there
+ * printed on top of them (#451).
+ */
+export function drawInfoBadge(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  lines: string[],
+  font = "12px monospace",
+  textColor = "#fff",
+): void {
+  ctx.save();
+  ctx.font = font;
+  const padX = 10;
+  const lineH = 20;
+  const textW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  const boxW = Math.ceil(textW) + padX * 2;
+  const boxH = lines.length * lineH + 10;
+  const boxX = Math.max(0, width - boxW - 10);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+  ctx.fillRect(boxX, 10, boxW, boxH);
+  ctx.fillStyle = textColor;
+  ctx.textAlign = "left";
+  lines.forEach((l, i) => ctx.fillText(l, boxX + padX, 28 + i * lineH));
+  ctx.restore();
+}
