@@ -143,18 +143,6 @@
   border: 2px solid var(--frame-b);
 }
 
-.filmstrip-frame.frame-key .frame-thumbnail-wrapper {
-  border: 2px solid var(--frame-key);
-}
-
-.filmstrip-frame.frame-inter .frame-thumbnail-wrapper {
-  border: 2px solid var(--frame-inter);
-}
-
-.filmstrip-frame.frame-intra .frame-thumbnail-wrapper {
-  border: 2px solid var(--frame-intra);
-}
-
 /* Thumbnail background */
 .frame-thumbnail {
   width: 100%;

@@ -193,8 +193,8 @@ describe("getFrameTypeColor", () => {
     expect(getFrameTypeColor("b")).toBe("var(--frame-b)");
   });
 
-  it("should return CSS variable for frame types starting with B", () => {
-    expect(getFrameTypeColor("BLA")).toBe("var(--frame-b)");
+  it("should return CSS variable for B frame spellings, not for BLA", () => {
+    expect(getFrameTypeColor("BLA")).toBe("var(--text-secondary)");
     expect(getFrameTypeColor("bframe")).toBe("var(--frame-b)");
   });
 
@@ -495,7 +495,7 @@ describe("video type edge cases", () => {
 
   it("should handle special characters in frame type", () => {
     expect(getFrameTypeColorClass("I-FRAME")).toBe("frame-unknown");
-    expect(getFrameTypeColorClass("P_FRAME")).toBe("frame-unknown");
+    expect(getFrameTypeColorClass("P_FRAME")).toBe("frame-p");
   });
 
   it("should handle numeric frame types", () => {
@@ -503,10 +503,12 @@ describe("video type edge cases", () => {
     expect(getFrameTypeColorClass("0")).toBe("frame-unknown");
   });
 
-  it("should handle undefined frame type color with startsWith check", () => {
+  it("should color B types as B and everything else that merely starts with B as unknown", () => {
     expect(getFrameTypeColor("b")).toBe("var(--frame-b)");
-    expect(getFrameTypeColor("Bla")).toBe("var(--frame-b)");
-    expect(getFrameTypeColor("BLUE")).toBe("var(--frame-b)");
+    expect(getFrameTypeColor("B_FRAME")).toBe("var(--frame-b)");
+    // only real B types are B: HEVC BLA is intra random access, "BLUE" is nothing
+    expect(getFrameTypeColor("Bla")).toBe("var(--text-secondary)");
+    expect(getFrameTypeColor("BLUE")).toBe("var(--text-secondary)");
   });
 
   it("should handle case sensitivity consistently", () => {

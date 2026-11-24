@@ -19,6 +19,8 @@ import {
   findPrevFrameByType,
   findFrameByNumber,
 } from "../utils/frameNavigation";
+import { frameKindClass } from "../utils/frameType";
+import "./common/FrameTypeBadge.css";
 import "./FrameNavigationToolbar.css";
 
 interface FrameNavigationToolbarProps {
@@ -348,7 +350,7 @@ export const FrameNavigationToolbar = memo(function FrameNavigationToolbar({
                     onClick={() => goToSearchResult(idx)}
                   >
                     <span
-                      className={`frame-nav-result-badge frame-type-${frame.frame_type.toLowerCase()}`}
+                      className={`frame-nav-result-badge ${frameKindClass("frame-type", frame.frame_type)}`}
                     >
                       {frame.frame_type}
                     </span>

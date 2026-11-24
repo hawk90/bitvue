@@ -1,3 +1,4 @@
+import { frameKind, frameKindClass } from "../utils/frameType";
 /**
  * Video Type Definitions
  *
@@ -316,20 +317,7 @@ export enum YUVFormat {
  * Returns the CSS class name for styling frame types
  */
 export function getFrameTypeColorClass(frameType: string): string {
-  const type = frameType.toUpperCase();
-  switch (type) {
-    case FrameType.I:
-    case FrameType.KEY:
-    case FrameType.INTRA:
-      return "frame-i";
-    case FrameType.P:
-    case FrameType.INTER:
-      return "frame-p";
-    case FrameType.B:
-      return "frame-b";
-    default:
-      return "frame-unknown";
-  }
+  return frameKindClass("frame", frameType);
 }
 
 /**
@@ -337,31 +325,23 @@ export function getFrameTypeColorClass(frameType: string): string {
  * Returns the CSS variable for styling frame types
  */
 export function getFrameTypeColor(frameType: string): string {
-  const type = frameType.toLowerCase();
-  if (type === "i" || type === "key") return "var(--frame-i)";
-  if (type === "p" || type === "inter") return "var(--frame-p)";
-  if (type.startsWith("b")) return "var(--frame-b)";
-  return "var(--text-secondary)";
+  const kind = frameKind(frameType);
+  return kind === "unknown" ? "var(--text-secondary)" : `var(--frame-${kind})`;
 }
 
 /**
  * Helper function to check if a frame type is intra-coded
  */
 export function isIntraFrame(frameType: string): boolean {
-  const type = frameType.toUpperCase();
-  return (
-    type === FrameType.I || type === FrameType.KEY || type === FrameType.INTRA
-  );
+  return frameKind(frameType) === "i";
 }
 
 /**
  * Helper function to check if a frame type is inter-coded
  */
 export function isInterFrame(frameType: string): boolean {
-  const type = frameType.toUpperCase();
-  return (
-    type === FrameType.P || type === FrameType.B || type === FrameType.INTER
-  );
+  const kind = frameKind(frameType);
+  return kind === "p" || kind === "b";
 }
 
 /**
@@ -369,10 +349,7 @@ export function isInterFrame(frameType: string): boolean {
  */
 export function isKeyframe(frameType: string, keyFrame?: boolean): boolean {
   if (keyFrame !== undefined) return keyFrame;
-  const type = frameType.toUpperCase();
-  return (
-    type === FrameType.I || type === FrameType.KEY || type === FrameType.INTRA
-  );
+  return isIntraFrame(frameType);
 }
 
 /**

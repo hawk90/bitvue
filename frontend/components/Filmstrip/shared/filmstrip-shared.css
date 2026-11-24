@@ -40,11 +40,6 @@
   color: var(--frame-b-color, #0969da);
 }
 
-.frame-type-idr {
-  border-color: var(--frame-idr-color, #ff6b35);
-  color: var(--frame-idr-color, #ff6b35);
-}
-
 /* Animations */
 @keyframes fadeIn {
   from {
