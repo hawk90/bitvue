@@ -354,7 +354,7 @@ const AV1_MODES: CodecModeEntry[] = [
     fKey: null,
     mode: "heat-map",
     label: "Heat Map",
-    description: "Per-block bit-cost heatmap",
+    description: "Measured entropy-coded bits per pixel per block",
     isInfoOverlay: true,
   },
   {
@@ -368,7 +368,7 @@ const AV1_MODES: CodecModeEntry[] = [
     fKey: null,
     mode: "efficiency-map",
     label: "Efficiency",
-    description: "Bits-per-pixel efficiency heatmap (higher = less efficient)",
+    description: "Symbols per coded bit per block (higher = more efficient)",
     isInfoOverlay: true,
   },
   {

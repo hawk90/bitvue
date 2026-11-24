@@ -111,3 +111,49 @@ describe("Av1EfficiencyMapOverlay", () => {
     expect(fillRectCalls).toHaveLength(0);
   });
 });
+
+describe("Av1EfficiencyMapOverlay with a measured bit grid (#488)", () => {
+  const bitGrid = {
+    grid_w: 3,
+    grid_h: 1,
+    block_w: 64,
+    block_h: 64,
+    bits_per_pixel: [0, 1, 1],
+    symbols_per_bit: [0, 0.05, 0.2],
+  };
+
+  it("colors by symbols/bit, ignoring energy and QP, and leaves uncoded cells unpainted", () => {
+    const { ctx, fillRectCalls } = createMockCtx();
+    const frame: FrameInfo = {
+      ...baseFrame(),
+      bit_grid: bitGrid,
+      energy_grid: {
+        grid_w: 3,
+        grid_h: 1,
+        block_w: 64,
+        block_h: 64,
+        energy_bpp: [9, 9, 9],
+      },
+    };
+    Av1EfficiencyMapOverlay({ ctx, width: 192, height: 64, frame });
+    // 2 coded cells + legend bar; the cell with 0 bits is skipped
+    expect(fillRectCalls).toHaveLength(3);
+    expect(fillRectCalls[0].x).toBe(64);
+    expect(fillRectCalls[1].x).toBe(128);
+    expect(fillRectCalls[0].fillStyle).not.toBe(fillRectCalls[1].fillStyle);
+  });
+
+  it("labels the legend in symbols/bit", () => {
+    const { ctx } = createMockCtx();
+    Av1EfficiencyMapOverlay({
+      ctx,
+      width: 192,
+      height: 64,
+      frame: { ...baseFrame(), bit_grid: bitGrid },
+    });
+    const texts = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0],
+    );
+    expect(texts).toEqual(["low symbols/bit", "high symbols/bit"]);
+  });
+});
