@@ -321,6 +321,15 @@
   gap: 16px;
 }
 
+.yuv-analysis-notice {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warning-fg, #cca700);
+  font-weight: 600;
+  cursor: help;
+}
+
 .yuv-playing-indicator {
   display: flex;
   align-items: center;

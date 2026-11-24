@@ -92,7 +92,9 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   const [decodedFrame, setDecodedFrame] = useState<YUVFrame | null>(null);
 
   // Analysis data state
-  const [, setFrameAnalysis] = useState<FrameAnalysisData | null>(null);
+  const [frameAnalysis, setFrameAnalysis] = useState<FrameAnalysisData | null>(
+    null,
+  );
 
   // Canvas interaction (zoom, pan, drag)
   const {
@@ -722,6 +724,13 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         isPlaying={isPlaying}
         playbackSpeed={playbackSpeed}
         availableModes={availableModes}
+        // only the analysis of the frame on screen: the previous frame's stays in state until the
+        // new one arrives
+        analysisProvenance={
+          frameAnalysis?.frame_index === currentFrameIndex
+            ? frameAnalysis.provenance
+            : undefined
+        }
       />
     </div>
   );

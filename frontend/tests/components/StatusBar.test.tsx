@@ -345,3 +345,28 @@ describe("StatusBar mode display", () => {
     expect(modeIndicator?.textContent).toContain("overview");
   });
 });
+
+// #549: the sidecar reports whether a frame's analysis could be decoded to the end; the status
+// bar used to ignore that, so overlays of a half-decoded frame looked like any other.
+describe("StatusBar analysis notice", () => {
+  it("shows nothing for a verified frame or when provenance is unknown", () => {
+    const { rerender } = render(
+      <StatusBar {...defaultProps} analysisProvenance="verified" />,
+    );
+    expect(document.querySelector(".yuv-analysis-notice")).toBeNull();
+    rerender(<StatusBar {...defaultProps} />);
+    expect(document.querySelector(".yuv-analysis-notice")).toBeNull();
+  });
+
+  it("warns that an unverified frame's overlays may be incomplete or wrong", () => {
+    render(<StatusBar {...defaultProps} analysisProvenance="unverified" />);
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent("Analysis unverified");
+    expect(notice.getAttribute("title")).toMatch(/incomplete or wrong/);
+  });
+
+  it("says there is no analysis data for a scaffold frame", () => {
+    render(<StatusBar {...defaultProps} analysisProvenance="scaffold" />);
+    expect(screen.getByRole("status")).toHaveTextContent("No analysis data");
+  });
+});
