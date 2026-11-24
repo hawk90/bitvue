@@ -574,10 +574,20 @@ export interface YUVFrameData {
  * Frame analysis data
  * QP heatmap and MV field data for overlay visualization
  */
+/**
+ * What a frame's analysis data is (from the sidecar, `get_frame_analysis`):
+ * - `verified`: decoded, and the tile ends where the decoded symbols say it should
+ * - `unverified`: decoded, but the decode stopped early or the tile does not end where expected;
+ *   the data is probably wrong or incomplete somewhere
+ * - `scaffold`: nothing was decoded; the sidecar sends no grids at all
+ */
+export type AnalysisProvenance = "verified" | "unverified" | "scaffold";
+
 export interface FrameAnalysisData {
   frame_index: number;
   width: number;
   height: number;
+  provenance?: AnalysisProvenance;
   qp_grid?: QPGrid;
   energy_grid?: EnergyGrid; // Real per-block residual energy for the Efficiency Map overlay
   bit_grid?: BitGrid; // Measured per-cell coded bits for the Heat Map / Efficiency Map overlays
