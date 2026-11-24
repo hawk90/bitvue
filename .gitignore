@@ -104,3 +104,12 @@ frontend/.design-sync-dist.css
 # cargo-mutants output
 /mutants.out/
 /mutants.out.old/
+
+# =============================================================================
+# Local reference clones (never committed)
+# =============================================================================
+# Shallow clones of third-party sources used to check parsing against the spec/reference decoder:
+#   git clone --depth 1 https://github.com/AOMediaCodec/av1-spec.git .refs/av1-spec
+#   git clone --depth 1 https://code.videolan.org/videolan/dav1d.git .refs/dav1d
+# `git grep` skips them (untracked + ignored); use `grep -rn` / `rg --no-ignore` inside .refs/.
+/.refs/
