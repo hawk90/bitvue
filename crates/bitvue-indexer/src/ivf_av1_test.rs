@@ -197,7 +197,10 @@ fn the_corruption_sweep_reaches_diagnostics() {
 
 #[test]
 fn corrupted_clips_are_pinned() {
-    assert_eq!(corruption_sweep(CLIP, 1..=60).0, 3740497106734397439);
+    // Re-recorded for #554: frames whose corrupted header reads as intra-only or switch are now
+    // labelled "IO"/"SW" instead of "I". Mapping those two labels back to "I" reproduces the
+    // previous value 3740497106734397439, so nothing else about the indexing changed.
+    assert_eq!(corruption_sweep(CLIP, 1..=60).0, 5729142033021658462);
 }
 
 #[test]

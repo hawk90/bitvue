@@ -28,3 +28,9 @@
   color: var(--frame-b);
   border: 1px solid rgb(80 144 208 / 30%);
 }
+
+.frame-type-switch {
+  background: rgb(212 167 23 / 20%);
+  color: var(--frame-switch);
+  border: 1px solid rgb(212 167 23 / 30%);
+}

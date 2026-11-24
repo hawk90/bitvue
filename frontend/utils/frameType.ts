@@ -7,13 +7,16 @@
  * so the same frame could be colored differently depending on the widget.
  */
 
-export type FrameKind = "i" | "p" | "b" | "unknown";
+export type FrameKind = "i" | "p" | "b" | "switch" | "unknown";
 
 /** Reported frame type (any case, e.g. "I", "KEY", "inter", "B_REF") to its color kind. */
 export function frameKind(frameType: string | null | undefined): FrameKind {
   const type = (frameType ?? "").trim().toUpperCase();
+  if (type === "SW" || type === "SWITCH") return "switch";
   if (
     type === "I" ||
+    type === "IO" ||
+    type === "INTRA_ONLY" ||
     type === "IDR" ||
     type === "IRAP" ||
     type === "KEY" ||

@@ -370,12 +370,7 @@ fn build_timeline_mapper(core: &Core, stream: StreamId) -> Result<TimelineMapper
     // itself stays "I"/"P"/"B" everywhere else (frontend, syntax display, etc.).
     let types: Vec<String> = frame_units
         .iter()
-        .map(|u| match u.frame_type.as_deref() {
-            Some("I") => "KEY_FRAME",
-            Some("P") | Some("B") => "INTER_FRAME",
-            _ => "INTER_FRAME",
-        })
-        .map(String::from)
+        .map(|u| String::from(av1_timeline_type(u.frame_type.as_deref())))
         .collect();
 
     Ok(TimelineMapper::new(
@@ -734,14 +729,29 @@ impl ReferenceSlots {
     }
 }
 
-/// The single-letter frame type shown for a frame ("?" when its header did not parse).
+/// The literal frame-type string `Av1TimelineExtractor::determine_marker` matches for a frame's
+/// short label (see the call site above for why a translation is needed at all).
+fn av1_timeline_type(label: Option<&str>) -> &'static str {
+    match label {
+        Some("I") => "KEY_FRAME",
+        Some("IO") => "INTRA_ONLY_FRAME",
+        _ => "INTER_FRAME",
+    }
+}
+
+/// The short frame type shown for a frame ("?" when its header did not parse).
+///
+/// `I` is only a real key frame. An AV1 intra-only frame (`IO`) is intra coded but is not a random
+/// access point and does not refresh every reference slot, and a switch frame (`SW`) is inter
+/// coded: both used to be reported as `I`, so the UI drew them as key frames (and `key_frame`
+/// came out true for them). `SI` stays `I` and `SP` stays `P` (H.264 switching slices, not AV1).
 fn frame_type_label(frame_type: Option<bitvue_engine::FrameType>) -> &'static str {
     match frame_type {
         Some(bitvue_engine::FrameType::Key) => "I",
         Some(bitvue_engine::FrameType::Inter) => "P",
         Some(bitvue_engine::FrameType::BFrame) => "B",
-        Some(bitvue_engine::FrameType::IntraOnly) => "I",
-        Some(bitvue_engine::FrameType::Switch) => "I",
+        Some(bitvue_engine::FrameType::IntraOnly) => "IO",
+        Some(bitvue_engine::FrameType::Switch) => "SW",
         Some(bitvue_engine::FrameType::SI) => "I",
         Some(bitvue_engine::FrameType::SP) => "P",
         Some(bitvue_engine::FrameType::Unknown) | None => "?",

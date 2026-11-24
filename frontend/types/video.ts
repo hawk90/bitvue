@@ -341,7 +341,7 @@ export function isIntraFrame(frameType: string): boolean {
  */
 export function isInterFrame(frameType: string): boolean {
   const kind = frameKind(frameType);
-  return kind === "p" || kind === "b";
+  return kind === "p" || kind === "b" || kind === "switch";
 }
 
 /**
@@ -349,7 +349,9 @@ export function isInterFrame(frameType: string): boolean {
  */
 export function isKeyframe(frameType: string, keyFrame?: boolean): boolean {
   if (keyFrame !== undefined) return keyFrame;
-  return isIntraFrame(frameType);
+  // An AV1 intra-only frame is intra coded but not a key frame (no random access, #554).
+  const type = frameType.trim().toUpperCase();
+  return isIntraFrame(frameType) && type !== "IO" && type !== "INTRA_ONLY";
 }
 
 /**

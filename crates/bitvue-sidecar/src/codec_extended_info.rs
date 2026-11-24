@@ -53,14 +53,14 @@ impl Default for SlotState {
     }
 }
 
-/// Matches `bitvue-mcp`'s own `FrameType` -> wire-string convention (the closest existing
-/// API-facing precedent for this exact mapping).
+/// Same labels as the indexer's `frame_type_label` (the frame list the UI shows), so a reference
+/// slot's frame type reads the same as the frame itself: `IO` intra-only, `SW` switch (#554).
 fn frame_type_wire(t: FrameType) -> &'static str {
     match t {
         FrameType::Key => "I",
         FrameType::Inter => "P",
-        FrameType::IntraOnly => "I",
-        FrameType::Switch => "I",
+        FrameType::IntraOnly => "IO",
+        FrameType::Switch => "SW",
         // Not produced by this crate's AV1 parsing (other codecs' FrameType variants) --
         // included only for exhaustiveness.
         FrameType::BFrame => "B",
