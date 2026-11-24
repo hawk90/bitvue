@@ -1,4 +1,4 @@
-use crate::index_stream;
+use crate::{av1_timeline_type, frame_type_label, index_stream};
 use bitvue_engine::{Command, Core, StreamId};
 use std::io::Write;
 
@@ -438,4 +438,35 @@ fn index_stream_reports_a_diagnostic_for_a_non_av01_fourcc_in_an_ivf_container()
             .any(|m| m.contains("VP90") && m.contains("AV01")),
         "expected a diagnostic naming the mismatched fourcc, got: {diagnostic_messages:?}"
     );
+}
+
+/// #554: Key, intra-only and switch frames used to share the label "I", so the UI drew all three
+/// as key frames. Only a real key frame is "I".
+#[test]
+fn av1_frame_types_get_distinct_labels() {
+    use bitvue_engine::FrameType;
+    assert_eq!(frame_type_label(Some(FrameType::Key)), "I");
+    assert_eq!(frame_type_label(Some(FrameType::Inter)), "P");
+    assert_eq!(frame_type_label(Some(FrameType::IntraOnly)), "IO");
+    assert_eq!(frame_type_label(Some(FrameType::Switch)), "SW");
+    assert_eq!(frame_type_label(None), "?");
+    let labels: std::collections::HashSet<_> = [
+        FrameType::Key,
+        FrameType::Inter,
+        FrameType::IntraOnly,
+        FrameType::Switch,
+    ]
+    .into_iter()
+    .map(|t| frame_type_label(Some(t)))
+    .collect();
+    assert_eq!(labels.len(), 4, "the four AV1 frame types need four labels");
+}
+
+#[test]
+fn the_timeline_marks_only_key_and_intra_only_frames_as_random_access() {
+    assert_eq!(av1_timeline_type(Some("I")), "KEY_FRAME");
+    assert_eq!(av1_timeline_type(Some("IO")), "INTRA_ONLY_FRAME");
+    for inter in [Some("P"), Some("B"), Some("SW"), Some("?"), None] {
+        assert_eq!(av1_timeline_type(inter), "INTER_FRAME", "{inter:?}");
+    }
 }

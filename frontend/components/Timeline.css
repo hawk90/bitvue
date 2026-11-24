@@ -172,6 +172,10 @@
   background: var(--frame-b);
 }
 
+.timeline-thumb.timeline-bar-switch {
+  background: var(--frame-switch);
+}
+
 .timeline-thumb.timeline-bar-unknown {
   background: var(--frame-unknown);
 }

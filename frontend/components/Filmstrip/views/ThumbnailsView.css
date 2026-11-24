@@ -143,6 +143,10 @@
   border: 2px solid var(--frame-b);
 }
 
+.filmstrip-frame.frame-switch .frame-thumbnail-wrapper {
+  border: 2px solid var(--frame-switch);
+}
+
 /* Thumbnail background */
 .frame-thumbnail {
   width: 100%;

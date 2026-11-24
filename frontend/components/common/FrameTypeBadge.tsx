@@ -17,12 +17,22 @@ interface FrameTypeBadgeProps {
   frameType: string;
 }
 
+/** What the short labels mean, shown as the badge's tooltip. */
+const FRAME_TYPE_TITLES: Record<string, string> = {
+  I: "Key frame",
+  IO: "Intra-only frame (intra coded, not a random access point)",
+  SW: "Switch frame (inter coded, stream switching point)",
+  P: "Predicted frame",
+  B: "Bi-predicted frame",
+};
+
 export const FrameTypeBadge = memo(function FrameTypeBadge({
   frameType,
 }: FrameTypeBadgeProps) {
   return (
     <span
       className={`frame-type-badge ${frameKindClass("frame-type", frameType)}`}
+      title={FRAME_TYPE_TITLES[frameType.toUpperCase()]}
     >
       {frameType}
     </span>

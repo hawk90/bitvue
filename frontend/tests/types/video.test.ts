@@ -518,3 +518,21 @@ describe("video type edge cases", () => {
     expect(isInterFrame("B")).toBe(isInterFrame("b"));
   });
 });
+
+// #554: an AV1 intra-only frame is intra coded but not a key frame; a switch frame is inter coded.
+describe("intra-only and switch frames", () => {
+  it("intra-only is intra but not a keyframe", () => {
+    expect(isIntraFrame("IO")).toBe(true);
+    expect(isKeyframe("IO")).toBe(false);
+    expect(isKeyframe("I")).toBe(true);
+    expect(getFrameTypeColorClass("IO")).toBe("frame-i");
+  });
+
+  it("switch is inter coded with its own color", () => {
+    expect(isIntraFrame("SW")).toBe(false);
+    expect(isInterFrame("SW")).toBe(true);
+    expect(isKeyframe("SW")).toBe(false);
+    expect(getFrameTypeColorClass("SW")).toBe("frame-switch");
+    expect(getFrameTypeColor("SW")).toBe("var(--frame-switch)");
+  });
+});
