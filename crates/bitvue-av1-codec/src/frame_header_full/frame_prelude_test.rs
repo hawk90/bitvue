@@ -1,9 +1,9 @@
 //! `read_frame_prelude` pinned over seeded sweeps of random sequence-header settings and random
-//! bits (result, every prelude field, bits consumed), plus the decoder-model error.
+//! bits (result, every prelude field, bits consumed), plus the decoder-model fields.
 
 use super::super::tests::base_seq;
 use super::*;
-use crate::sequence::DecoderModelInfo;
+use crate::sequence::{DecoderModelInfo, OperatingPoint, TimingInfo};
 
 fn noise(seed: u64, len: usize) -> Vec<u8> {
     let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
@@ -44,7 +44,7 @@ struct Run {
 
 fn run(seq: &SequenceHeader, data: &[u8]) -> Run {
     let mut r = BitReader::new(data);
-    let out = read_frame_prelude(&mut r, seq);
+    let out = read_frame_prelude(&mut r, seq, Layer::default());
     Run {
         out,
         position: r.position(),
@@ -115,18 +115,91 @@ fn the_sweep_reaches_every_frame_type() {
     assert!(key > 0 && inter > 0 && intra_only > 0 && switch > 0 && reduced > 0);
 }
 
-#[test]
-fn a_stream_with_decoder_model_info_is_rejected_after_the_primary_ref_frame() {
+/// A sequence with a decoder model: 4-bit `frame_presentation_time`, 3-bit `buffer_removal_time`.
+fn model_seq(equal_picture_interval: bool, ops: &[(u16, bool)]) -> SequenceHeader {
     let mut seq = seq_from(0x5);
+    seq.timing_info = Some(TimingInfo {
+        num_units_in_display_tick: 1,
+        time_scale: 30,
+        equal_picture_interval,
+        num_ticks_per_picture: None,
+    });
     seq.decoder_model_info = Some(DecoderModelInfo {
         buffer_delay_length_minus_1: 0,
         num_units_in_decoding_tick: 1,
-        buffer_removal_time_length_minus_1: 0,
-        frame_presentation_time_length_minus_1: 0,
+        buffer_removal_time_length_minus_1: 2,
+        frame_presentation_time_length_minus_1: 3,
     });
-    let run = run(&seq, &noise(3, 32));
-    let message = format!("{:?}", run.out.err().expect("must be rejected"));
-    assert!(message.contains("decoder_model_info_present"), "{message}");
+    seq.operating_points = ops
+        .iter()
+        .map(|&(idc, decoder_model_present)| OperatingPoint {
+            idc,
+            seq_level_idx: 0,
+            seq_tier: false,
+            decoder_model_present,
+            initial_display_delay: None,
+        })
+        .collect();
+    seq
+}
+
+/// Bits consumed by `f` over all-ones data (a set `buffer_removal_time_present_flag`).
+fn consumed(f: impl FnOnce(&mut BitReader) -> Result<()>, data: &[u8]) -> u64 {
+    let mut r = BitReader::new(data);
+    f(&mut r).unwrap();
+    r.position()
+}
+
+/// Spec 5.9.2: `temporal_point_info()` follows `show_frame` (and `frame_to_show_map_idx`) only when
+/// the sequence has a decoder model and the pictures are not at an equal interval.
+#[test]
+fn temporal_point_info_is_read_only_with_a_decoder_model_and_unequal_picture_intervals() {
+    let ones = [0xffu8; 8];
+    let tpi = |seq: &SequenceHeader| consumed(|r| skip_temporal_point_info(r, seq), &ones);
+    assert_eq!(tpi(&model_seq(false, &[(0, true)])), 4);
+    assert_eq!(tpi(&model_seq(true, &[(0, true)])), 0);
+    assert_eq!(tpi(&seq_from(0x5)), 0, "no decoder model");
+
+    // decoder_model_info without timing_info cannot happen in a real stream (the flag is read only
+    // inside timing_info_present_flag); treated as unequal intervals
+    let mut no_timing = model_seq(false, &[(0, true)]);
+    no_timing.timing_info = None;
+    assert_eq!(tpi(&no_timing), 4);
+}
+
+/// Spec 5.9.2: `buffer_removal_time_present_flag`, then one `buffer_removal_time` per operating
+/// point that has a decoder model and contains the frame's temporal and spatial layer.
+#[test]
+fn buffer_removal_times_follow_the_operating_points_that_contain_the_frame() {
+    let removal = |seq: &SequenceHeader, layer: Layer, data: &[u8]| {
+        consumed(|r| skip_buffer_removal_times(r, seq, layer), data)
+    };
+    let layer = |temporal_id, spatial_id| Layer {
+        temporal_id,
+        spatial_id,
+    };
+    let ones = [0xffu8; 8];
+    let flag_clear = [0x7fu8, 0xff, 0xff, 0xff];
+
+    // no decoder model: nothing is read, not even the flag
+    assert_eq!(removal(&seq_from(0x5), layer(0, 0), &ones), 0);
+    // the flag alone when it is clear
+    let model = model_seq(false, &[(0, true)]);
+    assert_eq!(removal(&model, layer(0, 0), &flag_clear), 1);
+    // idc 0 means "all layers": one 3-bit time
+    assert_eq!(removal(&model, layer(3, 1), &ones), 1 + 3);
+    // an operating point without a decoder model has no time
+    let skipped = model_seq(false, &[(0, true), (0, false), (0, true)]);
+    assert_eq!(removal(&skipped, layer(0, 0), &ones), 1 + 3 + 3);
+
+    // idc 0x101 = temporal layer 0 and spatial layer 0; 0x202 = layer 1 of each
+    let layered = model_seq(false, &[(0x101, true), (0x202, true)]);
+    assert_eq!(removal(&layered, layer(0, 0), &ones), 1 + 3);
+    assert_eq!(removal(&layered, layer(1, 1), &ones), 1 + 3);
+    assert_eq!(removal(&layered, layer(1, 0), &ones), 1, "in neither point");
+    let both = model_seq(false, &[(0x303, true), (0x101, true)]);
+    assert_eq!(removal(&both, layer(0, 0), &ones), 1 + 3 + 3);
+    assert_eq!(removal(&both, layer(1, 1), &ones), 1 + 3);
 }
 
 #[test]

@@ -21,9 +21,18 @@ pub(super) struct FramePrelude {
     pub(super) refresh_frame_flags: u32,
 }
 
+/// The temporal and spatial layer of the OBU carrying the header (`temporal_id`/`spatial_id`, spec
+/// 5.3.3); only `buffer_removal_time` depends on them.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Layer {
+    pub(super) temporal_id: u8,
+    pub(super) spatial_id: u8,
+}
+
 pub(super) fn read_frame_prelude(
     reader: &mut BitReader,
     seq: &SequenceHeader,
+    layer: Layer,
 ) -> Result<FramePrelude> {
     let order_hint_bits = seq
         .order_hint_bits_minus_1
@@ -59,17 +68,7 @@ pub(super) fn read_frame_prelude(
         reader.read_bits(3)?
     };
 
-    // decoder_model_info / buffer_removal_time: this crate's SequenceHeader carries
-    // decoder_model_info as Option, but not per-operating-point decoder_model_present flags
-    // needed to size buffer_removal_time's per-op loop -- streams using this (rare outside
-    // low-delay broadcast profiles) aren't supported here. Real-world encoders overwhelmingly
-    // don't set decoder_model_info_present_flag, matching parse_frame_header_basic's own
-    // "assume absent" precedent for similarly rare fields.
-    if seq.decoder_model_info.is_some() {
-        return Err(err(
-            "decoder_model_info_present streams are not supported by parse_frame_header_full",
-        ));
-    }
+    skip_buffer_removal_times(reader, seq, layer)?;
 
     let refresh_frame_flags = read_refresh_frame_flags(
         reader,
@@ -94,6 +93,53 @@ pub(super) fn read_frame_prelude(
     })
 }
 
+/// Whether the frame header carries `temporal_point_info()` (spec 5.9.2): the sequence has a
+/// decoder model and the pictures are not at a constant interval.
+pub(super) fn has_temporal_point_info(seq: &SequenceHeader) -> bool {
+    seq.decoder_model_info.is_some()
+        && !seq
+            .timing_info
+            .as_ref()
+            .is_some_and(|t| t.equal_picture_interval)
+}
+
+/// `temporal_point_info()` (spec 5.9.31): `frame_presentation_time`, consumed but not kept.
+pub(super) fn skip_temporal_point_info(reader: &mut BitReader, seq: &SequenceHeader) -> Result<()> {
+    if let (true, Some(model)) = (
+        has_temporal_point_info(seq),
+        seq.decoder_model_info.as_ref(),
+    ) {
+        reader.read_bits_u64(model.frame_presentation_time_length_minus_1 + 1)?;
+    }
+    Ok(())
+}
+
+/// `buffer_removal_time_present_flag` and, for each operating point that has a decoder model and
+/// contains this frame's layers, its `buffer_removal_time` (spec 5.9.2), consumed but not kept.
+pub(super) fn skip_buffer_removal_times(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+    layer: Layer,
+) -> Result<()> {
+    let Some(model) = seq.decoder_model_info.as_ref() else {
+        return Ok(());
+    };
+    if !reader.read_bit()? {
+        return Ok(());
+    }
+    for op in &seq.operating_points {
+        if !op.decoder_model_present {
+            continue;
+        }
+        let in_temporal_layer = (op.idc >> layer.temporal_id) & 1 == 1;
+        let in_spatial_layer = (op.idc >> (layer.spatial_id + 8)) & 1 == 1;
+        if op.idc == 0 || (in_temporal_layer && in_spatial_layer) {
+            reader.read_bits_u64(model.buffer_removal_time_length_minus_1 + 1)?;
+        }
+    }
+    Ok(())
+}
+
 /// `frame_type`, `show_frame`, `showable_frame` and `error_resilient_mode`, in that order.
 fn read_frame_visibility(
     reader: &mut BitReader,
@@ -109,6 +155,9 @@ fn read_frame_visibility(
     } else {
         reader.read_bit()?
     };
+    if show_frame && !seq.reduced_still_picture_header {
+        skip_temporal_point_info(reader, seq)?;
+    }
     let showable_frame = if seq.reduced_still_picture_header {
         false
     } else if show_frame {

@@ -2,7 +2,7 @@
 
 use super::{FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame};
 use crate::frame_header::TxfmMode;
-use crate::frame_header_full::{parse_frame_header_full, RefFrameState};
+use crate::frame_header_full::{parse_frame_header_full_for_layer, RefFrameState};
 use crate::{parse_all_obus, parse_frame_header_basic, ObuType};
 use bitvue_engine::BitvueError;
 use std::sync::Arc;
@@ -296,12 +296,14 @@ impl ParsedFrame {
                 }
                 ObuType::Frame => frame.absorb_frame_obu(
                     &obu.payload,
+                    (obu.header.temporal_id, obu.header.spatial_id),
                     seq_header.as_ref(),
                     ref_state,
                     &mut tile_data,
                 ),
                 ObuType::FrameHeader => frame.absorb_frame_header_obu(
                     &obu.payload,
+                    (obu.header.temporal_id, obu.header.spatial_id),
                     seq_header.as_ref(),
                     ref_state,
                     &mut tile_data,
@@ -321,6 +323,7 @@ impl ParsedFrame {
     fn absorb_frame_obu(
         &mut self,
         payload: &[u8],
+        layer: (u8, u8),
         seq: Option<&crate::SequenceHeader>,
         ref_state: &mut RefFrameState,
         tile_data: &mut Vec<u8>,
@@ -353,7 +356,7 @@ impl ParsedFrame {
         // tile cut when `seq_header` isn't available yet (a Frame OBU can't
         // spec-legally precede a Sequence Header, so this fallback path is defensive,
         // not a real-stream case).
-        let sizes = self.absorb_frame_header(payload, seq, ref_state, tile_data);
+        let sizes = self.absorb_frame_header(payload, layer, seq, ref_state, tile_data);
         match (seq, sizes) {
             // No sequence header yet (defensive): cut at the basic header's size.
             (
@@ -382,11 +385,12 @@ impl ParsedFrame {
     fn absorb_frame_header_obu(
         &mut self,
         payload: &[u8],
+        layer: (u8, u8),
         seq: Option<&crate::SequenceHeader>,
         ref_state: &mut RefFrameState,
         tile_data: &mut Vec<u8>,
     ) {
-        self.absorb_frame_header(payload, seq, ref_state, tile_data);
+        self.absorb_frame_header(payload, layer, seq, ref_state, tile_data);
     }
 
     /// The part `OBU_FRAME` and `OBU_FRAME_HEADER` share: this header starts a new frame, so the
@@ -396,6 +400,7 @@ impl ParsedFrame {
     fn absorb_frame_header(
         &mut self,
         payload: &[u8],
+        layer: (u8, u8),
         seq: Option<&crate::SequenceHeader>,
         ref_state: &mut RefFrameState,
         tile_data: &mut Vec<u8>,
@@ -415,7 +420,9 @@ impl ParsedFrame {
             // frame of the same packet may have refreshed them (taken once per packet, the sign
             // bias and order distances of every later frame came from stale hints, #233).
             let prev_ref_order_hint = *ref_state.ref_order_hint();
-            if let Ok(full_hdr) = parse_frame_header_full(payload, seq, ref_state) {
+            if let Ok(full_hdr) =
+                parse_frame_header_full_for_layer(payload, seq, ref_state, layer.0, layer.1)
+            {
                 self.apply_full_header(&full_hdr, seq, &prev_ref_order_hint);
                 sizes.full = Some(full_hdr.header_size_bytes);
             }
