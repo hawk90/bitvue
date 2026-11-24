@@ -505,7 +505,11 @@ export const VideoCanvas = memo(function VideoCanvas({
         ref={canvasRef}
         width={yuvData?.width ?? frameImage?.width ?? 640}
         height={yuvData?.height ?? frameImage?.height ?? 360}
-        className="yuv-canvas"
+        className={
+          backend === "webgpu"
+            ? "yuv-canvas yuv-canvas--over-gpu"
+            : "yuv-canvas"
+        }
         style={mainCanvasStyle}
         role="img"
         aria-label={`Video frame ${currentFrameIndex}`}

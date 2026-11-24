@@ -26,6 +26,14 @@ async function requestDevice(): Promise<GPUDevice | null> {
       return null;
     }
     const device = await adapter.requestDevice();
+    // Validation/out-of-memory errors in queued GPU work never throw in JS; without this they are
+    // invisible and the canvas just stays blank (#456).
+    device.addEventListener("uncapturederror", (event) => {
+      logger.error(
+        "WebGPU uncaptured error",
+        (event as GPUUncapturedErrorEvent).error.message,
+      );
+    });
     device.lost.then((info) => {
       logger.warn("GPUDevice lost", info.message);
       if (cachedDevice === device) {
