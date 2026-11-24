@@ -10,6 +10,7 @@
 import type { OverlayRendererProps } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import { drawArrow } from "../utils/drawing";
+import { drawInfoBadge } from "../utils/helpers";
 import {
   renderMVWebGL,
   clearMVWebGL,
@@ -31,17 +32,25 @@ export function MVFieldOverlay({
 }: MVFieldOverlayProps) {
   if (frame.frame_type === "I" || frame.frame_type === "KEY") {
     // No motion vectors for intra frames
-    ctx.fillStyle = getCssVar("--text-bright") || "rgba(255, 255, 255, 0.8)";
-    ctx.font = "14px sans-serif";
-    ctx.fillText("No motion vectors (Intra frame)", 10, 20);
+    drawInfoBadge(
+      ctx,
+      width,
+      ["No motion vectors (Intra frame)"],
+      "14px sans-serif",
+      getCssVar("--text-bright") || "rgba(255, 255, 255, 0.8)",
+    );
     return;
   }
 
   if (!frame.mv_grid) {
     // No MV data available - show message
-    ctx.fillStyle = getCssVar("--text-bright") || "rgba(255, 255, 255, 0.8)";
-    ctx.font = "14px sans-serif";
-    ctx.fillText("MV data not available for this frame", 10, 20);
+    drawInfoBadge(
+      ctx,
+      width,
+      ["MV data not available for this frame"],
+      "14px sans-serif",
+      getCssVar("--text-bright") || "rgba(255, 255, 255, 0.8)",
+    );
     return;
   }
 
@@ -96,10 +105,11 @@ export function MVFieldOverlay({
   }
 
   // Draw MV statistics
-  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-  ctx.fillRect(10, 10, 150, 50);
-  ctx.fillStyle = getCssVar("--text-bright") || "#fff";
-  ctx.font = "12px monospace";
-  ctx.fillText(`MV vectors: ${drawnCount}`, 20, 28);
-  ctx.fillText(`Stride: ${stride}`, 20, 48);
+  drawInfoBadge(
+    ctx,
+    width,
+    [`MV vectors: ${drawnCount}`, `Stride: ${stride}`],
+    "12px monospace",
+    getCssVar("--text-bright") || "#fff",
+  );
 }
