@@ -436,3 +436,47 @@ describe("VideoCanvas hover pixel tooltip", () => {
     expect(tooltip?.textContent).not.toContain("Block");
   });
 });
+
+// #456: the 2D canvas sits above the WebGPU base-layer canvas. With its own opaque CSS background
+// it covered the GPU-drawn video, so the player was solid black in the real window.
+describe("VideoCanvas WebGPU layering", () => {
+  const props = {
+    frameImage: null,
+    currentFrameIndex: 0,
+    currentFrame: null,
+    currentMode: "overview" as const,
+    zoom: 1,
+    pan: { x: 0, y: 0 },
+    onWheel: vi.fn(),
+    onMouseDown: vi.fn(),
+    onMouseMove: vi.fn(),
+    onMouseUp: vi.fn(),
+    isDragging: false,
+  };
+
+  it("makes the 2D canvas see-through once the WebGPU backend is attached", async () => {
+    vi.resetModules();
+    vi.doMock("@/utils/gpu/frameRenderer", () => ({
+      WebGpuFrameRenderer: class {
+        attachCanvas = () => Promise.resolve(true);
+        isReady = () => true;
+        render = vi.fn();
+        destroy = vi.fn();
+      },
+    }));
+    const { VideoCanvas: Fresh } =
+      await import("../YuvViewerPanel/VideoCanvas");
+    const { findByRole } = render(<Fresh {...props} />);
+    const canvas = await findByRole("img");
+    await vi.waitFor(() =>
+      expect(canvas.className).toContain("yuv-canvas--over-gpu"),
+    );
+    vi.doUnmock("@/utils/gpu/frameRenderer");
+  });
+
+  it("keeps the opaque 2D canvas when WebGPU is not attached", async () => {
+    const { findByRole } = render(<VideoCanvas {...props} />);
+    const canvas = await findByRole("img");
+    expect(canvas.className).not.toContain("yuv-canvas--over-gpu");
+  });
+});

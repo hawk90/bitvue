@@ -299,6 +299,13 @@
   background: transparent;
 }
 
+/* The 2D canvas stacks above the WebGPU base-layer canvas and only draws overlays when the GPU
+   backend is active (VideoCanvas clears it to transparent). Its own opaque `.yuv-canvas`
+   background covered the GPU-drawn video completely, so the player showed solid black (#456). */
+.yuv-canvas--over-gpu {
+  background: transparent;
+}
+
 /* Status bar - Polished */
 .yuv-status-bar,
 .yuv-status {
