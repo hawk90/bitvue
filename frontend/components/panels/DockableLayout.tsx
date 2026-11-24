@@ -31,28 +31,19 @@ export const PANEL_SIZES = {
   LEFT_SIDEBAR: 25,
   /** Main content area width percentage (calculated) */
   MAIN_CONTENT: 75,
-  /** Filmstrip/Timeline bar default height percentage -- previously a CSS-fixed, non-resizable
-      bar (`~220px` at the 800px default window height, `git log` shows the "outside Group so
-      height is CSS-controlled" comment was a deliberate original choice, not an oversight); moved
-      into the vertical Group so it resizes against the main view like every other panel boundary
-      (found missing during a real UI/UX parity pass). 22% of the default 800px window ≈ 176px,
-      close to the old fixed height. */
-  FILMSTRIP_BAR: 34,
-  /** YUV viewer height percentage -- reduced from the pre-Filmstrip-Panel 78 by the same amount
-      FILMSTRIP_BAR now takes, so the vertical Group's defaults still sum to 100. FILMSTRIP_BAR's
-      own +12 over its original ~22 leaves real slack below the Thumbnails view's frame cards for
-      reference arrows to draw into (see ThumbnailsView.css's `padding-bottom` reservation) --
-      previously that padding had nowhere to go since the panel was CSS-fixed at the cards'
-      own height, clipping every reference arrow to an invisible 1px stub. Sized for AV1's real
-      worst case (up to 7 reference slots, deduped -- `ThumbnailsView.css`'s doc), verified via a
-      real Electron screenshot; the boundary is drag-resizable now regardless (see this file's own
-      DockableLayout fix), so a user who doesn't care about reference arrows can always shrink it. */
-  YUV_VIEWER: 44,
-  /** Bottom panel default height percentage -- 15 left Info/Details/Stats/Diagnostics' real
-      content (e.g. Info's File/Frames/Duration rows) clipped by the window edge on any window
-      close to the 1280x800 default, with no visible scroll affordance to signal there was more
-      below. 22 fits that real content without scrolling in the common case. */
-  BOTTOM_PANEL: 22,
+  /** Filmstrip/Timeline bar default height percentage (a resizable Panel). 24% of the 800px
+      default window is ~190px: timeline + card row + room for a few reference arrows; a deeper
+      arrow stack scrolls inside the bar (`ThumbnailsView.css`) and the boundary is draggable.
+      It was 34, which left a ~100px empty band under the cards while Stream Tree and Syntax
+      Detail showed one to three rows (#489). */
+  FILMSTRIP_BAR: 24,
+  /** YUV viewer height percentage of the main column (the viewer above, the bottom row below). */
+  YUV_VIEWER: 71,
+  /** Bottom row height percentage of the main column: tall enough for Info/Details/Stats/
+      Diagnostics' real content (e.g. Info's File/Frames/Duration rows) without clipping. */
+  BOTTOM_PANEL: 29,
+  /** Everything under the filmstrip (left sidebar + main column). */
+  BODY: 76,
 } as const;
 
 /**
@@ -70,7 +61,8 @@ export const PANEL_MIN_SIZES = {
   YUV_VIEWER: 20,
   /** Same reasoning as `PANEL_SIZES.BOTTOM_PANEL` -- 10 let a user-driven resize shrink this to a
       near-unusable sliver. */
-  BOTTOM_PANEL: 15,
+  BOTTOM_PANEL: 20,
+  BODY: 40,
 } as const;
 
 /**
@@ -347,10 +339,12 @@ export const DockableLayout = memo(function DockableLayout({
           </>
         )}
 
-        {/* Main content area with left sidebar */}
+        {/* Everything under the filmstrip: the left sidebar takes the full remaining height
+            (beside the viewer AND the bottom row), so Stream Tree and Syntax Detail get room at
+            the default window size (#489); the viewer and the bottom row split the right column. */}
         <Panel
-          defaultSize={PANEL_SIZES.YUV_VIEWER}
-          minSize={PANEL_MIN_SIZES.YUV_VIEWER}
+          defaultSize={PANEL_SIZES.BODY}
+          minSize={PANEL_MIN_SIZES.BODY}
           id="main-area"
           className="main-area-panel"
         >
@@ -374,33 +368,42 @@ export const DockableLayout = memo(function DockableLayout({
               </>
             )}
 
-            {/* YUV Viewer / Main View */}
             <Panel
               defaultSize={PANEL_SIZES.MAIN_CONTENT}
               minSize={PANEL_MIN_SIZES.MAIN_CONTENT}
-              id="yuv-viewer"
-              className="yuv-viewer-panel"
+              id="main-column"
+              className="main-column-panel"
             >
-              <MainView />
+              <Group orientation="vertical" className="layout-main-column">
+                {/* YUV Viewer / Main View */}
+                <Panel
+                  defaultSize={PANEL_SIZES.YUV_VIEWER}
+                  minSize={PANEL_MIN_SIZES.YUV_VIEWER}
+                  id="yuv-viewer"
+                  className="yuv-viewer-panel"
+                >
+                  <MainView />
+                </Panel>
+
+                {/* Bottom row panels (below the main view) */}
+                {bottomRowPanels && bottomRowPanels.length > 0 && (
+                  <>
+                    <Separator className="resize-handle-vertical" />
+                    <Panel
+                      defaultSize={PANEL_SIZES.BOTTOM_PANEL}
+                      minSize={PANEL_MIN_SIZES.BOTTOM_PANEL}
+                      collapsible={true}
+                      id="bottom-row"
+                      className="bottom-row-panel"
+                    >
+                      <BottomRowPanelBar panels={bottomRowPanels} />
+                    </Panel>
+                  </>
+                )}
+              </Group>
             </Panel>
           </Group>
         </Panel>
-
-        {/* Bottom row panels (3 panels below main view) */}
-        {bottomRowPanels && bottomRowPanels.length > 0 && (
-          <>
-            <Separator className="resize-handle-vertical" />
-            <Panel
-              defaultSize={PANEL_SIZES.BOTTOM_PANEL}
-              minSize={PANEL_MIN_SIZES.BOTTOM_PANEL}
-              collapsible={true}
-              id="bottom-row"
-              className="bottom-row-panel"
-            >
-              <BottomRowPanelBar panels={bottomRowPanels} />
-            </Panel>
-          </>
-        )}
       </Group>
     </div>
   );

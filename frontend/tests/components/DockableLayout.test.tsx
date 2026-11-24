@@ -265,15 +265,12 @@ describe("PANEL_SIZES constants", () => {
   it("should have correct default values", () => {
     expect(PANEL_SIZES.LEFT_SIDEBAR).toBe(25);
     expect(PANEL_SIZES.MAIN_CONTENT).toBe(75);
-    expect(PANEL_SIZES.FILMSTRIP_BAR).toBe(34);
-    expect(PANEL_SIZES.YUV_VIEWER).toBe(44);
-    expect(PANEL_SIZES.BOTTOM_PANEL).toBe(22);
-    // Filmstrip + YUV viewer + Bottom row default sizes should sum to 100% of the vertical Group.
-    expect(
-      PANEL_SIZES.FILMSTRIP_BAR +
-        PANEL_SIZES.YUV_VIEWER +
-        PANEL_SIZES.BOTTOM_PANEL,
-    ).toBe(100);
+    expect(PANEL_SIZES.FILMSTRIP_BAR).toBe(24);
+    expect(PANEL_SIZES.YUV_VIEWER).toBe(71);
+    expect(PANEL_SIZES.BOTTOM_PANEL).toBe(29);
+    // Filmstrip + body fill the outer vertical Group; viewer + bottom row fill the main column.
+    expect(PANEL_SIZES.FILMSTRIP_BAR + PANEL_SIZES.BODY).toBe(100);
+    expect(PANEL_SIZES.YUV_VIEWER + PANEL_SIZES.BOTTOM_PANEL).toBe(100);
   });
 });
 
