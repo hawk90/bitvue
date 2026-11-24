@@ -79,7 +79,7 @@ pub use self::skip_mode::relative_dist;
 use self::{
     assemble::{assemble_frame_header, ref_scaled_flags, refresh_ref_slots, HeaderSections},
     coding_tools::{read_coding_tools, CodingToolsInput},
-    frame_prelude::read_frame_prelude,
+    frame_prelude::{read_frame_prelude, skip_temporal_point_info, Layer},
     global_motion::parse_global_motion_params,
     quantizer::{read_quantizer_section, QuantizerInput},
     segmentation::SegmentationFeatures,
@@ -319,6 +319,20 @@ pub fn parse_frame_header_full(
     seq: &SequenceHeader,
     ref_state: &mut RefFrameState,
 ) -> std::result::Result<FrameHeader, BitvueError> {
+    parse_frame_header_full_for_layer(payload, seq, ref_state, 0, 0)
+}
+
+/// [`parse_frame_header_full`] for a header carried by an OBU of the given `temporal_id` and
+/// `spatial_id` (its OBU extension; both 0 without one). The layers only matter to a stream whose
+/// sequence header has a decoder model and a layered operating point: `buffer_removal_time` is
+/// present for an operating point only if it contains the frame's layers (spec 5.9.2).
+pub fn parse_frame_header_full_for_layer(
+    payload: &[u8],
+    seq: &SequenceHeader,
+    ref_state: &mut RefFrameState,
+    temporal_id: u8,
+    spatial_id: u8,
+) -> std::result::Result<FrameHeader, BitvueError> {
     let mut reader = BitReader::new(payload);
     let show_existing_frame = if seq.reduced_still_picture_header {
         false
@@ -326,10 +340,17 @@ pub fn parse_frame_header_full(
         reader.read_bit()?
     };
     if show_existing_frame {
-        return parse_show_existing_frame(&mut reader, ref_state);
+        return parse_show_existing_frame(&mut reader, seq, ref_state);
     }
 
-    let prelude = read_frame_prelude(&mut reader, seq)?;
+    let prelude = read_frame_prelude(
+        &mut reader,
+        seq,
+        Layer {
+            temporal_id,
+            spatial_id,
+        },
+    )?;
     let refs = read_size_and_refs(
         &mut reader,
         seq,

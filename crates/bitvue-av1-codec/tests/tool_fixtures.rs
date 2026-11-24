@@ -27,6 +27,7 @@ const INTRABC_GLYPHS: &[u8] = include_bytes!("../../../test_data/av1_aomenc_intr
 const LOSSLESS_TILED: &[u8] = include_bytes!("../../../test_data/av1_aomenc_lossless_tiled.ivf");
 const LOSSLESS_TESTSRC2: &[u8] =
     include_bytes!("../../../test_data/av1_aomenc_lossless_testsrc2.ivf");
+const DECODER_MODEL: &[u8] = include_bytes!("../../../test_data/av1_aomenc_decoder_model.ivf");
 
 struct Frame {
     parsed: ParsedFrame,
@@ -236,6 +237,41 @@ fn lossless_frames_are_decoded_in_step() {
         assert_eq!(verified(&f), vec![0, 1, 2], "{name}");
         check_digest(name, &f, golden);
     }
+}
+
+/// aomenc `--timing-info=model` (CBR, no lag): the sequence header signals a decoder model and every
+/// frame header carries `temporal_point_info()` and `buffer_removal_time` (spec 5.9.2). Frame headers
+/// of such a stream used to be rejected outright, so no tile was found and nothing was analysed
+/// (#538). With them read, every frame decodes to the end.
+#[test]
+fn a_stream_with_a_decoder_model_is_decoded_in_step() {
+    let (_header, packets) = parse_ivf_frames(DECODER_MODEL).unwrap();
+    let model = packets
+        .iter()
+        .find_map(|p| {
+            let mut obus = ObuIterator::new(&p.data);
+            while let Some(Ok(found)) = obus.next_obu_with_offset() {
+                if found.obu.header.obu_type == ObuType::SequenceHeader {
+                    return bitvue_av1_codec::sequence::parse_sequence_header(&found.obu.payload)
+                        .ok();
+                }
+            }
+            None
+        })
+        .expect("the clip has a sequence header");
+    assert!(
+        model.decoder_model_info.is_some(),
+        "the clip signals a decoder model"
+    );
+    assert!(model.operating_points[0].decoder_model_present);
+
+    let f = frames(DECODER_MODEL);
+    assert_eq!(f.len(), 3);
+    for (i, frame) in f.iter().enumerate() {
+        assert_eq!(frame.provenance, Provenance::Verified, "frame {i}");
+        assert!(!frame.units.is_empty(), "frame {i}");
+    }
+    check_digest("decoder_model", &f, 11944185530889035051);
 }
 
 bitvue_test_alloc::install!();

@@ -13,7 +13,7 @@
 //! read 14). The full parser needs the sequence header and the reference-slot state built up from
 //! every earlier frame, so this keeps both and is fed the packets in order.
 
-use crate::frame_header_full::{parse_frame_header_full, RefFrameState};
+use crate::frame_header_full::{parse_frame_header_full_for_layer, RefFrameState};
 use crate::{parse_all_obus, parse_sequence_header, FrameHeader, ObuType, SequenceHeader};
 
 /// Reads packet after packet; see the module doc.
@@ -66,7 +66,14 @@ impl PacketHeaders {
                 },
                 ObuType::Frame | ObuType::FrameHeader => {
                     let parsed = self.seq.as_ref().and_then(|seq| {
-                        parse_frame_header_full(&obu.payload, seq, &mut self.ref_state).ok()
+                        parse_frame_header_full_for_layer(
+                            &obu.payload,
+                            seq,
+                            &mut self.ref_state,
+                            obu.header.temporal_id,
+                            obu.header.spatial_id,
+                        )
+                        .ok()
                     });
                     match parsed {
                         Some(header) => headers.push(header),

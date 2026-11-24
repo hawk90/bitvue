@@ -7,9 +7,18 @@ use super::*;
 /// frame with every other field at its default. `reader` is positioned right after the flag.
 pub(super) fn parse_show_existing_frame(
     reader: &mut BitReader,
+    seq: &SequenceHeader,
     ref_state: &RefFrameState,
 ) -> Result<FrameHeader> {
     let frame_to_show_map_idx = reader.read_bits(3)?;
+    skip_temporal_point_info(reader, seq)?;
+    if seq.frame_id_numbers_present {
+        // display_frame_id
+        let id_len = seq.additional_frame_id_length_minus_1.unwrap_or(0)
+            + seq.delta_frame_id_length_minus_2.unwrap_or(0)
+            + 3;
+        reader.read_bits_u64(id_len)?;
+    }
     // Real AV1 also refreshes RefOrderHint for a KEY-frame show_existing_frame using the
     // shown slot's own already-tracked order hint (RefOrderHint[idx] stays what it was) --
     // no new hint is introduced, so ref_state needs no update here. The shown frame's

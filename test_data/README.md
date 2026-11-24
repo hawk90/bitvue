@@ -58,6 +58,7 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 | `av1_svtav1_intrabc_allowed.ivf` | SVT-AV1 4.2.0, 128x128, 3 frames of the same tiling, `--scm 1 --enable-intrabc 1`: the key frame sets `allow_intrabc` (no block uses it; the copy itself is covered by `av1_aomenc_intrabc_glyphs.ivf`) (`tests/tool_fixtures.rs`) | commands below |
 | `av1_aomenc_intrabc_glyphs.ivf` | aomenc 3.15.3, 320x192, 2 key frames of a synthetic text page (12 random 8x8 two-level glyphs repeated on a flat background), `--tune-content=screen`: 231 of 243 blocks per frame use intra block copy, both frames `Verified` (the only clip with blocks that use it; `tests/tool_fixtures.rs`) | commands below |
 | `av1_aomenc_lossless_tiled.ivf`, `av1_aomenc_lossless_testsrc2.ivf` | aomenc, 128x128, 3 frames, `--lossless=1` (CodedLossless): the tiled pattern (504 bytes) and `testsrc2` (11 KB), 64x64 superblocks. Regression for #388 (chroma cut into 4x4 transform blocks); every frame decodes as `Verified` (`tests/tool_fixtures.rs`) | commands below |
+| `av1_aomenc_decoder_model.ivf` | aomenc, 128x128, 3 frames of `testsrc2`, CBR, `--timing-info=model`: the sequence header signals a decoder model (`decoder_model_info`, `decoder_model_present_for_this_op`), so every frame header carries `temporal_point_info()` and `buffer_removal_time` (spec 5.9.2). dav1d decodes 3/3; every frame is `Verified` (`tests/tool_fixtures.rs`, #538) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |
 | `avc_test.h264`, `hevc_test.hevc`, `vp9_test.ivf` | 320x240 | x264 / x265 / libvpx; content and command not recorded |
 
@@ -128,6 +129,8 @@ SvtAv1EncApp -i tiled8.y4m -b av1_svtav1_intrabc_allowed.ivf --scm 1 --enable-in
 ```bash
 aomenc tiled8.y4m --ivf -o av1_aomenc_lossless_tiled.ivf --limit=3 --cpu-used=1 --sb-size=64 --threads=1 --lag-in-frames=0 --lossless=1 --tune-content=screen
 aomenc src.y4m --ivf -o av1_aomenc_lossless_testsrc2.ivf --limit=3 --cpu-used=1 --sb-size=64 --threads=1 --lag-in-frames=0 --lossless=1
+ffmpeg -f lavfi -i testsrc2=size=128x128:rate=30:duration=1 -pix_fmt yuv420p -f yuv4mpegpipe s128.y4m
+aomenc s128.y4m --ivf -o av1_aomenc_decoder_model.ivf --end-usage=cbr --target-bitrate=200 --lag-in-frames=0 --timing-info=model --limit=3 --cpu-used=8
 ```
 
 (`src.y4m` here is the 128x128 `testsrc2` source of the commands above.)

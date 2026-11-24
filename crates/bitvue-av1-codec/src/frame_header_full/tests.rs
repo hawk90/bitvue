@@ -1116,19 +1116,6 @@ fn streams_it_cannot_parse_are_refused_with_a_reason() {
         .unwrap_err()
         .to_string();
     assert!(message.contains("found_ref"), "{message}");
-
-    // decoder_model_info_present
-    seq.decoder_model_info = Some(crate::sequence::DecoderModelInfo {
-        buffer_delay_length_minus_1: 0,
-        num_units_in_decoding_tick: 1,
-        buffer_removal_time_length_minus_1: 0,
-        frame_presentation_time_length_minus_1: 0,
-    });
-    let mut ref_state = RefFrameState::new();
-    let message = parse_frame_header_full(&minimal_key_frame_bytes(40), &seq, &mut ref_state)
-        .unwrap_err()
-        .to_string();
-    assert!(message.contains("decoder_model_info"), "{message}");
 }
 
 /// A header cut short anywhere is an error, never a panic and never a "successful" parse of
