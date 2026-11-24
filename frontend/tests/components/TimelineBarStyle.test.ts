@@ -13,10 +13,12 @@ const css = readFileSync(
   "utf8",
 );
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function rule(selector: string): string {
-  const m = new RegExp(
-    `${selector.replace(/[.]/g, "\\.")}\\s*\\{([^}]*)\\}`,
-  ).exec(css);
+  const m = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(css);
   return m ? m[1] : "";
 }
 
