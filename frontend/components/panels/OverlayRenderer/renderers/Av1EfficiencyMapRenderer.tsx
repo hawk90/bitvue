@@ -1,10 +1,16 @@
 /**
  * AV1 / VP9 Efficiency Map Renderer
  *
- * Info overlay: bits-per-pixel efficiency heatmap.
+ * Info overlay: coding efficiency heatmap.
  *
- * Each CTU-sized cell is colored by the ratio of its size (in bits) to its
- * pixel area. Higher bits-per-pixel = less efficient encoding = warmer color.
+ * With `frame.bit_grid` (AV1: measured from the arithmetic decoder) each cell is colored by
+ * decoded symbols per coded bit -- how much syntax the encoder expressed per bit spent, so a cell
+ * of skip/predictable symbols reads hot and a cell of residual-heavy, high-entropy data reads
+ * cold. Higher symbols/bit = more efficient = warmer color. The unit counts arithmetic-decoder
+ * symbol reads (a multi-symbol read is one), not libaom's binarized bools, so values are
+ * comparable within this app only (#488).
+ *
+ * Without a bit grid (other codecs) it falls back to the paths below. Their legend says "bpp".
  *
  * Color scale (VQ Analyzer parity, jet-like):
  *   0 bpp (fully skipped) → deep blue  (#0000CC)
@@ -21,7 +27,7 @@
 import type { OverlayRendererProps } from "../types";
 
 /** Jet-like colormap: t ∈ [0,1] → rgba string */
-function jetColor(t: number, alpha = 0.55): string {
+export function jetColor(t: number, alpha = 0.55): string {
   const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
   const r = clamp(t < 0.5 ? 0 : t < 0.75 ? (t - 0.5) * 4 * 255 : 255);
   const g = clamp(t < 0.25 ? t * 4 * 255 : t < 0.75 ? 255 : (1 - t) * 4 * 255);
@@ -35,10 +41,29 @@ export function Av1EfficiencyMapOverlay({
   height,
   frame,
 }: OverlayRendererProps): void {
+  const bitGrid = frame.bit_grid;
   const energyGrid = frame.energy_grid;
   const qpGrid = frame.qp_grid;
+  let unit = "bpp";
 
-  if (energyGrid) {
+  if (bitGrid) {
+    unit = "symbols/bit";
+    const { grid_w, grid_h, symbols_per_bit, bits_per_pixel } = bitGrid;
+    const cellW = width / grid_w;
+    const cellH = height / grid_h;
+    let max = 0;
+    for (const v of symbols_per_bit) if (v > max) max = v;
+    const range = Math.max(1e-9, max);
+    for (let row = 0; row < grid_h; row++) {
+      for (let col = 0; col < grid_w; col++) {
+        const idx = row * grid_w + col;
+        // A cell that coded nothing has no efficiency to show: leave it unpainted.
+        if ((bits_per_pixel[idx] ?? 0) <= 0) continue;
+        ctx.fillStyle = jetColor((symbols_per_bit[idx] ?? 0) / range);
+        ctx.fillRect(col * cellW, row * cellH, cellW, cellH);
+      }
+    }
+  } else if (energyGrid) {
     const { grid_w, grid_h, energy_bpp } = energyGrid;
     const cellW = width / grid_w;
     const cellH = height / grid_h;
@@ -103,6 +128,6 @@ export function Av1EfficiencyMapOverlay({
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "9px sans-serif";
-  ctx.fillText("low bpp", barX, barY - 2);
-  ctx.fillText("high bpp", barX + barW - 40, barY - 2);
+  ctx.fillText(`low ${unit}`, barX, barY - 2);
+  ctx.fillText(`high ${unit}`, barX + barW - 60, barY - 2);
 }

@@ -24,6 +24,7 @@ import { Av1FilmGrainRenderer } from "./renderers/Av1FilmGrainRenderer";
 import { VvcDualTreeRenderer } from "./renderers/VvcDualTreeRenderer";
 import { VvcAdaptiveFilterRenderer } from "./renderers/VvcAdaptiveFilterRenderer";
 import { VvcInverseMapRenderer } from "./renderers/VvcInverseMapRenderer";
+import { Av1HeatMapOverlay } from "./renderers/Av1HeatMapRenderer";
 import { Av1EfficiencyMapOverlay } from "./renderers/Av1EfficiencyMapRenderer";
 import { Av1BlockTypeOverlay } from "./renderers/Av1BlockTypeRenderer";
 import { Avs3EsaoRenderer } from "./renderers/Avs3EsaoRenderer";
@@ -214,8 +215,16 @@ function renderInfoOverlay(
       QPMapOverlay({ ctx, width, height, frame });
       break;
     case "mv-field":
-    case "heat-map": // heat-map reuses MVField as a magnitude heatmap for now
       MVFieldOverlay({ ctx, width, height, frame, webglCanvas });
+      break;
+    case "heat-map":
+      // Measured bits per pixel where the sidecar provides them (AV1); other codecs have no bit
+      // cost yet and keep showing the MV field as a magnitude heatmap.
+      if (frame.bit_grid) {
+        Av1HeatMapOverlay({ ctx, width, height, frame });
+      } else {
+        MVFieldOverlay({ ctx, width, height, frame, webglCanvas });
+      }
       break;
     case "block-type":
       Av1BlockTypeOverlay({ ctx, width, height, frame });
