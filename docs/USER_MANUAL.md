@@ -93,7 +93,7 @@ is not a fault.
 | `F2` | `Predictions` | The prediction mode of each block | Intra frames are colored by direction mode (`D45`, `SmoothV`, `Paeth`, `CFL`, ...). Inter frames are colored by inter mode (`NewMV`, `NearMV`, ...). See the legend at the bottom |
 | `F3` | `Transform` | Transform block sizes | Colored grid per size with counts (for example `8x8 (78)`, `64x64 (88)`). The top-left label gives `Blocks` and `Types` |
 | `F4` | `Reconstruction` | The reconstructed picture before the loop filters | The picture as it was before any loop filter was applied |
-| `F5` | `Loop Filter` | The deblocking filter | A numeric panel (`Deblocking Filter Analysis`: number of filtered edges, filter strength, loop-filter parameters `Level`, `Sharpness`, `Ref/Mode Deltas`) and, below it, `Block Boundary Visualization` with the picture |
+| `F5` | `Loop Filter` | The deblocking filter | The picture with the luma transform edges drawn over it (one sample thick): green where the edge allows a filter up to 16 samples, yellow 8, orange 4, red for an edge that is considered but not filtered (level 0, or inside a skipped inter block). Below it: edge counts and the loop-filter parameters `Level`, `Sharpness`, `Ref/Mode Deltas`. The colors are the largest filter an edge allows; the filter applied to each sample line also depends on the picture content (see [Known issues](#known-issues)) |
 | `F6` | `CDEF Filter` | The CDEF filter | The picture with a block grid on top, and a legend with `CDEF Y-Primary`, `Y-Secondary`, `Damping` and `Arrows = filter direction` |
 | `F7` | `SuperRes Filter` | Super-resolution | Meaningful only for streams that use super-resolution |
 | `F8` | `Loop Restoration` | The loop restoration filter | Filter type and block size. Shows `disabled` when not used |
@@ -490,7 +490,7 @@ Places where the application differs from the reference guide or shows something
 | Player | In screenshots the decoded picture is missing (`F10 YUV` and `F4` are black, only the overlays show). It appears when WebGPU is turned off, so decoding and drawing work; the picture sits on a WebGPU canvas that screenshot capture does not include. Whether a person sees it on a real screen is not verified | #456 |
 | Filmstrip, timeline, statistics | Frames that re-show an earlier frame (2, 5, 8) are labelled `I`; they are actually P | #454 |
 | Frame information | For some frames `qp_avg` is the hidden frame's value, not the shown frame's (frames 1 and 6) | #455 |
-| `F5 Loop Filter` | The numeric panel (HEVC-style terms) takes most of the space and the `Block Boundary Visualization` below it is cut off, so the colored filtered edges described in the guide are not visible (the numbers are correct) | #457 |
+| `F5 Loop Filter` | Only luma edges are drawn. The levels assume `DeltaLF = 0` on a frame that signals per-block `delta_lf` (the parser does not keep it; the view says so). The filter actually applied per sample line is not shown | #457 |
 | `HM` | Draws motion-vector magnitude instead of bit usage | #458 |
 | `HRD Buffer` | Only AV1 reports HRD data (AVC and HEVC `hrd_parameters` are not read). The AV1 fullness curve is a simulation from frame sizes, not the Annex E timing model | #587, #588 |
 | Overlays on a mode | The overlay label is drawn over the mode label and is hard to read | #451 |

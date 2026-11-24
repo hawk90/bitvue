@@ -1,11 +1,10 @@
 /**
  * Deblocking View Component
  *
- * Visualizes deblocking filter information showing:
- * - Block boundary strength visualization
- * - Filter on/off decisions per boundary
- * - Deblocking edge metadata
- * - Codec-specific deblocking parameters
+ * Visualizes the loop filter of a frame (AV1: spec 7.14):
+ * - luma transform edges drawn over the picture, colored by the largest filter each allows
+ * - which edges are filtered at all
+ * - the frame's loop filter parameters
  */
 
 import { memo, useEffect, useMemo, useState } from "react";
@@ -52,14 +51,29 @@ function yuvFrameToDataUrl(
   return scratchCanvas.toDataURL();
 }
 
+type FilterSize = 4 | 8 | 16;
+
+/** Edge colors: the largest filter an edge allows (green 16, yellow 8, orange 4 samples), and red
+ *  for an edge the loop filter considers but does not filter (level 0, or a transform edge inside a
+ *  skipped inter block). The filter actually applied to each sample line also depends on the
+ *  picture's content, so these are upper bounds. */
+export const FILTER_SIZE_COLORS: Record<FilterSize, string> = {
+  16: "#2da44e",
+  8: "#d4a717",
+  4: "#e07b39",
+};
+export const UNFILTERED_EDGE_COLOR = "#e03131";
+
 interface BoundaryEdge {
   x: number;
   y: number;
   length: number;
   orientation: "vertical" | "horizontal";
-  strength: number;
+  /** Filter level 0-63 */
+  level: number;
   filtered: boolean;
-  bs: number; // Boundary strength
+  /** Largest filter the edge allows, in samples. */
+  filterSize: FilterSize;
 }
 
 /** Real AV1 loop_filter_params() fields (spec 5.9.11) -- level[0]/[1] are luma
@@ -106,11 +120,14 @@ export const DeblockingView = memo(function DeblockingView({
   const [boundaries, setBoundaries] = useState<BoundaryEdge[]>([]);
   const [params, setParams] = useState<DeblockingParams>(DEFAULT_PARAMS);
   const [stats, setStats] = useState({
-    totalBoundaries: 0,
-    filteredBoundaries: 0,
-    strongBoundaries: 0,
-    weakBoundaries: 0,
+    edgeSegments: 0,
+    filteredSegments: 0,
+    filtered16: 0,
+    filtered8: 0,
+    filtered4: 0,
+    unfilteredSegments: 0,
   });
+  const [deltaLfIgnored, setDeltaLfIgnored] = useState(false);
 
   useEffect(() => {
     if (!frame) {
@@ -129,9 +146,9 @@ export const DeblockingView = memo(function DeblockingView({
             y: e.y,
             length: e.length,
             orientation: e.orientation,
-            strength: e.strength,
+            level: e.level,
             filtered: e.filtered,
-            bs: e.boundary_strength,
+            filterSize: e.filter_size,
           })),
         );
         setParams({
@@ -142,11 +159,14 @@ export const DeblockingView = memo(function DeblockingView({
           modeDeltas: data.params.mode_deltas,
         });
         setStats({
-          totalBoundaries: data.stats.total_edges,
-          filteredBoundaries: data.stats.filtered_edges,
-          strongBoundaries: data.stats.strong_edges,
-          weakBoundaries: data.stats.weak_edges,
+          edgeSegments: data.stats.edge_segments,
+          filteredSegments: data.stats.filtered_segments,
+          filtered16: data.stats.filtered_16,
+          filtered8: data.stats.filtered_8,
+          filtered4: data.stats.filtered_4,
+          unfilteredSegments: data.stats.unfiltered_segments,
         });
+        setDeltaLfIgnored(data.delta_lf_ignored);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -163,27 +183,12 @@ export const DeblockingView = memo(function DeblockingView({
     };
   }, [frame]);
 
-  const getEdgeColor = (edge: BoundaryEdge) => {
-    if (!edge.filtered) {
-      return "rgba(128, 128, 128, 0.2)";
-    }
+  const getEdgeColor = (edge: BoundaryEdge) =>
+    edge.filtered ? FILTER_SIZE_COLORS[edge.filterSize] : UNFILTERED_EDGE_COLOR;
 
-    // AV1 boundary strength is 0/1/2 (spec 7.14.2) -- 2 means an intra edge, 1 means an inter
-    // edge with coded residual, differing references, or a large MV difference.
-    const intensity = Math.min(edge.strength / 63, 1);
-    if (edge.bs >= 2) {
-      // Strong (intra) boundary - red to yellow
-      return `rgba(255, ${Math.floor(200 * (1 - intensity))}, 0, ${0.5 + intensity * 0.5})`;
-    } else {
-      // Weak (inter) boundary - blue to cyan
-      return `rgba(0, ${Math.floor(200 * intensity)}, 255, ${0.3 + intensity * 0.5})`;
-    }
-  };
-
-  const getEdgeWidth = (edge: BoundaryEdge) => {
-    if (!edge.filtered) return 0.5;
-    return 0.5 + (edge.strength / 63) * 2;
-  };
+  // One-sample-thick lines for every edge, like the reference tool; an unfiltered edge is
+  // fainter so it does not drown the filtered ones.
+  const getEdgeOpacity = (edge: BoundaryEdge) => (edge.filtered ? 0.9 : 0.45);
 
   if (!frame) {
     return (
@@ -193,10 +198,19 @@ export const DeblockingView = memo(function DeblockingView({
     );
   }
 
+  const edgeTitle = (edge: BoundaryEdge) =>
+    `${edge.orientation === "vertical" ? "Vertical" : "Horizontal"} edge (${edge.x}, ${edge.y})\n` +
+    `Largest filter: ${edge.filterSize} samples\n` +
+    `Level: ${edge.level}\n` +
+    `Filtered: ${edge.filtered ? "Yes" : "No"}`;
+
+  const pct = (n: number) =>
+    stats.edgeSegments > 0 ? ((n / stats.edgeSegments) * 100).toFixed(1) : "0";
+
   return (
     <div className="deblocking-view">
       <div className="deblocking-header">
-        <h3>Deblocking Filter Analysis</h3>
+        <h3>Loop Filter</h3>
         <div className="deblocking-frame-info">
           <span>Frame {frame.frame_index}</span>
           <span className={frame.frame_type.toLowerCase()}>
@@ -206,42 +220,124 @@ export const DeblockingView = memo(function DeblockingView({
         </div>
       </div>
 
-      {/* Statistics Panel */}
+      {/* Boundary Visualization: first, so it is never pushed below the fold by the numbers */}
+      <div className="deblocking-visualization">
+        <div className="deblocking-canvas-container">
+          <svg
+            width={width}
+            height={height}
+            className="deblocking-canvas"
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {/* Background: the real decoded picture, so boundaries are shown over actual content
+                instead of a flat theme-color rect -- falls back to the rect while decode hasn't
+                landed yet (or on a codec this backend doesn't decode). */}
+            {backgroundImageUrl ? (
+              <image
+                href={backgroundImageUrl}
+                width={width}
+                height={height}
+                preserveAspectRatio="xMidYMid slice"
+              />
+            ) : (
+              <rect
+                width={width}
+                height={height}
+                fill="var(--bitvue-bg-primary)"
+              />
+            )}
+
+            {boundaries.map((edge, index) => (
+              <line
+                key={`${edge.orientation[0]}-${index}`}
+                x1={edge.x}
+                y1={edge.y}
+                x2={
+                  edge.orientation === "vertical"
+                    ? edge.x
+                    : edge.x + edge.length
+                }
+                y2={
+                  edge.orientation === "vertical"
+                    ? edge.y + edge.length
+                    : edge.y
+                }
+                stroke={getEdgeColor(edge)}
+                strokeOpacity={getEdgeOpacity(edge)}
+                strokeWidth={1}
+                shapeRendering="crispEdges"
+              >
+                <title>{edgeTitle(edge)}</title>
+              </line>
+            ))}
+          </svg>
+        </div>
+
+        <div className="deblocking-legend">
+          {([16, 8, 4] as const).map((size) => (
+            <div className="deblocking-legend-item" key={size}>
+              <div
+                className="deblocking-legend-box"
+                style={{ background: FILTER_SIZE_COLORS[size] }}
+              ></div>
+              <span>Up to {size}-sample filter</span>
+            </div>
+          ))}
+          <div className="deblocking-legend-item">
+            <div
+              className="deblocking-legend-box"
+              style={{ background: UNFILTERED_EDGE_COLOR }}
+            ></div>
+            <span>Considered, not filtered</span>
+          </div>
+        </div>
+        <p className="deblocking-note">
+          Luma transform edges. Colors show the largest filter an edge allows;
+          the filter applied to each sample line also depends on the picture
+          content.
+          {deltaLfIgnored &&
+            " This frame signals per-block delta_lf, which is not read: levels assume 0 for it."}
+        </p>
+      </div>
+
+      {/* Statistics Panel (counts in 4-sample edge segments) */}
       <div className="deblocking-stats">
         <div className="deblocking-stat-item">
-          <span className="deblocking-stat-label">Total Boundaries:</span>
+          <span className="deblocking-stat-label">Edge segments:</span>
           <span className="deblocking-stat-value">
-            {stats.totalBoundaries.toLocaleString()}
+            {stats.edgeSegments.toLocaleString()}
           </span>
         </div>
         <div className="deblocking-stat-item">
           <span className="deblocking-stat-label">Filtered:</span>
           <span className="deblocking-stat-value">
-            {stats.filteredBoundaries.toLocaleString()}
+            {stats.filteredSegments.toLocaleString()} (
+            {pct(stats.filteredSegments)}%)
           </span>
         </div>
         <div className="deblocking-stat-item">
-          <span className="deblocking-stat-label">Strong (BS 2, intra):</span>
-          <span className="deblocking-stat-value deblocking-strong">
-            {stats.strongBoundaries.toLocaleString()}
-          </span>
-        </div>
-        <div className="deblocking-stat-item">
-          <span className="deblocking-stat-label">Weak (BS 1, inter):</span>
-          <span className="deblocking-stat-value deblocking-weak">
-            {stats.weakBoundaries.toLocaleString()}
-          </span>
-        </div>
-        <div className="deblocking-stat-item">
-          <span className="deblocking-stat-label">Filter Rate:</span>
+          <span className="deblocking-stat-label">Up to 16 samples:</span>
           <span className="deblocking-stat-value">
-            {stats.totalBoundaries > 0
-              ? (
-                  (stats.filteredBoundaries / stats.totalBoundaries) *
-                  100
-                ).toFixed(1)
-              : "0"}
-            %
+            {stats.filtered16.toLocaleString()}
+          </span>
+        </div>
+        <div className="deblocking-stat-item">
+          <span className="deblocking-stat-label">Up to 8 samples:</span>
+          <span className="deblocking-stat-value">
+            {stats.filtered8.toLocaleString()}
+          </span>
+        </div>
+        <div className="deblocking-stat-item">
+          <span className="deblocking-stat-label">Up to 4 samples:</span>
+          <span className="deblocking-stat-value">
+            {stats.filtered4.toLocaleString()}
+          </span>
+        </div>
+        <div className="deblocking-stat-item">
+          <span className="deblocking-stat-label">Not filtered:</span>
+          <span className="deblocking-stat-value">
+            {stats.unfilteredSegments.toLocaleString()}
           </span>
         </div>
       </div>
@@ -271,116 +367,6 @@ export const DeblockingView = memo(function DeblockingView({
             <span className="deblocking-param-value">
               {params.deltaEnabled ? "Enabled" : "Disabled"}
             </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Boundary Visualization */}
-      <div className="deblocking-visualization">
-        <h4>Block Boundary Visualization</h4>
-        <div className="deblocking-canvas-container">
-          <svg
-            width={width}
-            height={height}
-            className="deblocking-canvas"
-            viewBox={`0 0 ${width} ${height}`}
-            preserveAspectRatio="xMidYMid meet"
-          >
-            {/* Background: the real decoded picture, so boundaries are shown over actual content
-                instead of a flat theme-color rect -- falls back to the rect while decode hasn't
-                landed yet (or on a codec this backend doesn't decode). */}
-            {backgroundImageUrl ? (
-              <image
-                href={backgroundImageUrl}
-                width={width}
-                height={height}
-                preserveAspectRatio="xMidYMid slice"
-              />
-            ) : (
-              <rect
-                width={width}
-                height={height}
-                fill="var(--bitvue-bg-primary)"
-              />
-            )}
-
-            {/* Draw edges */}
-            {boundaries.map((edge, index) => {
-              if (edge.orientation === "vertical") {
-                return (
-                  <line
-                    key={`v-${index}`}
-                    x1={edge.x}
-                    y1={edge.y}
-                    x2={edge.x}
-                    y2={edge.y + edge.length}
-                    stroke={getEdgeColor(edge)}
-                    strokeWidth={getEdgeWidth(edge)}
-                  >
-                    <title>
-                      Vertical Edge ({edge.x}, {edge.y}){`\n`}
-                      BS: {edge.bs}
-                      {`\n`}
-                      Strength: {edge.strength.toFixed(2)}
-                      {`\n`}
-                      Filtered: {edge.filtered ? "Yes" : "No"}
-                    </title>
-                  </line>
-                );
-              } else {
-                return (
-                  <line
-                    key={`h-${index}`}
-                    x1={edge.x}
-                    y1={edge.y}
-                    x2={edge.x + edge.length}
-                    y2={edge.y}
-                    stroke={getEdgeColor(edge)}
-                    strokeWidth={getEdgeWidth(edge)}
-                  >
-                    <title>
-                      Horizontal Edge ({edge.x}, {edge.y}){`\n`}
-                      BS: {edge.bs}
-                      {`\n`}
-                      Strength: {edge.strength.toFixed(2)}
-                      {`\n`}
-                      Filtered: {edge.filtered ? "Yes" : "No"}
-                    </title>
-                  </line>
-                );
-              }
-            })}
-          </svg>
-        </div>
-
-        {/* Legend */}
-        <div className="deblocking-legend">
-          <div className="deblocking-legend-item">
-            <div
-              className="deblocking-legend-box deblocking-strong"
-              style={{
-                background:
-                  "linear-gradient(to right, rgba(255,200,0,0.5), rgba(255,0,0,1))",
-              }}
-            ></div>
-            <span>Strong Boundary (BS 2, intra)</span>
-          </div>
-          <div className="deblocking-legend-item">
-            <div
-              className="deblocking-legend-box deblocking-weak"
-              style={{
-                background:
-                  "linear-gradient(to right, rgba(0,200,255,0.3), rgba(0,0,255,0.8))",
-              }}
-            ></div>
-            <span>Weak Boundary (BS 1, inter)</span>
-          </div>
-          <div className="deblocking-legend-item">
-            <div
-              className="deblocking-legend-box"
-              style={{ background: "rgba(128,128,128,0.2)" }}
-            ></div>
-            <span>Not Filtered</span>
           </div>
         </div>
       </div>

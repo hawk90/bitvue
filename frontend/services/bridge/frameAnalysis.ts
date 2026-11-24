@@ -104,9 +104,12 @@ export interface DeblockingEdgeWire {
   y: number;
   length: number;
   orientation: "vertical" | "horizontal";
-  boundary_strength: number;
+  /** The largest filter the edge allows, in samples (AV1 spec `filterSize`). */
+  filter_size: 4 | 8 | 16;
+  /** `applyFilter` and a non-zero `level`. */
   filtered: boolean;
-  strength: number;
+  /** Filter level 0-63 after segment, reference and mode adjustments. */
+  level: number;
 }
 
 /** Real AV1 loop_filter_params() fields (spec 5.9.11). `level`/`ref_deltas`/`mode_deltas` mirror
@@ -119,11 +122,14 @@ export interface DeblockingParamsWire {
   mode_deltas: number[];
 }
 
+/** Counts are in 4-sample segments (edge runs are merged along the edge). */
 export interface DeblockingStatsWire {
-  total_edges: number;
-  filtered_edges: number;
-  strong_edges: number;
-  weak_edges: number;
+  edge_segments: number;
+  filtered_segments: number;
+  unfiltered_segments: number;
+  filtered_16: number;
+  filtered_8: number;
+  filtered_4: number;
 }
 
 export interface DeblockingAnalysisWireResult {
@@ -132,6 +138,8 @@ export interface DeblockingAnalysisWireResult {
   height: number;
   edges: DeblockingEdgeWire[];
   params: DeblockingParamsWire;
+  /** The frame signals per-block `delta_lf`, which is not kept: levels use 0 for it. */
+  delta_lf_ignored: boolean;
   stats: DeblockingStatsWire;
 }
 

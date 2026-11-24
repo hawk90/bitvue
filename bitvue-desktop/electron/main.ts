@@ -530,8 +530,10 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.deblocking?.width === 320 &&
       result.deblocking?.height === 240 &&
       (result.deblocking?.edges?.length ?? 0) > 0 &&
-      result.deblocking?.stats?.total_edges ===
-        result.deblocking?.edges?.length;
+      (result.deblocking?.stats?.edge_segments ?? 0) > 0 &&
+      (result.deblocking?.stats?.filtered_segments ?? -1) +
+        (result.deblocking?.stats?.unfiltered_segments ?? -1) ===
+        result.deblocking?.stats?.edge_segments;
     console.log("[selftest] get_deblocking_analysis OK:", deblockingOk);
     const codecExtendedInfoOk =
       result.codecExtendedInfo?.frame_index === 5 &&

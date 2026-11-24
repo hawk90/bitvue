@@ -36,7 +36,7 @@ describe("DeblockingView", () => {
         codec="hevc"
       />,
     );
-    expect(screen.getByText("Deblocking Filter Analysis")).toBeInTheDocument();
+    expect(screen.getByText("Loop Filter")).toBeInTheDocument();
   });
 
   it("displays frame information", async () => {
@@ -64,9 +64,13 @@ describe("DeblockingView", () => {
       />,
     );
 
-    // The component generates mock stats
-    expect(screen.getByText(/Total Boundaries:/)).toBeInTheDocument();
+    // counts are in 4-sample edge segments, split by the largest filter an edge allows
+    expect(screen.getByText(/Edge segments:/)).toBeInTheDocument();
     expect(screen.getByText(/^Filtered:$/)).toBeInTheDocument();
+    expect(screen.getByText(/Up to 16 samples:/)).toBeInTheDocument();
+    expect(screen.getByText(/Up to 8 samples:/)).toBeInTheDocument();
+    expect(screen.getByText(/Up to 4 samples:/)).toBeInTheDocument();
+    expect(screen.getByText(/Not filtered:/)).toBeInTheDocument();
   });
 
   it("displays deblocking parameters", async () => {
@@ -136,11 +140,12 @@ describe("DeblockingView", () => {
       />,
     );
 
-    expect(
-      screen.getByText("Strong Boundary (BS 2, intra)"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Weak Boundary (BS 1, inter)")).toBeInTheDocument();
-    expect(screen.getByText("Not Filtered")).toBeInTheDocument();
+    // AV1 has no boundary strength (that is HEVC): edges are colored by filter length
+    expect(screen.getByText("Up to 16-sample filter")).toBeInTheDocument();
+    expect(screen.getByText("Up to 8-sample filter")).toBeInTheDocument();
+    expect(screen.getByText("Up to 4-sample filter")).toBeInTheDocument();
+    expect(screen.getByText("Considered, not filtered")).toBeInTheDocument();
+    expect(screen.queryByText(/BS \d/)).toBeNull();
   });
 
   it("handles null frame gracefully", async () => {
