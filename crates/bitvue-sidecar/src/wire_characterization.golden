@@ -1,0 +1,119 @@
+hello|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct HelloParams"}}
+hello|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `client_version`"}}
+hello|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `client_version`"}}
+open_stream|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct OpenStreamParams"}}
+open_stream|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+open_stream|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+close_stream|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct CloseStreamParams"}}
+close_stream|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+close_stream|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+select_frame|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SelectFrameParams"}}
+select_frame|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+select_frame|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+select_unit|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SelectUnitParams"}}
+select_unit|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+select_unit|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+select_syntax|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SelectSyntaxParams"}}
+select_syntax|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+select_syntax|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+select_bit_range|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SelectBitRangeParams"}}
+select_bit_range|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+select_bit_range|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+select_spatial_block|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SelectSpatialBlockParams"}}
+select_spatial_block|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+select_spatial_block|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+index_stream|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct IndexStreamParams"}}
+index_stream|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+index_stream|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+get_stream_info|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetStreamInfoParams"}}
+get_stream_info|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+get_stream_info|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+get_frames_chunk|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetFramesChunkParams"}}
+get_frames_chunk|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+get_frames_chunk|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+get_frame_syntax|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetFrameSyntaxParams"}}
+get_frame_syntax|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+get_frame_syntax|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_timeline|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetTimelineParams"}}
+get_timeline|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+get_timeline|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+get_hex_range|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetHexRangeParams"}}
+get_hex_range|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+get_hex_range|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+get_decoded_frame_yuv|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetDecodedFrameYuvParams"}}
+get_decoded_frame_yuv|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+get_decoded_frame_yuv|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_thumbnails|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetThumbnailsParams"}}
+get_thumbnails|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream`"}}
+get_thumbnails|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: integer `5`, expected a string"}}
+get_frame_analysis|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetFrameAnalysisParams"}}
+get_frame_analysis|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `frame_index`"}}
+get_frame_analysis|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_av1_features|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetAv1FeaturesParams"}}
+get_av1_features|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `frame_index`"}}
+get_av1_features|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_coding_flow_analysis|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetCodingFlowAnalysisParams"}}
+get_coding_flow_analysis|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `frame_index`"}}
+get_coding_flow_analysis|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_deblocking_analysis|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetDeblockingAnalysisParams"}}
+get_deblocking_analysis|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `frame_index`"}}
+get_deblocking_analysis|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_codec_extended_info|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetCodecExtendedInfoParams"}}
+get_codec_extended_info|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `frame_index`"}}
+get_codec_extended_info|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_residual_analysis|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetResidualAnalysisParams"}}
+get_residual_analysis|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `frame_index`"}}
+get_residual_analysis|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_context_menu_items|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetContextMenuItemsParams"}}
+get_context_menu_items|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `scope`"}}
+get_context_menu_items|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `scope`"}}
+export_evidence_bundle|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct ExportEvidenceBundleParams"}}
+export_evidence_bundle|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `output_dir`"}}
+export_evidence_bundle|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `output_dir`"}}
+load_debug_yuv|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct LoadParams"}}
+load_debug_yuv|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `path`"}}
+load_debug_yuv|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `path`"}}
+set_debug_yuv_offset|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SetDebugYuvOffsetParams"}}
+set_debug_yuv_offset|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `offset`"}}
+set_debug_yuv_offset|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `offset`"}}
+set_debug_yuv_crop|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SetDebugYuvCropParams"}}
+set_debug_yuv_crop|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `crop`"}}
+set_debug_yuv_crop|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `crop`"}}
+get_yuv_diff_metrics|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct DebugYuvFrameIndexParams"}}
+get_yuv_diff_metrics|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `frame_index`"}}
+get_yuv_diff_metrics|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_debug_yuv_frame|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetDebugYuvFrameParams"}}
+get_debug_yuv_frame|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `frame_index`"}}
+get_debug_yuv_frame|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"x\", expected usize"}}
+get_aligned_frame|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetAlignedFrameParams"}}
+get_aligned_frame|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream_a_frame_idx`"}}
+get_aligned_frame|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream_a_frame_idx`"}}
+set_sync_mode|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SetSyncModeParams"}}
+set_sync_mode|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `mode`"}}
+set_sync_mode|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `mode`"}}
+set_manual_offset|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct SetManualOffsetParams"}}
+set_manual_offset|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `offset`"}}
+set_manual_offset|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `offset`"}}
+get_diff_frame|junk-string|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"invalid type: string \"junk\", expected struct GetDiffFrameParams"}}
+get_diff_frame|empty-object|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream_a_frame_idx`"}}
+get_diff_frame|wrong-type|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"missing field `stream_a_frame_idx`"}}
+get_hex_range|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_hex_range|bad-stream-id|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"unknown stream id: C (expected \"A\" or \"B\")"}}
+get_decoded_frame_yuv|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_decoded_frame_yuv|bad-stream-id|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"unknown stream id: C (expected \"A\" or \"B\")"}}
+get_thumbnails|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_thumbnails|bad-stream-id|{"id":9,"ok":false,"error":{"code":"INVALID_DATA","message":"unknown stream id: C (expected \"A\" or \"B\")"}}
+get_frame_analysis|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_frame_analysis|bad-stream-id|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_av1_features|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_av1_features|bad-stream-id|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_hrd_info|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_hrd_info|bad-stream-id|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_coding_flow_analysis|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_coding_flow_analysis|bad-stream-id|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_deblocking_analysis|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_deblocking_analysis|bad-stream-id|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_codec_extended_info|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_codec_extended_info|bad-stream-id|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_residual_analysis|not-open|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}
+get_residual_analysis|bad-stream-id|{"id":9,"ok":false,"error":{"code":"NOT_FOUND","message":"stream not open"}}

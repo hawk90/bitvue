@@ -90,6 +90,8 @@ mod request_dispatch;
 mod residual_analysis;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod wire_characterization;
 
 // Re-exported so every command module's tests can call `crate::dispatch(...)` without knowing
 // it now lives in `request_dispatch` -- `dispatch` itself isn't referenced by name anywhere in
