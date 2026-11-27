@@ -1,5 +1,8 @@
 import { memo, lazy, Suspense, useCallback, useState, useMemo } from "react";
-import { closeWindow } from "./services/electronBridgeService";
+import {
+  closeWindow,
+  frameInfoToGraphFrame,
+} from "./services/electronBridgeService";
 import { useOpenFileStatus } from "./hooks/useOpenFileStatus";
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
@@ -33,6 +36,7 @@ import {
   SelectionInfoPanel,
   UnitHexPanel,
   StatisticsPanel,
+  BitrateGraphPanel,
   InfoPanel,
   DetailsPanel,
   YuvDiffPanel,
@@ -165,6 +169,22 @@ const StatisticsPanelWrapper = memo(function StatisticsPanelWrapper() {
     </PanelErrorBoundary>
   );
 });
+/** Reuses the frames FrameDataContext already holds -- the panel is only mounted once a file is
+ *  open and indexed, so it needs no request of its own. */
+const BitrateGraphPanelFromContext = memo(
+  function BitrateGraphPanelFromContext() {
+    const { frames } = useFrameData();
+    const graphFrames = useMemo(
+      () => frames.map(frameInfoToGraphFrame),
+      [frames],
+    );
+    return (
+      <PanelErrorBoundary panelName="Bitrate">
+        <BitrateGraphPanel frames={graphFrames} />
+      </PanelErrorBoundary>
+    );
+  },
+);
 const DiagnosticsPanelWrapper = memo(function DiagnosticsPanelWrapper() {
   const { diagnostics } = useFileState();
   const mappedDiagnostics = useMemo(
@@ -300,6 +320,12 @@ const BOTTOM_ROW_PANELS = [
     title: "Stats",
     component: StatisticsPanelWrapper,
     icon: "graph",
+  },
+  {
+    id: "bitrate",
+    title: "Bitrate",
+    component: BitrateGraphPanelFromContext,
+    icon: "pulse",
   },
   {
     id: "diagnostics",

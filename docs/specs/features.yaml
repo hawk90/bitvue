@@ -1,7 +1,7 @@
 # Bitvue feature/requirement registry — single source of truth for feature status & parity.
 # Edit items in place; never renumber ids. See docs/specs/README.md.
 schema: 1
-updated: '2026-10-05'
+updated: '2026-11-28'
 sources:
   - docs/DEVELOPMENT_PHASES.md
   - docs/VQA_PARITY_SPEC_V3.md
@@ -3601,6 +3601,9 @@ items:
     evidence:
       - frontend/components/Filmstrip/views/FrameSizesView.tsx
       - frontend/components/panels/StatisticsPanel.tsx
+      - frontend/components/panels/BitrateGraphPanel.tsx
+      - frontend/utils/bitrateAxis.ts
+      - frontend/tests/components/BitrateGraphPanel.provided.test.tsx
     competitors:
       vqa: 'no'
       vqp: 'no'
@@ -3611,8 +3614,13 @@ items:
       - COMPETITOR_FEATURE_MATRIX.md §5 (Analytical graphs; AV1 Analyzer Graph View)
       - DEVELOPMENT_PHASES.md §Phase 8
     notes: 'Frame-size bars live in FrameSizesView, and StatisticsPanel shows a total and average bitrate (assumed or PTS-derived
-      fps). There is no real QP-over-time series: the bitrate curve is empty because duration is never set. BitrateGraphPanel
-      is unmounted (dead Tauri invoke). No compression-ratio or DPB-occupancy graph.'
+      fps). BitrateGraphPanel is mounted as the Bitrate tab of the bottom row (App.tsx BOTTOM_ROW_PANELS, visible on every
+      platform once a file is open; no menu item, no shortcut). It draws one bar per frame (frame size, or smoothed size) in
+      PTS display order, with a frame-type colour and counts of I/P/B frames; frames come from FrameDataContext, so no
+      request of its own. The x axis is labelled in bar numbers: seconds need the container frame rate, which the renderer is
+      not given (#615). The old note that the curve is empty because duration is never set no longer applies (the panel never
+      used a duration). Still missing: QP-over-time (the sidecar fills no per-frame QP, #614), compression-ratio and
+      DPB-occupancy graphs. Only the first 500 frames are drawn.'
   - id: UI-033
     title: Bit distribution / OBU-size distribution visualization
     area: ui

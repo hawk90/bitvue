@@ -157,7 +157,17 @@ Below it a drop-down switches the lower panel between four views:
 | `INFO` | File path, total frames, current frame, type | `Frames: 12`, `Current Frame: 4`, `Frame: P` |
 | `DETAILS` | `Temporal Layer`, `Display Order`, `Coding Order`, `References` | `0`, `3`, `3`, `0, 0, 0, 0, 0, 0, 1` |
 | `STATS` | Count of each frame type (`Frame Types`), `Total`, `Keyframes`, `Avg Size` | Sample clip: 1 I frame and 11 P frames, `Total: 12`, `Keyframes: 1` (the application currently shows `I: 4`, see [Known issues](#known-issues)) |
+| `BITRATE` | Size of every frame as a bar, along a time axis (see below) | Sample clip: 12 bars, the first two (3.7 KB, 6.0 KB) clearly taller than the rest |
 | `DIAGNOSTICS` | Errors, warnings and notes found in the stream (`All`, errors, warnings, info) | No problems: all `0` and a check mark |
+
+### Bitrate panel
+
+The `BITRATE` panel sits between `STATS` and `DIAGNOSTICS` in the bottom row. It is always visible once a file is open; drag the dividers in the bottom row, or enlarge the window, to give it more room. If the panel is cut off, scroll inside it.
+
+- **Bars.** One bar per frame, coloured by frame type (I blue, P green, B amber). `Frame Size` draws each frame's size; `Smoothed` draws the average size of the surrounding frames (10 before and after), which shows the bitrate trend. Hover a bar to read its frame number, type, size and PTS. Only the first 500 frames are drawn; a note says so for longer streams.
+- **Counters** above the chart: number of frames, total and average size, and the I, P and B counts.
+- **X axis.** Bars follow display order (sorted by PTS), so a stream with B-frames is drawn in time order, not decode order. If any frame has no PTS, or two frames share one, the bars stay in decode order and the caption under the axis says so. Tick labels are bar numbers (`#0`, `#15`, ...). Seconds are not shown, because the application does not yet know the stream's frame rate (#615).
+- **No QP curve yet.** The panel shows frame sizes only; a per-frame QP series needs sidecar support (#614).
 
 ## 9. Comparing two streams (`A/B Compare`)
 

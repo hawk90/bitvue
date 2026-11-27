@@ -6,6 +6,7 @@
 
 import { getFramesChunk, type BridgeUnitNode } from "./stream";
 import type { StreamId } from "./core";
+import type { FrameInfo } from "../../types/video";
 
 /** What the graph panels read of one frame. `null` (not `undefined`) for "the sidecar did not say",
  *  because the panels test `!== null`. */
@@ -16,6 +17,19 @@ export interface GraphFrame {
   pts: number | null;
   ref_frames: number[] | null;
   temporal_id: number | null;
+}
+
+/** The same shape from a `FrameInfo` the contexts already hold (`unitNodeToFrameInfo` maps
+ *  `null` to `undefined`; the panels test `!== null`, so map it back). */
+export function frameInfoToGraphFrame(frame: FrameInfo): GraphFrame {
+  return {
+    frame_index: frame.frame_index,
+    frame_type: frame.frame_type,
+    size: frame.size,
+    pts: frame.pts ?? null,
+    ref_frames: frame.ref_frames ?? null,
+    temporal_id: frame.temporal_id ?? null,
+  };
 }
 
 /** Units per `get_frames_chunk` call. Larger than the 100 `FileStateContext` uses (it flushes
