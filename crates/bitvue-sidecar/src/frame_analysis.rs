@@ -90,37 +90,74 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
     }))
 }
 
+/// The fields every per-block grid shares on the wire. `coded` is `Some((width, height))` for
+/// the grids that also report the coded frame size (MV/prediction-mode/transform); QP/energy/bit
+/// grids don't, and must not gain the keys.
+struct GridShape {
+    grid_w: u32,
+    grid_h: u32,
+    block_w: u32,
+    block_h: u32,
+    coded: Option<(u32, u32)>,
+}
+
+/// `GridShape` of any grid struct with the shared field names (the structs come from different
+/// crates and have no common trait); `coded` also reads its `coded_width`/`coded_height`.
+macro_rules! grid_shape {
+    ($g:expr) => {
+        GridShape {
+            grid_w: $g.grid_w,
+            grid_h: $g.grid_h,
+            block_w: $g.block_w,
+            block_h: $g.block_h,
+            coded: None,
+        }
+    };
+    ($g:expr, coded) => {
+        GridShape {
+            coded: Some(($g.coded_width, $g.coded_height)),
+            ..grid_shape!($g)
+        }
+    };
+}
+
+/// The shared shape fields merged with a grid's own fields (a `json!` object).
+fn grid_json(shape: GridShape, own: Value) -> Value {
+    let mut fields = json!({
+        "grid_w": shape.grid_w,
+        "grid_h": shape.grid_h,
+        "block_w": shape.block_w,
+        "block_h": shape.block_h,
+    });
+    if let Some((coded_width, coded_height)) = shape.coded {
+        fields["coded_width"] = coded_width.into();
+        fields["coded_height"] = coded_height.into();
+    }
+    if let (Value::Object(target), Value::Object(own)) = (&mut fields, own) {
+        target.extend(own);
+    }
+    fields
+}
+
 fn qp_grid_to_json(g: &QPGrid) -> Value {
-    json!({
-        "grid_w": g.grid_w,
-        "grid_h": g.grid_h,
-        "block_w": g.block_w,
-        "block_h": g.block_h,
-        "qp": g.qp,
-        "qp_min": g.qp_min,
-        "qp_max": g.qp_max,
-    })
+    let shape = grid_shape!(g);
+    grid_json(
+        shape,
+        json!({ "qp": g.qp, "qp_min": g.qp_min, "qp_max": g.qp_max }),
+    )
 }
 
 fn energy_grid_to_json(g: &EnergyGrid) -> Value {
-    json!({
-        "grid_w": g.grid_w,
-        "grid_h": g.grid_h,
-        "block_w": g.block_w,
-        "block_h": g.block_h,
-        "energy_bpp": g.energy_bpp,
-    })
+    let shape = grid_shape!(g);
+    grid_json(shape, json!({ "energy_bpp": g.energy_bpp }))
 }
 
 fn bit_grid_to_json(g: &BitGrid) -> Value {
-    json!({
-        "grid_w": g.grid_w,
-        "grid_h": g.grid_h,
-        "block_w": g.block_w,
-        "block_h": g.block_h,
-        "bits_per_pixel": g.bits_per_pixel,
-        "symbols_per_bit": g.symbols_per_bit,
-    })
+    let shape = grid_shape!(g);
+    grid_json(
+        shape,
+        json!({ "bits_per_pixel": g.bits_per_pixel, "symbols_per_bit": g.symbols_per_bit }),
+    )
 }
 
 fn motion_vector_to_json(mv: &MotionVector) -> Value {
@@ -128,17 +165,15 @@ fn motion_vector_to_json(mv: &MotionVector) -> Value {
 }
 
 fn mv_grid_to_json(g: &MVGrid) -> Value {
-    json!({
-        "coded_width": g.coded_width,
-        "coded_height": g.coded_height,
-        "block_w": g.block_w,
-        "block_h": g.block_h,
-        "grid_w": g.grid_w,
-        "grid_h": g.grid_h,
-        "mv_l0": g.mv_l0.iter().map(motion_vector_to_json).collect::<Vec<_>>(),
-        "mv_l1": g.mv_l1.iter().map(motion_vector_to_json).collect::<Vec<_>>(),
-        "mode": g.mode.as_ref().map(|modes| modes.iter().map(|m| *m as u8).collect::<Vec<u8>>()),
-    })
+    let shape = grid_shape!(g, coded);
+    grid_json(
+        shape,
+        json!({
+            "mv_l0": g.mv_l0.iter().map(motion_vector_to_json).collect::<Vec<_>>(),
+            "mv_l1": g.mv_l1.iter().map(motion_vector_to_json).collect::<Vec<_>>(),
+            "mode": g.mode.as_ref().map(|modes| modes.iter().map(|m| *m as u8).collect::<Vec<u8>>()),
+        }),
+    )
 }
 
 fn partition_block_to_json(b: &PartitionBlock) -> Value {
@@ -204,29 +239,23 @@ fn prediction_mode_to_wire(mode: PredictionMode) -> u8 {
 }
 
 fn prediction_mode_grid_to_json(g: &PredictionModeGrid) -> Value {
-    json!({
-        "coded_width": g.coded_width,
-        "coded_height": g.coded_height,
-        "block_w": g.block_w,
-        "block_h": g.block_h,
-        "grid_w": g.grid_w,
-        "grid_h": g.grid_h,
-        "modes": g.modes.iter().map(|m| m.map(prediction_mode_to_wire)).collect::<Vec<_>>(),
-    })
+    let shape = grid_shape!(g, coded);
+    grid_json(
+        shape,
+        json!({ "modes": g.modes.iter().map(|m| m.map(prediction_mode_to_wire)).collect::<Vec<_>>() }),
+    )
 }
 
 fn transform_grid_to_json(g: &TransformGrid) -> Value {
-    json!({
-        "coded_width": g.coded_width,
-        "coded_height": g.coded_height,
-        "block_w": g.block_w,
-        "block_h": g.block_h,
-        "grid_w": g.grid_w,
-        "grid_h": g.grid_h,
-        // TxSize's declaration order (Tx4x4=0..Tx64x64=4) already matches the frontend's
-        // expected numbering exactly -- direct cast, no remap table needed (unlike PredictionMode).
-        "tx_sizes": g.tx_sizes.iter().map(|t| t.map(|tx| tx as u8)).collect::<Vec<_>>(),
-    })
+    let shape = grid_shape!(g, coded);
+    // TxSize's declaration order (Tx4x4=0..Tx64x64=4) already matches the frontend's
+    // expected numbering exactly -- direct cast, no remap table needed (unlike PredictionMode).
+    let tx_sizes = g
+        .tx_sizes
+        .iter()
+        .map(|t| t.map(|tx| tx as u8))
+        .collect::<Vec<_>>();
+    grid_json(shape, json!({ "tx_sizes": tx_sizes }))
 }
 
 #[derive(serde::Deserialize)]
@@ -435,6 +464,163 @@ mod tests {
             }
         }
     }
+
+    const GRID_KEYS: [&str; 7] = [
+        "qp_grid",
+        "mv_grid",
+        "partition_grid",
+        "prediction_mode_grid",
+        "transform_grid",
+        "energy_grid",
+        "bit_grid",
+    ];
+
+    /// (name, ivf bytes, frame indices) the golden digests below were taken from.
+    fn golden_inputs() -> Vec<(&'static str, &'static [u8], Vec<usize>)> {
+        vec![
+            ("av1_test", AV1_IVF_FIXTURE, vec![0, 2, 5, 65]),
+            (
+                "tiles5",
+                include_bytes!("../../../test_data/av1_aomenc_tiles5.ivf"),
+                vec![0, 1],
+            ),
+            (
+                "testsrc2",
+                include_bytes!("../../../test_data/av1_aomenc_testsrc2.ivf"),
+                vec![0, 1],
+            ),
+            (
+                "globalmotion",
+                include_bytes!("../../../test_data/av1_aomenc_globalmotion.ivf"),
+                vec![0, 1, 2],
+            ),
+        ]
+    }
+
+    /// FNV-1a 64 of the serialized grid text: stable across runs and platforms.
+    fn fnv1a64(text: &str) -> u64 {
+        text.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+        })
+    }
+
+    /// `name/frame/grid -> digest` lines for every golden input. With `GRID_DUMP_DIR` set, the
+    /// full serialized grids are also written there (for a byte-for-byte diff across a refactor).
+    fn golden_lines() -> Vec<String> {
+        let dump_dir = std::env::var_os("GRID_DUMP_DIR");
+        let mut lines = Vec::new();
+        for (name, data, frames) in golden_inputs() {
+            for frame in frames {
+                let result = get_frame_analysis(data, frame).unwrap();
+                for key in GRID_KEYS {
+                    let text = result[key].to_string();
+                    if let Some(dir) = &dump_dir {
+                        let path =
+                            std::path::Path::new(dir).join(format!("{name}_{frame}_{key}.json"));
+                        std::fs::write(path, &text).unwrap();
+                    }
+                    lines.push(format!(
+                        "{name}/{frame}/{key} {:016x} {}",
+                        fnv1a64(&text),
+                        text.len()
+                    ));
+                }
+            }
+        }
+        lines
+    }
+
+    /// The grid JSON the frontend consumes, pinned byte for byte (serialized text digest + length)
+    /// so refactors of the `*_grid_to_json` mapping cannot change a key, a value or a null.
+    #[test]
+    fn grid_json_matches_the_golden_digests() {
+        let actual = golden_lines();
+        if std::env::var_os("GRID_GOLDEN_PRINT").is_some() {
+            for line in &actual {
+                println!("GOLDEN {line}");
+            }
+        }
+        assert_eq!(actual.join("\n"), GOLDEN_GRID_DIGESTS.trim());
+    }
+
+    const GOLDEN_GRID_DIGESTS: &str = "\
+av1_test/0/qp_grid 4c84f7a660c2845d 140
+av1_test/0/mv_grid 3bea8643d6bdfb28 1915
+av1_test/0/partition_grid bed3cf820d0c435b 82207
+av1_test/0/prediction_mode_grid fb545073114b7802 721
+av1_test/0/transform_grid eef6ee7e1e9b4312 701
+av1_test/0/energy_grid d2d0190d87cc3b0a 196
+av1_test/0/bit_grid 8858286e27d7be0d 840
+av1_test/2/qp_grid fc6bfc43db6f5387 162
+av1_test/2/mv_grid 834b11cabedb87e0 1555
+av1_test/2/partition_grid 6c3d72b273b0a458 4224
+av1_test/2/prediction_mode_grid 60ba79d7fed1b488 985
+av1_test/2/transform_grid 518d688b481b19c7 701
+av1_test/2/energy_grid 5fd438ed094c0f1b 144
+av1_test/2/bit_grid f2b70227892ec605 892
+av1_test/5/qp_grid bd344d9a701da45f 162
+av1_test/5/mv_grid 834b11cabedb87e0 1555
+av1_test/5/partition_grid 606595cc8f9e5de6 8176
+av1_test/5/prediction_mode_grid 26d588b4d66e7f31 997
+av1_test/5/transform_grid 4a148be7caa37491 701
+av1_test/5/energy_grid 5fd438ed094c0f1b 144
+av1_test/5/bit_grid 58b9154fc7e3c2fe 890
+av1_test/65/qp_grid dfa1847d1660dd05 140
+av1_test/65/mv_grid 038f4eadfca3c0c2 1555
+av1_test/65/partition_grid c5956ba17986ceaf 12104
+av1_test/65/prediction_mode_grid e0f1f9e13ef73628 996
+av1_test/65/transform_grid 6235adc7bbc9502f 701
+av1_test/65/energy_grid 1100701bf1713092 149
+av1_test/65/bit_grid 195ff0416c1935d6 885
+tiles5/0/qp_grid a5fb9725f5d1c96e 153
+tiles5/0/mv_grid 3bea8643d6bdfb28 1915
+tiles5/0/partition_grid 1fd41d10c37be132 14667
+tiles5/0/prediction_mode_grid 73c3f1b32184339c 737
+tiles5/0/transform_grid dc5ef83c031fe0ef 701
+tiles5/0/energy_grid 92db6f305c3fe023 236
+tiles5/0/bit_grid 19fe79e0d0b7fd1d 851
+tiles5/1/qp_grid 801110163b045d8f 162
+tiles5/1/mv_grid 47ab41f77c437fb0 1564
+tiles5/1/partition_grid a7296e740d1286cc 16945
+tiles5/1/prediction_mode_grid 4851bfded57f2618 995
+tiles5/1/transform_grid cf621fe8a356ab97 701
+tiles5/1/energy_grid bce3a8d094229aa3 149
+tiles5/1/bit_grid 00b7b0afd3d2057a 883
+testsrc2/0/qp_grid 8b4a5f0443c1b726 140
+testsrc2/0/mv_grid cf84f9c0ddc83a66 1915
+testsrc2/0/partition_grid 8073353a2a33551d 24940
+testsrc2/0/prediction_mode_grid b30971900b13fed0 819
+testsrc2/0/transform_grid bb6e94c5297ec48a 701
+testsrc2/0/energy_grid aaff38166157be33 166
+testsrc2/0/bit_grid 0f025f47769db746 865
+testsrc2/1/qp_grid e882057706995091 140
+testsrc2/1/mv_grid 8b808d8e4c099d26 1548
+testsrc2/1/partition_grid 1a4eb7113ba787c3 18250
+testsrc2/1/prediction_mode_grid e12063efa542ce67 993
+testsrc2/1/transform_grid 9318a8f440854197 701
+testsrc2/1/energy_grid 2c3591cf2c621b7b 147
+testsrc2/1/bit_grid adbeccc81e349ef5 876
+globalmotion/0/qp_grid b4b9e89c5a639433 170
+globalmotion/0/mv_grid 65270ff315cb1061 2815
+globalmotion/0/partition_grid 4ff47453974746ab 37040
+globalmotion/0/prediction_mode_grid a973688a60bff05b 906
+globalmotion/0/transform_grid 8ce84ac38cca22bd 893
+globalmotion/0/energy_grid 56f44fb6e8863061 208
+globalmotion/0/bit_grid add4d302e750b5ad 1260
+globalmotion/1/qp_grid 6f0ab899c54c9707 202
+globalmotion/1/mv_grid 0ff9d2719157564b 2461
+globalmotion/1/partition_grid 0f410d7a1472f118 31550
+globalmotion/1/prediction_mode_grid 1b255b74a9c4e378 1277
+globalmotion/1/transform_grid db9249ddb22a7836 893
+globalmotion/1/energy_grid bb65f601e950ab90 189
+globalmotion/1/bit_grid 56874dbb3774fecb 1265
+globalmotion/2/qp_grid 6f0ab899c54c9707 202
+globalmotion/2/mv_grid 11210f35e9b1c177 2316
+globalmotion/2/partition_grid 4894569478333576 26607
+globalmotion/2/prediction_mode_grid 07ed680672cb16e0 1284
+globalmotion/2/transform_grid c58cf523195a63f5 893
+globalmotion/2/energy_grid 5a7bad9a6f6ac129 195
+globalmotion/2/bit_grid d5915201b123675a 1265";
 
     #[test]
     fn get_frame_analysis_returns_real_dimensions_not_the_1920x1080_scaffold() {
