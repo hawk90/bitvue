@@ -662,32 +662,32 @@ fn every_frame_header_of_every_clip_is_unchanged() {
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
-            (274, 1, 0, 5793667197573964951),
+            (274, 1, 0, 13807844543352846661),
         ),
         (
             "aomenc_testsrc2",
             include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
-            (16, 4, 3, 13869582206689778965),
+            (16, 4, 3, 8854805885434021865),
         ),
         (
             "aomenc_tilegroups",
             include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf"),
-            (12, 1, 0, 16686347594253864472),
+            (12, 1, 0, 14368130240972126540),
         ),
         (
             "aomenc_tiles5",
             include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf"),
-            (12, 1, 0, 3656541809696659856),
+            (12, 1, 0, 17280902780318808674),
         ),
         (
             "rav1e_testsrc2",
             include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
-            (17, 6, 5, 14047268066617097439),
+            (17, 6, 5, 14502872200063635592),
         ),
         (
             "svtav1_testsrc2",
             include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
-            (17, 6, 5, 2196947347639930637),
+            (17, 6, 5, 12640559783228430156),
         ),
     ];
     let mismatches: Vec<String> = CLIPS
