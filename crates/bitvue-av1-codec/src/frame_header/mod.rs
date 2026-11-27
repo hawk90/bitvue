@@ -106,6 +106,7 @@ fn unparsed_header() -> FrameHeader {
         allow_screen_content_tools: false,
         delta_lf_present: false,
         delta_lf_multi: false,
+        delta_q_res: 0,
         delta_lf_res: 0,
         skip_mode_present: false,
         skip_mode_refs: [0, 0],

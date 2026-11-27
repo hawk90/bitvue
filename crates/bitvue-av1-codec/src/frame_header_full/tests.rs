@@ -656,6 +656,9 @@ fn header_summary(clip: &[u8]) -> HeaderSummary {
 /// `, frame_presentation_time: None, buffer_removal_time: []` cut out of every header's `Debug`
 /// (none of the six clips has a decoder model). `overlay_extraction/parser/parse_test.rs` did not
 /// need re-recording: `ParsedFrame`'s `Debug` does not render these fields.
+/// Once more when `FrameHeader` gained
+/// `delta_q_res` (#592): with `, delta_q_res: 0` (and `, delta_q_res: 2` in the aomenc clips, which
+/// signal `delta_q_present`) cut out of the `Debug` text the old numbers came out again.
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
     const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [

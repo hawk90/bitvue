@@ -49,6 +49,8 @@ pub struct ParsedFrame {
     /// doc. Same sourcing/fallback story as `reference_select`.
     pub delta_lf_present: bool,
     pub delta_lf_multi: bool,
+    /// `delta_q_res` (spec 5.9.17) -- see `FrameHeader::delta_q_res`'s doc.
+    pub delta_q_res: u8,
     /// `delta_lf_res` (spec 5.9.14) -- see `FrameHeader::delta_lf_res`'s doc.
     pub delta_lf_res: u8,
     /// `reduced_tx_set` (spec 5.9.2) -- see `FrameHeader::reduced_tx_set`'s doc. Same
@@ -251,6 +253,7 @@ impl ParsedFrame {
             enable_filter_intra: self.enable_filter_intra,
             delta_lf_present: self.delta_lf_present,
             delta_lf_multi: self.delta_lf_multi,
+            delta_q_res: self.delta_q_res,
             delta_lf_res: self.delta_lf_res,
             use_ref_frame_mvs: self.use_ref_frame_mvs,
             segmentation: self.segmentation,

@@ -113,7 +113,7 @@ stream_case!(
     aomenc_stream_state,
     "av1_aomenc_testsrc2.ivf",
     8,
-    11886248314148368264
+    6640146242977968337
 );
 stream_case!(
     rav1e_stream_state,
@@ -131,7 +131,7 @@ stream_case!(
     aomenc_tiles_stream_state,
     "av1_aomenc_tiles5.ivf",
     4,
-    62663505108442518
+    6493280076769825830
 );
 
 #[test]

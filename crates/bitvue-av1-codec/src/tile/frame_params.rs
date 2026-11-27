@@ -34,6 +34,8 @@ pub struct FrameCodingParams {
     pub delta_lf_present: bool,
     /// See `delta_lf_present`.
     pub delta_lf_multi: bool,
+    /// `delta_q_res` (spec 5.9.17): each decoded `delta_q` step is shifted left by this.
+    pub delta_q_res: u8,
     /// `delta_lf_res` (spec 5.9.14): each decoded `delta_lf` step is shifted left by this.
     pub delta_lf_res: u8,
     /// Frame header's `use_ref_frame_mvs` flag, used as `inter_mode`'s `globalmv_ctx` (see
@@ -77,6 +79,7 @@ impl FrameCodingParams {
             enable_filter_intra: false,
             delta_lf_present: false,
             delta_lf_multi: false,
+            delta_q_res: 0,
             delta_lf_res: 0,
             use_ref_frame_mvs: false,
             segmentation: SegmentationInfo::default(),
