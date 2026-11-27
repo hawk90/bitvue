@@ -6,7 +6,13 @@
 //! follow from the level, tier and profile of the operating point (spec Annex E.2 and A.3), which
 //! `bitvue_av1_codec::sequence::buffer_limits` evaluates. The stream signals only the delays
 //! (`decoder_buffer_delay`, `encoder_buffer_delay`), `low_delay_mode_flag` and the tick lengths.
+//!
+//! `model` is the decoder model run over the whole stream (spec Annex E, `bitvue_av1_codec::
+//! decoder_model`): per decodable frame group the arrival and removal times, the smoothing
+//! buffer's occupancy curve and the conformance violations. It is `null` (with the reason in
+//! `model_unavailable`) when the stream signals no timing the model can run on.
 
+use bitvue_av1_codec::decoder_model::{self, DecoderModel, Mode};
 use bitvue_av1_codec::sequence::{
     buffer_limits, level_name, OperatingPoint, SequenceHeader, TimingInfo,
 };
@@ -37,16 +43,54 @@ fn operating_point_json(seq: &SequenceHeader, op: &OperatingPoint) -> Value {
     })
 }
 
-/// The wire form of a sequence header's decoder model. `present` is true when the first operating
-/// point (the one decoded by default) has a decoder model: that is when the HRD view has something
-/// signaled to show.
-pub fn hrd_info_json(seq: &SequenceHeader) -> Value {
-    let present = seq
-        .operating_points
-        .first()
-        .is_some_and(|op| op.operating_parameters.is_some());
+fn model_json(model: &DecoderModel) -> Value {
     json!({
-        "present": present,
+        "mode": match model.mode {
+            Mode::DecodingSchedule => "decoding_schedule",
+            Mode::ResourceAvailability => "resource_availability",
+        },
+        "bit_rate_bps": model.bit_rate,
+        "buffer_size_bits": model.buffer_size,
+        "decoder_buffer_delay": model.decoder_buffer_delay,
+        "encoder_buffer_delay": model.encoder_buffer_delay,
+        "low_delay_mode": model.low_delay_mode,
+        "dec_ct_seconds": model.dec_ct,
+        "peak_bits": model.peak_bits,
+        "frames": model.frames.iter().map(|f| json!({
+            "dfg": f.dfg,
+            "packet": f.packet,
+            "frame_type": f.frame_type.as_str(),
+            "show_frame": f.show_frame,
+            "coded_bits": f.coded_bits,
+            "buffer_removal_time": f.buffer_removal_time,
+            "frame_presentation_time": f.frame_presentation_time,
+            "first_bit_arrival": f.first_bit_arrival,
+            "last_bit_arrival": f.last_bit_arrival,
+            "scheduled_removal": f.scheduled_removal,
+            "removal": f.removal,
+        })).collect::<Vec<_>>(),
+        // [seconds, bits in the smoothing buffer], breakpoints of the piecewise linear curve; a
+        // removal is two points at one time
+        "curve": model.curve.iter().map(|p| json!([p.time, p.bits])).collect::<Vec<_>>(),
+        "violations": model.violations.iter().map(|v| json!({
+            "kind": v.kind.code(),
+            "dfg": v.dfg,
+            "packet": v.packet,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// The wire form of a sequence header's decoder model, with the model run over the stream's
+/// packets (`Err` when it could not run: the reason goes to `model_unavailable`). `present` is true when the HRD view
+/// has something to show: the decoder model ran.
+pub fn hrd_info_json(
+    seq: &SequenceHeader,
+    model: &Result<DecoderModel, decoder_model::Unavailable>,
+) -> Value {
+    json!({
+        "present": model.is_ok(),
+        "model": model.as_ref().ok().map(model_json),
+        "model_unavailable": model.as_ref().err().map(decoder_model::Unavailable::reason),
         "profile": seq.profile.name(),
         "frame_rate": seq.timing_info.as_ref().and_then(frame_rate),
         "timing": seq.timing_info.as_ref().map(|t| json!({
@@ -75,7 +119,8 @@ pub fn get_hrd_info(data: &[u8]) -> Result<Value, String> {
     let seq = bitvue_av1_codec::overlay_extraction::find_sequence_header(&frames)
         .map(|(_, seq)| seq)
         .ok_or_else(|| "no sequence header found in the first few frames".to_string())?;
-    Ok(hrd_info_json(&seq))
+    let model = decoder_model::analyze(frames.iter().map(|f| f.data.as_slice()));
+    Ok(hrd_info_json(&seq, &model))
 }
 
 /// The decoder model of stream A -- see this module's doc. Control-only, same reasoning as
@@ -131,6 +176,10 @@ mod tests {
 
     const WITHOUT_MODEL: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
     const WITH_MODEL: &[u8] = include_bytes!("../../../test_data/av1_aomenc_decoder_model.ivf");
+    const UNDERFLOW: &[u8] =
+        include_bytes!("../../../test_data/av1_aomenc_decoder_model_underflow.ivf");
+    const CONSTANT_TIMING: &[u8] =
+        include_bytes!("../../../test_data/av1_aomenc_timing_constant.ivf");
 
     /// A clip without a decoder model reports `present: false` and still the level's limits.
     #[test]
@@ -168,6 +217,73 @@ mod tests {
         assert_eq!(op["level"], "2.0");
         assert_eq!(op["max_bitrate_bps"], 1_500_000);
         assert_eq!(op["buffer_size_bits"], 1_500_000);
+    }
+
+    /// The model rides along with the decoder model: per decodable frame group its times, the
+    /// occupancy curve and no violation for aomenc's own clip (#587).
+    #[test]
+    fn a_stream_with_a_decoder_model_reports_the_model_run_over_its_frames() {
+        let info = get_hrd_info(WITH_MODEL).unwrap();
+        assert_eq!(info["model_unavailable"], Value::Null);
+        let model = &info["model"];
+        assert_eq!(model["mode"], "decoding_schedule");
+        assert_eq!(model["bit_rate_bps"], 1_500_000);
+        assert_eq!(model["buffer_size_bits"], 1_500_000);
+        assert_eq!(model["decoder_buffer_delay"], 45_000);
+        assert!((model["dec_ct_seconds"].as_f64().unwrap() - 1.0 / 30.0).abs() < 1e-12);
+        assert_eq!(model["violations"], json!([]));
+
+        let frames = model["frames"].as_array().unwrap();
+        assert_eq!(frames.len(), 3);
+        assert_eq!(frames[0]["frame_type"], "I");
+        assert_eq!(frames[0]["buffer_removal_time"], 1);
+        assert_eq!(frames[2]["frame_presentation_time"], 2);
+        assert_eq!(frames[0]["scheduled_removal"], 0.5);
+        for (i, frame) in frames.iter().enumerate() {
+            assert_eq!(frame["dfg"], i);
+            assert_eq!(frame["packet"], i);
+        }
+
+        // [seconds, bits]; the curve peaks with the three frames in the buffer at the first removal
+        let curve = model["curve"].as_array().unwrap();
+        assert_eq!(curve[0], json!([0.0, 0.0]));
+        let peak = model["peak_bits"].as_f64().unwrap();
+        assert!(curve.iter().any(|p| p[1].as_f64() == Some(peak)));
+        assert!(curve
+            .windows(2)
+            .all(|w| w[0][0].as_f64() <= w[1][0].as_f64()));
+    }
+
+    #[test]
+    fn a_decoder_model_that_is_broken_lists_its_violations() {
+        let info = get_hrd_info(UNDERFLOW).unwrap();
+        assert_eq!(
+            info["model"]["violations"],
+            json!([{"kind": "smoothing_buffer_underflow", "dfg": 0, "packet": 0}])
+        );
+    }
+
+    /// Without timing there is no model, and the reason goes to the panel.
+    #[test]
+    fn a_stream_without_timing_has_no_model_and_says_why() {
+        let info = get_hrd_info(WITHOUT_MODEL).unwrap();
+        assert_eq!(info["model"], Value::Null);
+        assert!(info["model_unavailable"]
+            .as_str()
+            .unwrap()
+            .contains("no decoder model"));
+    }
+
+    /// `timing_info` with an equal picture interval and no decoder_model_info is the resource
+    /// availability mode: `present` follows the model, not only the signaled decoder model.
+    #[test]
+    fn constant_timing_runs_the_resource_availability_model() {
+        let info = get_hrd_info(CONSTANT_TIMING).unwrap();
+        assert_eq!(info["present"], true);
+        assert!(info["decoder_model"].is_null(), "nothing signaled");
+        assert_eq!(info["model"]["mode"], "resource_availability");
+        assert_eq!(info["model"]["frames"].as_array().unwrap().len(), 12);
+        assert_eq!(info["model"]["decoder_buffer_delay"], 70_000);
     }
 
     #[test]

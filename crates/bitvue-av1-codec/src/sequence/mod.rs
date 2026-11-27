@@ -8,7 +8,7 @@ mod parse;
 mod types;
 
 pub use color::*;
-pub use levels::{buffer_limits, level_name, BufferLimits};
+pub use levels::{buffer_limits, level_name, max_decode_rate, BufferLimits};
 pub use parse::parse_sequence_header;
 pub use types::{
     Av1Profile, DecoderModelInfo, OperatingParameters, OperatingPoint, SequenceHeader, TimingInfo,
