@@ -5,8 +5,7 @@
  * grouped by probability category.
  */
 
-import { memo, useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { memo } from "react";
 
 interface ProbEntry {
   group: string;
@@ -20,13 +19,16 @@ interface Vp9ProbsData {
   entries: ProbEntry[];
 }
 
-interface CodecExtendedInfo {
-  vp9_probs: Vp9ProbsData | null;
-}
-
+/**
+ * Data source: none yet. `bitvue-sidecar`'s `get_codec_extended_info` is AV1-only and answers
+ * `{ l0_refs, l1_refs, qp_histogram }` (see its module doc) -- it has no `vp9_probs` field and no
+ * other sidecar command carries this data. Until one does, callers pass no `data` and the tab
+ * shows its "not available" state.
+ */
 interface ProbsTabProps {
   filePath?: string;
-  frameIndex: number;
+  /** Probability table for the current frame; `null`/omitted when no source provides it. */
+  data?: Vp9ProbsData | null;
 }
 
 function probColor(p: number): string {
@@ -55,35 +57,8 @@ const ProbBar = memo(function ProbBar({ value }: { value: number }) {
 
 export const ProbsTab = memo(function ProbsTab({
   filePath,
-  frameIndex,
+  data = null,
 }: ProbsTabProps) {
-  const [data, setData] = useState<Vp9ProbsData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!filePath) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    invoke<CodecExtendedInfo>("get_codec_extended_info", {
-      path: filePath,
-      frameIndex,
-    })
-      .then((info) => {
-        if (!cancelled) setData(info.vp9_probs);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError(String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [filePath, frameIndex]);
-
   if (!filePath) {
     return (
       <div className="syntax-empty">
@@ -93,16 +68,7 @@ export const ProbsTab = memo(function ProbsTab({
     );
   }
 
-  if (loading) {
-    return (
-      <div className="syntax-empty">
-        <span className="codicon codicon-loading codicon-spin" />
-        <span>Loading probability data…</span>
-      </div>
-    );
-  }
-
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="syntax-empty">
         <span className="codicon codicon-info" />

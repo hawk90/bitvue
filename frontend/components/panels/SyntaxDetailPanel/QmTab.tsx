@@ -5,8 +5,7 @@
  * Supported sizes: 4×4, 8×8 (full values), 16×16 and 32×32 (heat-map only).
  */
 
-import { memo, useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { memo, useState } from "react";
 
 interface QmMatrix {
   name: string;
@@ -21,14 +20,16 @@ interface HevcQmData {
   matrices: QmMatrix[];
 }
 
-interface CodecExtendedInfo {
-  codec: string;
-  hevc_qm: HevcQmData | null;
-}
-
+/**
+ * Data source: none yet. `bitvue-sidecar`'s `get_codec_extended_info` is AV1-only and answers
+ * `{ l0_refs, l1_refs, qp_histogram }` (see its module doc) -- it has no `hevc_qm` field and no
+ * other sidecar command carries this data. Until one does, callers pass no `data` and the tab
+ * shows its "not available" state.
+ */
 interface QmTabProps {
   filePath?: string;
-  frameIndex: number;
+  /** Scaling matrices for the current frame; `null`/omitted when no source provides them. */
+  data?: HevcQmData | null;
 }
 
 /** Map a scaling-list value to a heat-map colour (16 = neutral/flat). */
@@ -95,34 +96,11 @@ const MatrixGrid = memo(function MatrixGrid({ matrix }: { matrix: QmMatrix }) {
   );
 });
 
-export const QmTab = memo(function QmTab({ filePath, frameIndex }: QmTabProps) {
-  const [data, setData] = useState<HevcQmData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export const QmTab = memo(function QmTab({
+  filePath,
+  data = null,
+}: QmTabProps) {
   const [filter, setFilter] = useState<"all" | "intra" | "inter">("all");
-
-  useEffect(() => {
-    if (!filePath) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    invoke<CodecExtendedInfo>("get_codec_extended_info", {
-      path: filePath,
-      frameIndex,
-    })
-      .then((info) => {
-        if (!cancelled) setData(info.hevc_qm);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError(String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [filePath, frameIndex]);
 
   if (!filePath) {
     return (
@@ -133,16 +111,7 @@ export const QmTab = memo(function QmTab({ filePath, frameIndex }: QmTabProps) {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="syntax-empty">
-        <span className="codicon codicon-loading codicon-spin" />
-        <span>Loading QM data…</span>
-      </div>
-    );
-  }
-
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="syntax-empty">
         <span className="codicon codicon-info" />

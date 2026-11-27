@@ -6,8 +6,7 @@
  * and Scaling List APS.
  */
 
-import { memo, useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { memo } from "react";
 
 interface ApsEntry {
   aps_id: number;
@@ -20,13 +19,16 @@ interface VvcApsData {
   aps_list: ApsEntry[];
 }
 
-interface CodecExtendedInfo {
-  vvc_aps: VvcApsData | null;
-}
-
+/**
+ * Data source: none yet. `bitvue-sidecar`'s `get_codec_extended_info` is AV1-only and answers
+ * `{ l0_refs, l1_refs, qp_histogram }` (see its module doc) -- it has no `vvc_aps` field and no
+ * other sidecar command carries this data. Until one does, callers pass no `data` and the tab
+ * shows its "not available" state.
+ */
 interface ApsTabProps {
   filePath?: string;
-  frameIndex: number;
+  /** APS entries for the current frame; `null`/omitted when no source provides them. */
+  data?: VvcApsData | null;
 }
 
 const APS_TYPE_COLORS: Record<string, string> = {
@@ -37,35 +39,8 @@ const APS_TYPE_COLORS: Record<string, string> = {
 
 export const ApsTab = memo(function ApsTab({
   filePath,
-  frameIndex,
+  data = null,
 }: ApsTabProps) {
-  const [data, setData] = useState<VvcApsData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!filePath) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    invoke<CodecExtendedInfo>("get_codec_extended_info", {
-      path: filePath,
-      frameIndex,
-    })
-      .then((info) => {
-        if (!cancelled) setData(info.vvc_aps);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError(String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [filePath, frameIndex]);
-
   if (!filePath) {
     return (
       <div className="syntax-empty">
@@ -75,16 +50,7 @@ export const ApsTab = memo(function ApsTab({
     );
   }
 
-  if (loading) {
-    return (
-      <div className="syntax-empty">
-        <span className="codicon codicon-loading codicon-spin" />
-        <span>Loading APS data…</span>
-      </div>
-    );
-  }
-
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="syntax-empty">
         <span className="codicon codicon-info" />
