@@ -7,7 +7,7 @@
 
 use crate::command_support::{event_to_json, parse_stream_id};
 use bitvue_engine::{BitRange, Command, Core, FrameKey, SpatialBlock, UnitKey};
-use bitvue_protocol::{Request, Response, WireError, WireErrorCode};
+use bitvue_protocol::{Request, Response};
 
 #[derive(serde::Deserialize)]
 struct SelectFrameParams {
@@ -16,18 +16,9 @@ struct SelectFrameParams {
 }
 
 pub fn select_frame(core: &Core, request: &Request) -> Response {
-    let params: SelectFrameParams = match serde_json::from_value(request.params.clone()) {
+    let params: SelectFrameParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
@@ -57,18 +48,9 @@ struct SelectUnitParams {
 /// Structural selection (multi-sync): a container-level unit (e.g. an OBU/NAL), independent of
 /// `select_frame`'s temporal cursor. See `bitvue_engine::selection::UnitKey`.
 pub fn select_unit(core: &Core, request: &Request) -> Response {
-    let params: SelectUnitParams = match serde_json::from_value(request.params.clone()) {
+    let params: SelectUnitParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
@@ -99,18 +81,9 @@ struct SelectSyntaxParams {
 /// Structural selection (multi-sync): a syntax tree node + its bit range — the syntax
 /// tree ↔ hex direction of tri-sync. See `bitvue_engine::selection::SyntaxNodeId`/`BitRange`.
 pub fn select_syntax(core: &Core, request: &Request) -> Response {
-    let params: SelectSyntaxParams = match serde_json::from_value(request.params.clone()) {
+    let params: SelectSyntaxParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
@@ -140,18 +113,9 @@ struct SelectBitRangeParams {
 /// containing syntax node for this bit range itself (see `Command::SelectBitRange` handling in
 /// `bitvue_engine::Core::handle_command`), so this handler doesn't need to do that mapping.
 pub fn select_bit_range(core: &Core, request: &Request) -> Response {
-    let params: SelectBitRangeParams = match serde_json::from_value(request.params.clone()) {
+    let params: SelectBitRangeParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
@@ -182,18 +146,9 @@ struct SelectSpatialBlockParams {
 /// click-to-select direction. `Core` resolves the frame index from the current cursor itself
 /// (defaulting to 0 if nothing is selected yet), so this handler doesn't pass one explicitly.
 pub fn select_spatial_block(core: &Core, request: &Request) -> Response {
-    let params: SelectSpatialBlockParams = match serde_json::from_value(request.params.clone()) {
+    let params: SelectSpatialBlockParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,

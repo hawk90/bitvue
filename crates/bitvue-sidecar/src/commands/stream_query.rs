@@ -30,18 +30,9 @@ struct GetStreamInfoParams {
 /// `{"indexed": false, "container": null}` (not a wire error) when nothing's been indexed yet --
 /// "not indexed" is a normal, expected state for a freshly-opened stream, not a failure.
 pub fn get_stream_info(core: &Core, request: &Request) -> Response {
-    let params: GetStreamInfoParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetStreamInfoParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
@@ -73,18 +64,9 @@ struct GetFramesChunkParams {
 /// already derives `Serialize` (unlike most `bitvue-engine` types -- see `main.rs`'s module doc),
 /// so units serialize directly, no hand-mapping needed.
 pub fn get_frames_chunk(core: &Core, request: &Request) -> Response {
-    let params: GetFramesChunkParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetFramesChunkParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
@@ -152,18 +134,9 @@ struct GetFrameSyntaxParams {
 /// `InvalidData`) rather than an `{indexed: false}`-style payload -- there's no meaningful
 /// partial result for "this frame's syntax tree" the way there is for "nothing indexed yet."
 pub fn get_frame_syntax(core: &Core, request: &Request) -> Response {
-    let params: GetFrameSyntaxParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetFrameSyntaxParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
@@ -197,18 +170,9 @@ struct GetTimelineParams {
 /// so this serializes directly -- no hand-mapping function needed like `syntax_node_to_json`.
 /// Failure is a real wire error, same as `get_frame_syntax` -- no meaningful partial timeline.
 pub fn get_timeline(core: &Core, request: &Request) -> Response {
-    let params: GetTimelineParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetTimelineParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,

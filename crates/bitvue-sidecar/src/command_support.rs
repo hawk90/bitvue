@@ -7,20 +7,60 @@
 //! `frame_analysis.rs`, etc. each own their full request-to-response handling) for everything
 //! except a handful of commands that had simply never been pulled out yet.
 
-use bitvue_engine::{BitvueError, Event, StreamId};
-use bitvue_protocol::{FrameKind, Response, WireError, WireErrorCode};
+use std::sync::Arc;
+
+use bitvue_engine::{BitvueError, ByteCache, Core, Event, StreamId};
+use bitvue_protocol::{FrameKind, Request, Response, WireError, WireErrorCode};
+use serde::de::DeserializeOwned;
+
+/// Failure reply with an explicit wire code and message, no byte offset.
+pub fn wire_failure(request_id: u32, code: WireErrorCode, message: impl Into<String>) -> Response {
+    Response::failure(
+        request_id,
+        WireError {
+            code,
+            message: message.into(),
+            offset: None,
+        },
+    )
+}
+
+/// Deserializes `request.params` into a handler's params struct; a mismatch is answered with
+/// `InvalidData` carrying serde's message verbatim.
+pub fn parse_params<T: DeserializeOwned>(request: &Request) -> Result<T, Response> {
+    serde_json::from_value(request.params.clone())
+        .map_err(|err| wire_failure(request.id, WireErrorCode::InvalidData, err.to_string()))
+}
+
+/// The byte cache of an open stream, or the `NotFound "stream not open"` reply. The stream's
+/// read lock is released before this returns, so callers never hold it while reading bytes.
+pub fn stream_byte_cache(
+    core: &Core,
+    stream: StreamId,
+    request_id: u32,
+) -> Result<Arc<ByteCache>, Response> {
+    let stream_state = core.get_stream(stream);
+    let state = stream_state.read();
+    let cache = state.byte_cache.as_ref().map(Arc::clone);
+    drop(state);
+    cache.ok_or_else(|| wire_failure(request_id, WireErrorCode::NotFound, "stream not open"))
+}
+
+/// The whole stream's bytes, or the engine-error reply (`read_range` failure).
+pub fn read_all(cache: &ByteCache, request_id: u32) -> Result<&[u8], Response> {
+    cache
+        .read_range(0, cache.len() as usize)
+        .map_err(|err| engine_error_response(request_id, &err))
+}
 
 pub fn parse_stream_id(request_id: u32, s: &str) -> Result<StreamId, Response> {
     match s {
         "A" => Ok(StreamId::A),
         "B" => Ok(StreamId::B),
-        other => Err(Response::failure(
+        other => Err(wire_failure(
             request_id,
-            WireError {
-                code: WireErrorCode::InvalidData,
-                message: format!("unknown stream id: {other} (expected \"A\" or \"B\")"),
-                offset: None,
-            },
+            WireErrorCode::InvalidData,
+            format!("unknown stream id: {other} (expected \"A\" or \"B\")"),
         )),
     }
 }
@@ -49,14 +89,7 @@ pub fn single_control_frame(response: Response) -> Vec<(FrameKind, Vec<u8>)> {
 /// Failure reply for an engine error: wire code from [`wire_error_code_for`], message from
 /// `Display`, no byte offset.
 pub fn engine_error_response(request_id: u32, err: &BitvueError) -> Response {
-    Response::failure(
-        request_id,
-        WireError {
-            code: wire_error_code_for(err),
-            message: err.to_string(),
-            offset: None,
-        },
-    )
+    wire_failure(request_id, wire_error_code_for(err), err.to_string())
 }
 
 /// Mirror of `bitvue_engine::BitvueError` variants onto `WireErrorCode` — see the "not a direct

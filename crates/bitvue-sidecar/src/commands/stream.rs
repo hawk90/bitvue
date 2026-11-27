@@ -4,7 +4,7 @@
 
 use crate::command_support::{event_to_json, parse_stream_id};
 use bitvue_engine::{Command, Core};
-use bitvue_protocol::{Request, Response, WireError, WireErrorCode};
+use bitvue_protocol::{Request, Response};
 use std::path::PathBuf;
 
 #[derive(serde::Deserialize)]
@@ -14,18 +14,9 @@ struct OpenStreamParams {
 }
 
 pub fn open_stream(core: &Core, request: &Request) -> Response {
-    let params: OpenStreamParams = match serde_json::from_value(request.params.clone()) {
+    let params: OpenStreamParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
@@ -46,18 +37,9 @@ struct CloseStreamParams {
 }
 
 pub fn close_stream(core: &Core, request: &Request) -> Response {
-    let params: CloseStreamParams = match serde_json::from_value(request.params.clone()) {
+    let params: CloseStreamParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,

@@ -11,18 +11,9 @@ use std::sync::atomic::AtomicBool;
 /// `open_stream`'s module-doc note describes: the call succeeded, `result.success` carries whether
 /// the load itself worked, matching the frontend's `YuvDiffContext.loadFile` expectations.
 pub fn load_debug_yuv(state: &crate::DebugYuvSlot, request: &Request) -> Response {
-    let params: LoadParams = match serde_json::from_value(request.params.clone()) {
+    let params: LoadParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     match load(params) {
         Ok(session) => {
@@ -73,18 +64,9 @@ struct SetDebugYuvOffsetParams {
 }
 
 pub fn set_debug_yuv_offset(state: &crate::DebugYuvSlot, request: &Request) -> Response {
-    let params: SetDebugYuvOffsetParams = match serde_json::from_value(request.params.clone()) {
+    let params: SetDebugYuvOffsetParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let mut guard = state.lock().unwrap();
     match guard.as_mut() {
@@ -102,18 +84,9 @@ struct SetDebugYuvCropParams {
 }
 
 pub fn set_debug_yuv_crop(state: &crate::DebugYuvSlot, request: &Request) -> Response {
-    let params: SetDebugYuvCropParams = match serde_json::from_value(request.params.clone()) {
+    let params: SetDebugYuvCropParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let mut guard = state.lock().unwrap();
     match guard.as_mut() {
@@ -135,18 +108,9 @@ pub fn get_yuv_diff_metrics(
     state: &crate::DebugYuvSlot,
     request: &Request,
 ) -> Response {
-    let params: DebugYuvFrameIndexParams = match serde_json::from_value(request.params.clone()) {
+    let params: DebugYuvFrameIndexParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let guard = state.lock().unwrap();
     let session = match guard.as_ref() {
@@ -231,18 +195,9 @@ pub fn get_debug_yuv_frame(
     state: &crate::DebugYuvSlot,
     request: &Request,
 ) -> Vec<(FrameKind, Vec<u8>)> {
-    let params: GetDebugYuvFrameParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetDebugYuvFrameParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return crate::command_support::single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            ))
-        }
+        Err(response) => return crate::command_support::single_control_frame(response),
     };
     let guard = state.lock().unwrap();
     let session = match guard.as_ref() {

@@ -23,7 +23,7 @@
 // module's `ContextMenuScope` (an enum) and `parity_harness::context`'s unrelated, never-wired
 // struct of the same name (see this module's doc).
 use bitvue_engine::export::{build_context_menu, ContextMenuScope, GuardEvalContext};
-use bitvue_protocol::{Request, Response, WireError, WireErrorCode};
+use bitvue_protocol::{Request, Response};
 
 #[derive(serde::Deserialize)]
 struct GetContextMenuItemsParams {
@@ -35,18 +35,9 @@ struct GetContextMenuItemsParams {
 }
 
 pub fn get_context_menu_items(request: &Request) -> Response {
-    let params: GetContextMenuItemsParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetContextMenuItemsParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
 
     let context = GuardEvalContext {
@@ -61,6 +52,7 @@ pub fn get_context_menu_items(request: &Request) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitvue_protocol::WireErrorCode;
 
     #[test]
     fn get_context_menu_items_player_scope_returns_real_items() {
