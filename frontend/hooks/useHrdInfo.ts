@@ -8,7 +8,7 @@
  * the panel says there is no HRD information.
  */
 
-import { useEffect, useState } from "react";
+import { useBridgeQuery } from "./useBridgeQuery";
 import {
   getHrdInfo,
   type HrdInfoWireResult,
@@ -41,24 +41,13 @@ export function useHrdInfo(
   enabled: boolean,
   streamKey: string | number,
 ): HrdInfoWireResult | null {
-  const [info, setInfo] = useState<HrdInfoWireResult | null>(null);
+  // The answer is kept when `enabled` turns off (only a failure clears it).
+  const { data } = useBridgeQuery(() => getHrdInfo(), [streamKey], {
+    enabled,
+    keepDataWhenDisabled: true,
+    // not AV1, or no stream: the view shows "no HRD information"
+    onError: (error) => logger.debug("no HRD info:", error),
+  });
 
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    getHrdInfo()
-      .then((result) => {
-        if (!cancelled) setInfo(result);
-      })
-      .catch((error: unknown) => {
-        // not AV1, or no stream: the view shows "no HRD information"
-        logger.debug("no HRD info:", error);
-        if (!cancelled) setInfo(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, streamKey]);
-
-  return info;
+  return data;
 }

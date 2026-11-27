@@ -9,6 +9,7 @@
 
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
+import { useBridgeQuery } from "../../../hooks/useBridgeQuery";
 import { getCodingFlowAnalysis } from "../../../services/electronBridgeService";
 import { createLogger } from "../../../utils/logger";
 import "./CodingFlowView.css";
@@ -118,38 +119,31 @@ export const CodingFlowView = memo(function CodingFlowView({
   codec = "Unknown",
 }: CodingFlowViewProps) {
   const [currentStage, setCurrentStage] = useState(_currentStageProp);
-  const [backendCodecFeatures, setBackendCodecFeatures] = useState<
-    string[] | null
-  >(null);
-
-  useEffect(() => {
-    if (!frame) return;
-
-    let cancelled = false;
-
-    getCodingFlowAnalysis(frame.frame_index)
-      .then((data) => {
-        if (cancelled) return;
-        // Backend data is untrusted at the type level (plain string) -- validate against the
-        // real stage union rather than casting blindly.
-        if (isCodingStage(data.current_stage)) {
-          setCurrentStage(data.current_stage);
-        }
-        setBackendCodecFeatures(data.codec_features);
-      })
-      .catch((err) => {
-        if (cancelled) return;
+  // A failed request or a missing frame keeps the last answer (the view never cleared on either).
+  const { data: analysis } = useBridgeQuery(
+    () => getCodingFlowAnalysis(frame!.frame_index),
+    [frame],
+    {
+      enabled: frame !== null,
+      keepPreviousOnError: true,
+      keepDataWhenDisabled: true,
+      onError: (err) =>
         logger.warn(
           "Failed to fetch coding flow analysis for frame",
-          frame.frame_index,
+          frame?.frame_index,
           err,
-        );
-      });
+        ),
+    },
+  );
+  const backendCodecFeatures = analysis?.codec_features ?? null;
 
-    return () => {
-      cancelled = true;
-    };
-  }, [frame]);
+  useEffect(() => {
+    // Backend data is untrusted at the type level (plain string) -- validate against the
+    // real stage union rather than casting blindly.
+    if (analysis && isCodingStage(analysis.current_stage)) {
+      setCurrentStage(analysis.current_stage);
+    }
+  }, [analysis]);
 
   const codecFeatures = useMemo(() => {
     if (backendCodecFeatures) return backendCodecFeatures;

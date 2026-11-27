@@ -8,7 +8,12 @@
  * - Quantization effects on residuals
  */
 
-import { memo, useMemo, useEffect, useState } from "react";
+import { memo, useMemo } from "react";
+import { useBridgeQuery } from "../../../hooks/useBridgeQuery";
+import {
+  residualAnalysisFromWire,
+  type ResidualBlock,
+} from "../../../services/bridge/frameAnalysis";
 import type { FrameInfo } from "../../../types/video";
 import { getResidualAnalysis } from "../../../services/electronBridgeService";
 import { createLogger } from "../../../utils/logger";
@@ -24,25 +29,7 @@ interface ResidualsViewProps {
   showHistogram?: boolean;
 }
 
-interface CoefficientStats {
-  min: number;
-  max: number;
-  mean: number;
-  variance: number;
-  energy: number;
-  zeroCount: number;
-  nonZeroCount: number;
-}
-
-interface BlockResidual {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  energy: number;
-  maxCoeff: number;
-  nonZeros: number;
-}
+const NO_BLOCKS: ResidualBlock[] = [];
 
 export const ResidualsView = memo(function ResidualsView({
   frame,
@@ -51,58 +38,22 @@ export const ResidualsView = memo(function ResidualsView({
   showHeatmap = true,
   showHistogram = true,
 }: ResidualsViewProps) {
-  const [blockResiduals, setBlockResiduals] = useState<BlockResidual[]>([]);
-  const [coefficientStats, setCoefficientStats] =
-    useState<CoefficientStats | null>(null);
-
-  useEffect(() => {
-    if (!frame) {
-      setBlockResiduals([]);
-      setCoefficientStats(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    getResidualAnalysis(frame.frame_index)
-      .then((data) => {
-        if (cancelled) return;
-        setBlockResiduals(
-          data.block_residuals.map((b) => ({
-            x: b.x,
-            y: b.y,
-            width: b.width,
-            height: b.height,
-            energy: b.energy,
-            maxCoeff: b.max_coeff,
-            nonZeros: b.non_zeros,
-          })),
-        );
-        setCoefficientStats({
-          min: data.coefficient_stats.min,
-          max: data.coefficient_stats.max,
-          mean: data.coefficient_stats.mean,
-          variance: data.coefficient_stats.variance,
-          energy: data.coefficient_stats.energy,
-          zeroCount: data.coefficient_stats.zero_count,
-          nonZeroCount: data.coefficient_stats.non_zero_count,
-        });
-      })
-      .catch((err) => {
-        if (cancelled) return;
+  const { data } = useBridgeQuery(
+    async () =>
+      residualAnalysisFromWire(await getResidualAnalysis(frame!.frame_index)),
+    [frame],
+    {
+      enabled: frame !== null,
+      onError: (err) =>
         logger.warn(
           "Failed to fetch residual analysis for frame",
-          frame.frame_index,
+          frame?.frame_index,
           err,
-        );
-        setBlockResiduals([]);
-        setCoefficientStats(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [frame]);
+        ),
+    },
+  );
+  const blockResiduals = data?.blocks ?? NO_BLOCKS;
+  const coefficientStats = data?.coefficientStats ?? null;
 
   const heatmapColors = useMemo(() => {
     if (!blockResiduals.length) return [];

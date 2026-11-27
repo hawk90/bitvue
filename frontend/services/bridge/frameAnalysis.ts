@@ -370,3 +370,125 @@ export async function getResidualAnalysis(
 ): Promise<ResidualAnalysisWireResult> {
   return requireBridge().getResidualAnalysis(frameIndex);
 }
+
+// -- camelCase view models + wire adapters ------------------------------------------------------
+//
+// The views consume these; the snake_case -> camelCase translation lives here once instead of in
+// each view's `.then`. The adapters are pure and take the wire result, so a view still fetches
+// through the public `get*Analysis` functions above.
+
+export interface DeblockingBoundaryEdge {
+  x: number;
+  y: number;
+  length: number;
+  orientation: "vertical" | "horizontal";
+  /** Filter level 0-63 */
+  level: number;
+  filtered: boolean;
+  /** Largest filter the edge allows, in samples. */
+  filterSize: 4 | 8 | 16;
+}
+
+export interface DeblockingFilterParams {
+  level: [number, number, number, number];
+  sharpness: number;
+  deltaEnabled: boolean;
+  refDeltas: number[];
+  modeDeltas: number[];
+}
+
+export interface DeblockingFilterStats {
+  edgeSegments: number;
+  filteredSegments: number;
+  filtered16: number;
+  filtered8: number;
+  filtered4: number;
+  unfilteredSegments: number;
+}
+
+export interface DeblockingAnalysis {
+  edges: DeblockingBoundaryEdge[];
+  params: DeblockingFilterParams;
+  stats: DeblockingFilterStats;
+}
+
+export function deblockingAnalysisFromWire(
+  data: DeblockingAnalysisWireResult,
+): DeblockingAnalysis {
+  return {
+    edges: data.edges.map((e) => ({
+      x: e.x,
+      y: e.y,
+      length: e.length,
+      orientation: e.orientation,
+      level: e.level,
+      filtered: e.filtered,
+      filterSize: e.filter_size,
+    })),
+    params: {
+      level: data.params.level,
+      sharpness: data.params.sharpness,
+      deltaEnabled: data.params.delta_enabled,
+      refDeltas: data.params.ref_deltas,
+      modeDeltas: data.params.mode_deltas,
+    },
+    stats: {
+      edgeSegments: data.stats.edge_segments,
+      filteredSegments: data.stats.filtered_segments,
+      filtered16: data.stats.filtered_16,
+      filtered8: data.stats.filtered_8,
+      filtered4: data.stats.filtered_4,
+      unfilteredSegments: data.stats.unfiltered_segments,
+    },
+  };
+}
+
+export interface ResidualCoefficientStats {
+  min: number;
+  max: number;
+  mean: number;
+  variance: number;
+  energy: number;
+  zeroCount: number;
+  nonZeroCount: number;
+}
+
+export interface ResidualBlock {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  energy: number;
+  maxCoeff: number;
+  nonZeros: number;
+}
+
+export interface ResidualAnalysis {
+  blocks: ResidualBlock[];
+  coefficientStats: ResidualCoefficientStats;
+}
+
+export function residualAnalysisFromWire(
+  data: ResidualAnalysisWireResult,
+): ResidualAnalysis {
+  return {
+    blocks: data.block_residuals.map((b) => ({
+      x: b.x,
+      y: b.y,
+      width: b.width,
+      height: b.height,
+      energy: b.energy,
+      maxCoeff: b.max_coeff,
+      nonZeros: b.non_zeros,
+    })),
+    coefficientStats: {
+      min: data.coefficient_stats.min,
+      max: data.coefficient_stats.max,
+      mean: data.coefficient_stats.mean,
+      variance: data.coefficient_stats.variance,
+      energy: data.coefficient_stats.energy,
+      zeroCount: data.coefficient_stats.zero_count,
+      nonZeroCount: data.coefficient_stats.non_zero_count,
+    },
+  };
+}
