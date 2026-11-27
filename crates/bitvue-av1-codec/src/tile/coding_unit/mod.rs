@@ -139,8 +139,17 @@ pub fn parse_coding_unit(
 
     // cdef_idx() then delta_q/delta_lf (spec 5.11.56, 5.11.38) -- see `delta`.
     delta::read_cdef_idx(decoder, sb, mi, cu.skip, cdef_bits)?;
-    let new_qp = delta::read_delta_q_lf(decoder, sb, mi, cu.skip, frame, current_qp);
+    let new_qp = delta::read_delta_q_lf(
+        decoder,
+        sb,
+        mi,
+        cu.skip,
+        frame,
+        current_qp,
+        &mut tile_ctx.delta_lf,
+    );
     cu.qp = Some(new_qp);
+    cu.delta_lf = tile_ctx.delta_lf;
 
     // is_inter (spec 5.11.5) -- see `is_inter`.
     let is_inter = is_inter::read_is_inter(

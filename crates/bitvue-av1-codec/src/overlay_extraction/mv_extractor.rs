@@ -271,6 +271,7 @@ mod tests {
             tx_size: TxSize::from_dimensions(w, h),
             tx_blocks: None,
             qp: None,
+            delta_lf: [0; 4],
             residual: None,
             palette: crate::tile::PaletteInfo::default(),
             bits: 0.0,

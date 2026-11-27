@@ -57,7 +57,6 @@ const wire: DeblockingAnalysisWireResult = {
     ref_deltas: [],
     mode_deltas: [],
   },
-  delta_lf_ignored: true,
   stats: {
     edge_segments: 18,
     filtered_segments: 10,
@@ -112,11 +111,10 @@ describe("DeblockingView with loop filter edges", () => {
     expect(title).toContain("Filtered: Yes");
   });
 
-  it("shows the counts, and warns when delta_lf was not read", async () => {
+  it("shows the counts", async () => {
     await renderAct(
       <DeblockingView frame={frame} width={64} height={32} codec="av1" />,
     );
     expect(screen.getByText(/10 \(55\.6%\)/)).toBeInTheDocument();
-    expect(screen.getByText(/delta_lf, which is not read/)).toBeInTheDocument();
   });
 });

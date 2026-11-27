@@ -115,6 +115,7 @@ pub(super) fn assemble_frame_header(sections: HeaderSections) -> FrameHeader {
         allow_screen_content_tools: prelude.allow_screen_content_tools,
         delta_lf_present: quantizer.delta_lf_present,
         delta_lf_multi: quantizer.delta_lf_multi,
+        delta_lf_res: quantizer.delta_lf_res,
         skip_mode_present: tools.skip_mode_present,
         skip_mode_refs: tools.skip_mode_refs,
         subpel_filter_switchable: refs.subpel_filter_switchable,

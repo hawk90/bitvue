@@ -66,6 +66,12 @@ pub struct CodingUnit {
     /// None for blocks that don't have QP (e.g., skip blocks)
     pub qp: Option<i16>,
 
+    /// `DeltaLFs[row][col][0..4]` (spec 5.11.5): the loop-filter deltas in effect for this block,
+    /// added to the frame's loop filter level by 7.14.4. All zero unless the frame has
+    /// `delta_lf_present`; only `[0]` is used without `delta_lf_multi`.
+    #[serde(default)]
+    pub delta_lf: [i16; 4],
+
     /// Aggregate residual coefficient statistics, summed across every transform block tiling
     /// this coding unit. `None` for skipped CUs (no residual read at all -- not the same as a
     /// non-skip CU whose transform blocks all happened to signal `all_zero`, which is `Some` with
@@ -114,6 +120,12 @@ pub fn debug_without_cost_fields(coding_units: &impl std::fmt::Debug) -> String 
                 .expect("`partition_symbols` is the last field of CodingUnit");
         text.replace_range(start..end, "");
     }
+    // `delta_lf` (#591) is left out for the same reason; the clip that signals it asserts the
+    // values directly.
+    while let Some(start) = text.find(", delta_lf: [") {
+        let end = start + text[start..].find(']').expect("`delta_lf` is an array") + 1;
+        text.replace_range(start..end, "");
+    }
     text
 }
 
@@ -149,6 +161,7 @@ impl CodingUnit {
             tx_size,
             tx_blocks: None,
             qp: None,
+            delta_lf: [0; 4],
             residual: None,
             palette: PaletteInfo::default(),
             bits: 0.0,

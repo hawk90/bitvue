@@ -40,6 +40,9 @@ pub struct TileContext {
     tile_col_start: u32,
     tile_row_start: u32,
     pub(crate) restoration_refs: [crate::tile::RestorationRef; 3],
+    /// `DeltaLF[0..4]` (spec 5.11.39): the running per-tile loop-filter deltas. Zero at the start
+    /// of every tile (spec `decode_tile`), then updated by each superblock's `read_delta_lf`.
+    pub(crate) delta_lf: [i16; 4],
     above_skip: Vec<bool>,
     left_skip: Vec<bool>,
     /// `skip_mode` (spec 5.11.5) above/left context -- real dav1d `t->a->skip_mode[bx4]`/
@@ -199,6 +202,7 @@ impl TileContext {
     pub fn new(tile_width_4x4: u32, tile_height_4x4: u32) -> Self {
         Self {
             restoration_refs: [crate::tile::RestorationRef::default(); 3],
+            delta_lf: [0; 4],
             above_skip: vec![false; tile_width_4x4.max(1) as usize],
             left_skip: vec![false; tile_height_4x4.max(1) as usize],
             above_skip_mode: vec![false; tile_width_4x4.max(1) as usize],

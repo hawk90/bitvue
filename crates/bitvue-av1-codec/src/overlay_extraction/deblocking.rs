@@ -18,11 +18,11 @@
 //!
 //! Only luma edges are reported (the guide this follows draws luma boundaries).
 //!
-//! # Known limitation: `delta_lf`
+//! # `delta_lf`
 //!
-//! A frame with `delta_lf_present` adds a per-block `DeltaLF` to the base level. The tile parser
-//! reads those values only to stay in step and does not keep them, so on such frames the levels
-//! here use `DeltaLF = 0` and `DeltaData::delta_lf_ignored` is set.
+//! A frame with `delta_lf_present` adds the block's `DeltaLF` (kept per coding unit by the tile
+//! parser) to the frame level before the segment and reference/mode adjustments (7.14.4): the
+//! component of the edge direction with `delta_lf_multi`, component 0 without.
 
 use bitvue_engine::BitvueError;
 
@@ -66,9 +66,6 @@ pub struct DeblockingData {
     pub height: u32,
     pub edges: Vec<DeblockingEdge>,
     pub loop_filter: LoopFilterInfo,
-    /// `delta_lf_present` is set but the per-block `DeltaLF` is not kept: levels use 0 (see the
-    /// module doc).
-    pub delta_lf_ignored: bool,
 }
 
 /// The frame-level inputs of the edge derivation, from the frame header.
@@ -78,6 +75,8 @@ pub struct FilterParams<'a> {
     pub loop_filter: &'a LoopFilterInfo,
     pub segmentation: &'a SegmentationInfo,
     pub coded_lossless: bool,
+    /// `delta_lf_multi`: the per-block `DeltaLF` has one component per edge direction.
+    pub delta_lf_multi: bool,
 }
 
 /// What the loop filter needs to know about one 4x4 luma cell.
@@ -105,16 +104,17 @@ fn mode_type(mode: PredictionMode) -> usize {
 }
 
 /// The filter level of spec 7.14.5 for one block and edge direction (`pass` 0 vertical, 1
-/// horizontal), with `DeltaLF` taken as 0.
+/// horizontal). `delta_lf` is the block's `DeltaLF` component for that direction.
 fn filter_level(
     lf: &LoopFilterInfo,
     segmentation: &SegmentationInfo,
     segment_id: usize,
     ref_frame: RefFrame,
     mode_type: usize,
+    delta_lf: i16,
     pass: usize,
 ) -> u8 {
-    let base = i32::from(lf.level[pass]).clamp(0, MAX_LOOP_FILTER);
+    let base = (i32::from(delta_lf) + i32::from(lf.level[pass])).clamp(0, MAX_LOOP_FILTER);
     let mut level = base;
     let feature = SEG_LVL_ALT_LF_Y_V + pass;
     if segmentation.enabled && segmentation.feature_enabled[segment_id][feature] {
@@ -186,6 +186,7 @@ fn build_cells(params: &FilterParams, coding_units: &[CodingUnit]) -> (Vec<Cell>
                 segment_id,
                 ref_frame,
                 mode_type,
+                cu.delta_lf[0],
                 0,
             ),
             filter_level(
@@ -194,6 +195,7 @@ fn build_cells(params: &FilterParams, coding_units: &[CodingUnit]) -> (Vec<Cell>
                 segment_id,
                 ref_frame,
                 mode_type,
+                cu.delta_lf[usize::from(params.delta_lf_multi)],
                 1,
             ),
         ];
@@ -338,7 +340,6 @@ pub fn extract_deblocking_data_from_parsed(
         height,
         edges: Vec::new(),
         loop_filter: header.loop_filter.clone(),
-        delta_lf_ignored: header.delta_lf_present,
     };
 
     // Filter fully disabled for this frame (both luma level entries are 0, per spec 7.14.1) --
@@ -360,6 +361,7 @@ pub fn extract_deblocking_data_from_parsed(
                 loop_filter: &header.loop_filter,
                 segmentation: &header.segmentation,
                 coded_lossless: parsed.coded_lossless,
+                delta_lf_multi: header.delta_lf_multi,
             },
             &coding_units,
         ),
@@ -388,6 +390,7 @@ mod tests {
             tx_size: TxSize::from_dimensions(w, h),
             tx_blocks: None,
             qp: None,
+            delta_lf: [0; 4],
             residual: None,
             palette: PaletteInfo::default(),
             bits: 0.0,
@@ -447,6 +450,7 @@ mod tests {
                 loop_filter: &f.loop_filter,
                 segmentation: &f.segmentation,
                 coded_lossless,
+                delta_lf_multi: false,
             },
             units,
         )
@@ -585,7 +589,7 @@ mod tests {
         lf.mode_deltas = [0, 3];
         let seg = SegmentationInfo::default();
         let level = |lf: &LoopFilterInfo, seg: &SegmentationInfo, r, m, pass| {
-            filter_level(lf, seg, 0, r, m, pass)
+            filter_level(lf, seg, 0, r, m, 0, pass)
         };
         // level 10 < 32: nShift 0
         assert_eq!(level(&lf, &seg, RefFrame::Intra, 0, 0), 11);
@@ -634,6 +638,60 @@ mod tests {
         assert_eq!(mode_type(PredictionMode::NearestMv), 1);
         assert_eq!(mode_type(PredictionMode::NewNewMv), 1);
         assert_eq!(mode_type(PredictionMode::DcPred), 0);
+    }
+
+    /// Spec 7.14.4: `baseFilterLevel = Clip3(0, 63, deltaLF + loop_filter_level[i])`, before the
+    /// segment feature and the reference/mode deltas.
+    #[test]
+    fn delta_lf_shifts_the_base_level_and_clamps_it() {
+        let lf = LoopFilterInfo {
+            level: [10, 40, 0, 0],
+            ..Default::default()
+        };
+        let seg = SegmentationInfo::default();
+        let level = |delta, pass| filter_level(&lf, &seg, 0, RefFrame::Intra, 0, delta, pass);
+        assert_eq!(level(5, 0), 15);
+        assert_eq!(level(-4, 0), 6);
+        assert_eq!(level(-63, 0), 0, "clamped at 0");
+        assert_eq!(level(63, 1), 63, "clamped at 63");
+        assert_eq!(level(0, 1), 40);
+    }
+
+    /// `delta_lf_multi` picks the component of the edge direction, otherwise component 0 serves
+    /// both directions.
+    #[test]
+    fn delta_lf_component_follows_delta_lf_multi() {
+        let f = header(32, 32, [20, 20]);
+        // the edge at x = 16 belongs to `right` (vertical, pass 0), the one at y = 16 to `below`
+        // (horizontal, pass 1)
+        let mut right = cu(16, 0, 16, 16);
+        let mut below = cu(0, 16, 16, 16);
+        right.delta_lf = [3, -5, 0, 0];
+        below.delta_lf = [3, -5, 0, 0];
+        let units = [cu(0, 0, 16, 16), right, below];
+        for (multi, want_v, want_h) in [(false, 23, 23), (true, 23, 15)] {
+            let edges = deblocking_edges(
+                &FilterParams {
+                    width: f.width,
+                    height: f.height,
+                    loop_filter: &f.loop_filter,
+                    segmentation: &f.segmentation,
+                    coded_lossless: false,
+                    delta_lf_multi: multi,
+                },
+                &units,
+            );
+            assert_eq!(
+                find(&edges, 16, 0, true).level,
+                want_v,
+                "multi {multi} vertical"
+            );
+            assert_eq!(
+                find(&edges, 0, 16, false).level,
+                want_h,
+                "multi {multi} horizontal"
+            );
+        }
     }
 
     /// A block with level 0 takes the level of the block across the edge; with both 0 the edge is

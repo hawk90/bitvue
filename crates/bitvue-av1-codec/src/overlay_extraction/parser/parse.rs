@@ -68,6 +68,7 @@ impl ParsedFrame {
             allow_screen_content_tools: false,
             delta_lf_present: false,
             delta_lf_multi: false,
+            delta_lf_res: 0,
             reduced_tx_set: false,
             coded_lossless: false,
             txfm_mode: TxfmMode::default(),
@@ -179,6 +180,7 @@ impl ParsedFrame {
         self.allow_screen_content_tools = full_hdr.allow_screen_content_tools;
         self.delta_lf_present = full_hdr.delta_lf_present;
         self.delta_lf_multi = full_hdr.delta_lf_multi;
+        self.delta_lf_res = full_hdr.delta_lf_res;
         self.reduced_tx_set = full_hdr.reduced_tx_set;
         // Spec CodedLossless: base_q_idx and all five delta-Q terms are zero (an absent term is 0).
         // Checking only the Y/U DC terms called a frame with a non-zero DeltaQUAc lossless while

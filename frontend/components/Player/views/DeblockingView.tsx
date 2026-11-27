@@ -127,7 +127,6 @@ export const DeblockingView = memo(function DeblockingView({
     filtered4: 0,
     unfilteredSegments: 0,
   });
-  const [deltaLfIgnored, setDeltaLfIgnored] = useState(false);
 
   useEffect(() => {
     if (!frame) {
@@ -166,7 +165,6 @@ export const DeblockingView = memo(function DeblockingView({
           filtered4: data.stats.filtered_4,
           unfilteredSegments: data.stats.unfiltered_segments,
         });
-        setDeltaLfIgnored(data.delta_lf_ignored);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -296,8 +294,6 @@ export const DeblockingView = memo(function DeblockingView({
           Luma transform edges. Colors show the largest filter an edge allows;
           the filter applied to each sample line also depends on the picture
           content.
-          {deltaLfIgnored &&
-            " This frame signals per-block delta_lf, which is not read: levels assume 0 for it."}
         </p>
       </div>
 
