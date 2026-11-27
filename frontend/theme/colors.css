@@ -538,3 +538,42 @@
   --bitvue-badge-bg: var(--accent-primary-bg);
   --bitvue-badge-fg: var(--text-link);
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Frame kind -> `--frame-color`
+   One mapping from every frame-kind class family (`frame-<kind>`, `frame-type-<kind>`,
+   `timeline-bar-<kind>`; kinds come from utils/frameType.ts) to the theme's `--frame-*` color.
+   Widgets paint with `var(--frame-color)` and never pick a per-kind variable themselves.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.frame-i,
+.frame-type-i,
+.timeline-bar-i,
+.timeline-bar-key {
+  --frame-color: var(--frame-i);
+}
+
+.frame-p,
+.frame-type-p,
+.timeline-bar-p,
+.timeline-bar-inter {
+  --frame-color: var(--frame-p);
+}
+
+.frame-b,
+.frame-type-b,
+.timeline-bar-b {
+  --frame-color: var(--frame-b);
+}
+
+.frame-switch,
+.frame-type-switch,
+.timeline-bar-switch {
+  --frame-color: var(--frame-switch);
+}
+
+.frame-unknown,
+.frame-type-unknown,
+.timeline-bar-unknown {
+  --frame-color: var(--frame-unknown);
+}

@@ -160,24 +160,24 @@
 /* Frame type colors for compressed thumbnails */
 .timeline-thumb.timeline-bar-i,
 .timeline-thumb.timeline-bar-key {
-  background: var(--frame-i);
+  background: var(--frame-color);
 }
 
 .timeline-thumb.timeline-bar-p,
 .timeline-thumb.timeline-bar-inter {
-  background: var(--frame-p);
+  background: var(--frame-color);
 }
 
 .timeline-thumb.timeline-bar-b {
-  background: var(--frame-b);
+  background: var(--frame-color);
 }
 
 .timeline-thumb.timeline-bar-switch {
-  background: var(--frame-switch);
+  background: var(--frame-color);
 }
 
 .timeline-thumb.timeline-bar-unknown {
-  background: var(--frame-unknown);
+  background: var(--frame-color);
 }
 
 /* INT-02: Shift+drag range-select highlight (live drag preview or last committed range) --

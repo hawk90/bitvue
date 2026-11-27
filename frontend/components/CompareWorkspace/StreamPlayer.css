@@ -79,17 +79,17 @@
 }
 
 .frame-i {
-  background: var(--frame-i);
+  background: var(--frame-color);
   color: white;
 }
 
 .frame-p {
-  background: var(--frame-p);
+  background: var(--frame-color);
   color: white;
 }
 
 .frame-b {
-  background: var(--frame-b);
+  background: var(--frame-color);
   color: white;
 }
 
