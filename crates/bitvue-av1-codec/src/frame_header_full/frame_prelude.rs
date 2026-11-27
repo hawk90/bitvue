@@ -19,6 +19,8 @@ pub(super) struct FramePrelude {
     pub(super) order_hint: u32,
     pub(super) primary_ref_frame: u32,
     pub(super) refresh_frame_flags: u32,
+    pub(super) frame_presentation_time: Option<u64>,
+    pub(super) buffer_removal_time: Vec<Option<u64>>,
 }
 
 /// The temporal and spatial layer of the OBU carrying the header (`temporal_id`/`spatial_id`, spec
@@ -39,7 +41,7 @@ pub(super) fn read_frame_prelude(
         .map(|v| v as u32 + 1)
         .unwrap_or(0);
 
-    let (frame_type, show_frame, showable_frame, error_resilient_mode) =
+    let (frame_type, show_frame, showable_frame, error_resilient_mode, frame_presentation_time) =
         read_frame_visibility(reader, seq)?;
     let frame_is_intra = frame_type.is_intra();
 
@@ -68,7 +70,7 @@ pub(super) fn read_frame_prelude(
         reader.read_bits(3)?
     };
 
-    skip_buffer_removal_times(reader, seq, layer)?;
+    let buffer_removal_time = read_buffer_removal_times(reader, seq, layer)?;
 
     let refresh_frame_flags = read_refresh_frame_flags(
         reader,
@@ -90,6 +92,8 @@ pub(super) fn read_frame_prelude(
         order_hint,
         primary_ref_frame,
         refresh_frame_flags,
+        frame_presentation_time,
+        buffer_removal_time,
     })
 }
 
@@ -103,48 +107,59 @@ pub(super) fn has_temporal_point_info(seq: &SequenceHeader) -> bool {
             .is_some_and(|t| t.equal_picture_interval)
 }
 
-/// `temporal_point_info()` (spec 5.9.31): `frame_presentation_time`, consumed but not kept.
-pub(super) fn skip_temporal_point_info(reader: &mut BitReader, seq: &SequenceHeader) -> Result<()> {
-    if let (true, Some(model)) = (
+/// `temporal_point_info()` (spec 5.9.31): `frame_presentation_time`, `None` when the header has no
+/// `temporal_point_info()`.
+pub(super) fn read_temporal_point_info(
+    reader: &mut BitReader,
+    seq: &SequenceHeader,
+) -> Result<Option<u64>> {
+    match (
         has_temporal_point_info(seq),
         seq.decoder_model_info.as_ref(),
     ) {
-        reader.read_bits_u64(model.frame_presentation_time_length_minus_1 + 1)?;
+        (true, Some(model)) => Ok(Some(
+            reader.read_bits_u64(model.frame_presentation_time_length_minus_1 + 1)?,
+        )),
+        _ => Ok(None),
     }
-    Ok(())
 }
 
 /// `buffer_removal_time_present_flag` and, for each operating point that has a decoder model and
-/// contains this frame's layers, its `buffer_removal_time` (spec 5.9.2), consumed but not kept.
-pub(super) fn skip_buffer_removal_times(
+/// contains this frame's layers, its `buffer_removal_time` (spec 5.9.2). The result has one entry
+/// per operating point, `None` where the point has none for this frame; it is empty when the
+/// sequence has no decoder model or `buffer_removal_time_present_flag` is 0.
+pub(super) fn read_buffer_removal_times(
     reader: &mut BitReader,
     seq: &SequenceHeader,
     layer: Layer,
-) -> Result<()> {
+) -> Result<Vec<Option<u64>>> {
     let Some(model) = seq.decoder_model_info.as_ref() else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     if !reader.read_bit()? {
-        return Ok(());
+        return Ok(Vec::new());
     }
+    let mut times = Vec::with_capacity(seq.operating_points.len());
     for op in &seq.operating_points {
-        if !op.decoder_model_present {
-            continue;
-        }
         let in_temporal_layer = (op.idc >> layer.temporal_id) & 1 == 1;
         let in_spatial_layer = (op.idc >> (layer.spatial_id + 8)) & 1 == 1;
-        if op.idc == 0 || (in_temporal_layer && in_spatial_layer) {
-            reader.read_bits_u64(model.buffer_removal_time_length_minus_1 + 1)?;
-        }
+        times.push(
+            if op.decoder_model_present && (op.idc == 0 || (in_temporal_layer && in_spatial_layer))
+            {
+                Some(reader.read_bits_u64(model.buffer_removal_time_length_minus_1 + 1)?)
+            } else {
+                None
+            },
+        );
     }
-    Ok(())
+    Ok(times)
 }
 
-/// `frame_type`, `show_frame`, `showable_frame` and `error_resilient_mode`, in that order.
+/// `frame_type`, `show_frame`, `showable_frame`, `error_resilient_mode` and `frame_presentation_time`.
 fn read_frame_visibility(
     reader: &mut BitReader,
     seq: &SequenceHeader,
-) -> Result<(FrameType, bool, bool, bool)> {
+) -> Result<(FrameType, bool, bool, bool, Option<u64>)> {
     let frame_type = if seq.reduced_still_picture_header {
         FrameType::Key
     } else {
@@ -155,9 +170,11 @@ fn read_frame_visibility(
     } else {
         reader.read_bit()?
     };
-    if show_frame && !seq.reduced_still_picture_header {
-        skip_temporal_point_info(reader, seq)?;
-    }
+    let frame_presentation_time = if show_frame && !seq.reduced_still_picture_header {
+        read_temporal_point_info(reader, seq)?
+    } else {
+        None
+    };
     let showable_frame = if seq.reduced_still_picture_header {
         false
     } else if show_frame {
@@ -172,7 +189,13 @@ fn read_frame_visibility(
     } else {
         reader.read_bit()?
     };
-    Ok((frame_type, show_frame, showable_frame, error_resilient_mode))
+    Ok((
+        frame_type,
+        show_frame,
+        showable_frame,
+        error_resilient_mode,
+        frame_presentation_time,
+    ))
 }
 
 /// `current_frame_id`: consumed but not kept.

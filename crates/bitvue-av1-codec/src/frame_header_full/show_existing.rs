@@ -11,7 +11,7 @@ pub(super) fn parse_show_existing_frame(
     ref_state: &RefFrameState,
 ) -> Result<FrameHeader> {
     let frame_to_show_map_idx = reader.read_bits(3)?;
-    skip_temporal_point_info(reader, seq)?;
+    let frame_presentation_time = read_temporal_point_info(reader, seq)?;
     if seq.frame_id_numbers_present {
         // display_frame_id
         let id_len = seq.additional_frame_id_length_minus_1.unwrap_or(0)
@@ -30,6 +30,8 @@ pub(super) fn parse_show_existing_frame(
         show_existing_frame: true,
         frame_to_show_map_idx: Some(frame_to_show_map_idx as u8),
         error_resilient_mode: false,
+        frame_presentation_time,
+        buffer_removal_time: Vec::new(),
         base_q_idx: None,
         y_dc_delta_q: None,
         uv_dc_delta_q: None,

@@ -185,6 +185,14 @@ pub struct FrameHeader {
     pub frame_to_show_map_idx: Option<u8>,
     /// Error resilient mode
     pub error_resilient_mode: bool,
+    /// `frame_presentation_time` of `temporal_point_info()` (spec 5.9.31), in `DispCT` ticks;
+    /// `None` when the header has none (no decoder model, constant picture interval, or a hidden
+    /// frame)
+    pub frame_presentation_time: Option<u64>,
+    /// `buffer_removal_time[ opNum ]` (spec 5.9.2), in `DecCT` ticks, one entry per operating
+    /// point of the sequence header, `None` where the point has none for this frame; empty when
+    /// the header has no `buffer_removal_time_present_flag` set
+    pub buffer_removal_time: Vec<Option<u64>>,
     /// Base quantization index (0-255)
     pub base_q_idx: Option<u8>,
     /// Y DC delta Q

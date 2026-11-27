@@ -79,7 +79,7 @@ pub use self::skip_mode::relative_dist;
 use self::{
     assemble::{assemble_frame_header, ref_scaled_flags, refresh_ref_slots, HeaderSections},
     coding_tools::{read_coding_tools, CodingToolsInput},
-    frame_prelude::{read_frame_prelude, skip_temporal_point_info, Layer},
+    frame_prelude::{read_frame_prelude, read_temporal_point_info, Layer},
     global_motion::parse_global_motion_params,
     quantizer::{read_quantizer_section, QuantizerInput},
     segmentation::SegmentationFeatures,
