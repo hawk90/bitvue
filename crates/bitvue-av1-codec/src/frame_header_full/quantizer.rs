@@ -21,6 +21,7 @@ pub(super) struct QuantizerSection {
     pub(super) delta_q_present: bool,
     pub(super) delta_lf_present: bool,
     pub(super) delta_lf_multi: bool,
+    pub(super) delta_q_res: u8,
     pub(super) delta_lf_res: u8,
     pub(super) coded_lossless: bool,
 }
@@ -57,9 +58,11 @@ pub(super) fn read_quantizer_section(
     } else {
         false
     };
-    if delta_q_present {
-        reader.read_bits(2)?; // delta_q_res
-    }
+    let delta_q_res = if delta_q_present {
+        reader.read_bits(2)? as u8
+    } else {
+        0
+    };
     let (delta_lf_present, delta_lf_multi, delta_lf_res) =
         parse_delta_lf_params(reader, delta_q_present, allow_intrabc)?;
 
@@ -89,6 +92,7 @@ pub(super) fn read_quantizer_section(
         delta_q_present,
         delta_lf_present,
         delta_lf_multi,
+        delta_q_res,
         delta_lf_res,
         coded_lossless,
     })

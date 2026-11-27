@@ -258,6 +258,8 @@ pub struct FrameHeader {
     /// for the same reason `allow_screen_content_tools`'s doc gives.
     pub delta_lf_present: bool,
     pub delta_lf_multi: bool,
+    /// `delta_q_res` (spec 5.9.17): each decoded `delta_q` step is shifted left by this.
+    pub delta_q_res: u8,
     /// `delta_lf_res` (spec 5.9.14): each decoded `delta_lf` step is shifted left by this.
     pub delta_lf_res: u8,
     /// `skip_mode_present` (spec 5.9.22 `skip_mode_params()`) -- gates the real per-CU

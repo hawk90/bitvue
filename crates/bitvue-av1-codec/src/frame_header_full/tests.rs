@@ -656,38 +656,41 @@ fn header_summary(clip: &[u8]) -> HeaderSummary {
 /// `, frame_presentation_time: None, buffer_removal_time: []` cut out of every header's `Debug`
 /// (none of the six clips has a decoder model). `overlay_extraction/parser/parse_test.rs` did not
 /// need re-recording: `ParsedFrame`'s `Debug` does not render these fields.
+/// Once more when `FrameHeader` gained
+/// `delta_q_res` (#592): with `, delta_q_res: 0` (and `, delta_q_res: 2` in the aomenc clips, which
+/// signal `delta_q_present`) cut out of the `Debug` text the old numbers came out again.
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
     const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
-            (274, 1, 0, 13807844543352846661),
+            (274, 1, 0, 17129573059797634915),
         ),
         (
             "aomenc_testsrc2",
             include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
-            (16, 4, 3, 8854805885434021865),
+            (16, 4, 3, 8521876206520266701),
         ),
         (
             "aomenc_tilegroups",
             include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf"),
-            (12, 1, 0, 14368130240972126540),
+            (12, 1, 0, 4464135811295403870),
         ),
         (
             "aomenc_tiles5",
             include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf"),
-            (12, 1, 0, 17280902780318808674),
+            (12, 1, 0, 5054135760557740094),
         ),
         (
             "rav1e_testsrc2",
             include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
-            (17, 6, 5, 14502872200063635592),
+            (17, 6, 5, 10691340648005730257),
         ),
         (
             "svtav1_testsrc2",
             include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
-            (17, 6, 5, 12640559783228430156),
+            (17, 6, 5, 5027780443754578655),
         ),
     ];
     let mismatches: Vec<String> = CLIPS

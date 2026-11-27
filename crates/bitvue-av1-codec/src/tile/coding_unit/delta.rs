@@ -76,7 +76,14 @@ pub(super) fn read_delta_q_lf(
 
     let new_qp = match decoder.read_delta_q() {
         Ok(delta_q) => {
-            let qp = (current_qp + delta_q).clamp(0, 255);
+            // Spec 5.11.39: CurrentQIndex = Clip3(1, 255, CurrentQIndex +
+            // (reducedDeltaQIndex << delta_q_res)); only when delta_q_abs != 0.
+            let qp = if delta_q == 0 {
+                current_qp
+            } else {
+                (i32::from(current_qp) + (i32::from(delta_q) << frame.delta_q_res)).clamp(1, 255)
+                    as i16
+            };
             tracing::debug!(
                 "Delta Q applied at ({}, {}): {} + {} = {}",
                 x,
@@ -302,31 +309,62 @@ mod tests {
     }
 
     #[test]
-    fn delta_q_result_is_clamped_to_the_qindex_range() {
+    fn delta_q_result_is_shifted_by_delta_q_res_and_clamped_to_1_through_255() {
         let (mut hit_low, mut hit_high) = (false, false);
         for seed in 1..=64u64 {
             let data = noise(seed, 48);
             let delta = SymbolDecoder::new(&data).unwrap().read_delta_q().unwrap();
             let sb = SuperblockCtx::new(0, 0, 64);
-            let frame = params(true, false, false, false);
-            for current in [0i16, 255] {
-                let mut d = SymbolDecoder::new(&data).unwrap();
-                let qp = read_delta_q_lf(
-                    &mut d,
-                    &sb,
-                    mi(0, 0, 4, 4),
-                    false,
-                    &frame,
-                    current,
-                    &mut [0; 4],
-                );
-                assert!((0..=255).contains(&qp));
-                assert_eq!(qp, (current + delta).clamp(0, 255));
-                hit_low |= current + delta < 0;
-                hit_high |= current + delta > 255;
+            for res in 0..=3u8 {
+                let mut frame = params(true, false, false, false);
+                frame.delta_q_res = res;
+                for current in [1i16, 100, 255] {
+                    let mut d = SymbolDecoder::new(&data).unwrap();
+                    let qp = read_delta_q_lf(
+                        &mut d,
+                        &sb,
+                        mi(0, 0, 4, 4),
+                        false,
+                        &frame,
+                        current,
+                        &mut [0; 4],
+                    );
+                    let unclamped = i32::from(current) + (i32::from(delta) << res);
+                    // Spec 5.11.39: Clip3(1, 255, ...) -- the floor is 1, never 0.
+                    let want = if delta == 0 {
+                        current
+                    } else {
+                        unclamped.clamp(1, 255) as i16
+                    };
+                    assert_eq!(qp, want, "seed {seed} res {res} current {current}");
+                    hit_low |= delta != 0 && unclamped < 1;
+                    hit_high |= unclamped > 255;
+                }
             }
         }
         assert!(hit_low && hit_high, "the seeds must exercise both clamps");
+    }
+
+    /// A positive step is multiplied by `1 << delta_q_res`; spec 5.11.39 shifts the signed
+    /// `reducedDeltaQIndex`, so a negative step is scaled the same way (not rounded toward zero).
+    #[test]
+    fn delta_q_res_scales_the_decoded_step() {
+        let sb = SuperblockCtx::new(0, 0, 64);
+        let mut seen = [false; 2];
+        for seed in 1..=64u64 {
+            let data = noise(seed, 48);
+            let delta = SymbolDecoder::new(&data).unwrap().read_delta_q().unwrap();
+            if delta == 0 {
+                continue;
+            }
+            let mut frame = params(true, false, false, false);
+            frame.delta_q_res = 2;
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let qp = read_delta_q_lf(&mut d, &sb, mi(0, 0, 4, 4), false, &frame, 128, &mut [0; 4]);
+            assert_eq!(i32::from(qp), (128 + 4 * i32::from(delta)).clamp(1, 255));
+            seen[usize::from(delta > 0)] = true;
+        }
+        assert_eq!(seen, [true, true], "both signs must occur");
     }
 
     #[test]

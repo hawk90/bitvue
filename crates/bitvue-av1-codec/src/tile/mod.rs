@@ -172,6 +172,7 @@ mod tests {
             enable_filter_intra: false,
             delta_lf_present: false,
             delta_lf_multi: false,
+            delta_q_res: 0,
             delta_lf_res: 0,
             use_ref_frame_mvs: false,
             segmentation: SegmentationInfo::default(),

@@ -132,6 +132,7 @@ fn test_mv_extraction_with_spec_cdfs() {
             enable_filter_intra: false,
             delta_lf_present: false,
             delta_lf_multi: false,
+            delta_q_res: 0,
             delta_lf_res: 0,
             use_ref_frame_mvs: false,
             segmentation: bitvue_av1_codec::frame_header_full::SegmentationInfo::default(),

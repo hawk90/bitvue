@@ -313,3 +313,24 @@ fn delta_lf_values_are_kept_per_block() {
         "key frame blocks with a non-zero DeltaLF"
     );
 }
+
+/// Same clip (#592): the key frame also signals `delta_q_present`. Each decoded `delta_q` step is
+/// shifted left by `delta_q_res` (spec 5.11.39), so a block's `qp` differs from `base_q_idx` by a
+/// multiple of `1 << delta_q_res`, and `CurrentQIndex` never drops below 1.
+#[test]
+fn delta_q_steps_are_shifted_by_delta_q_res() {
+    let f = frames(DELTA_LF);
+    let key = &f[0];
+    assert!(key.parsed.delta_q_enabled);
+    let res = key.parsed.delta_q_res;
+    assert_eq!(res, 2, "the clip's key frame delta_q_res");
+    let base = i16::from(key.parsed.frame_type.base_qp.expect("base_q_idx parsed"));
+    let qps: Vec<i16> = key.units.iter().filter_map(|u| u.qp).collect();
+    assert!(!qps.is_empty());
+    assert!(qps.iter().all(|q| (1..=255).contains(q)));
+    assert!(qps.iter().any(|q| *q != base), "the encoder moved the QP");
+    assert!(
+        qps.iter().all(|q| (q - base) % (1 << res) == 0),
+        "qp - base_q_idx must be a multiple of 1 << delta_q_res"
+    );
+}

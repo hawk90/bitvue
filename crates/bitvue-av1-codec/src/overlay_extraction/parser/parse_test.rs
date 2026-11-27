@@ -6,7 +6,8 @@
 //! again for #233 (the reference order hints are taken per frame header): with `ref_frame_sign_bias`
 //! and `ref_order_distance` zeroed, old and new code give identical hashes for all six clips.
 //! Re-recorded for #591 (`delta_lf_res` kept): with `, delta_lf_res: 0` cut out of the `Debug`
-//! text the old hashes came out again for all six clips.
+//! text the old hashes came out again for all six clips. Re-recorded for #592 (`delta_q_res` kept):
+//! with `, delta_q_res: 0` (`: 2` in the aomenc clips) cut out the old hashes came out again.
 
 use super::ParsedFrame;
 use crate::frame_header_full::RefFrameState;
@@ -58,15 +59,15 @@ macro_rules! clip_case {
     };
 }
 
-clip_case!(fixture_clip, "av1_test.ivf", 17987561492953699123);
-clip_case!(aomenc_clip, "av1_aomenc_testsrc2.ivf", 16066885604039820004);
-clip_case!(rav1e_clip, "av1_rav1e_testsrc2.ivf", 14478544381428080437);
-clip_case!(svtav1_clip, "av1_svtav1_testsrc2.ivf", 5494759504687067442);
-clip_case!(tiles5_clip, "av1_aomenc_tiles5.ivf", 16453913427894000377);
+clip_case!(fixture_clip, "av1_test.ivf", 40982268142212081);
+clip_case!(aomenc_clip, "av1_aomenc_testsrc2.ivf", 1948731966399680644);
+clip_case!(rav1e_clip, "av1_rav1e_testsrc2.ivf", 2738963417140395509);
+clip_case!(svtav1_clip, "av1_svtav1_testsrc2.ivf", 18145217376884167020);
+clip_case!(tiles5_clip, "av1_aomenc_tiles5.ivf", 8915948206174280483);
 clip_case!(
     tile_groups_clip,
     "av1_aomenc_tilegroups.ivf",
-    5198937311528553929
+    11485117406669501619
 );
 
 fn grid_of(width: u32, height: u32, sb_size: u32) -> (u32, u32) {
