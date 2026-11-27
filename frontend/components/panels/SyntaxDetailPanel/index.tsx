@@ -182,26 +182,11 @@ export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
           />
         );
       case "QM":
-        return (
-          <QmTab
-            filePath={filePath ?? undefined}
-            frameIndex={currentFrameIndex}
-          />
-        );
+        return <QmTab filePath={filePath ?? undefined} />;
       case "Probs":
-        return (
-          <ProbsTab
-            filePath={filePath ?? undefined}
-            frameIndex={currentFrameIndex}
-          />
-        );
+        return <ProbsTab filePath={filePath ?? undefined} />;
       case "APS":
-        return (
-          <ApsTab
-            filePath={filePath ?? undefined}
-            frameIndex={currentFrameIndex}
-          />
-        );
+        return <ApsTab filePath={filePath ?? undefined} />;
     }
   };
 
