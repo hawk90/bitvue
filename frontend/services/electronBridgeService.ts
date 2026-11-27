@@ -24,6 +24,7 @@
 
 export * from "./bridge/core";
 export * from "./bridge/stream";
+export * from "./bridge/frameList";
 export * from "./bridge/frameDecode";
 export * from "./bridge/frameAnalysis";
 export * from "./bridge/syntaxHex";

@@ -5,19 +5,11 @@
  * Shows I/P/B frame layout, reference chains, and GOP boundaries.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { memo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useGraphFrames } from "../../hooks/useGraphFrames";
+import type { GraphFrame } from "../../services/electronBridgeService";
 import "./ReferenceGraphPanel.css";
-
-interface FrameData {
-  frame_index: number;
-  frame_type: string;
-  size: number;
-  pts: number | null;
-  ref_frames: number[] | null;
-  temporal_id: number | null;
-}
 
 const FRAME_COLOR: Record<string, string> = {
   I: "#3b82f6",
@@ -40,45 +32,21 @@ function frameLabel(type: string): string {
 
 interface GopInfo {
   startIdx: number;
-  frames: FrameData[];
+  frames: GraphFrame[];
 }
 
-// WARNING: not currently rendered anywhere in App.tsx's panel lists (dead code, kept for its
-// tests + panels/index.ts barrel export). If this panel is ever mounted for real, note that
-// invoke("get_frames") below uses @tauri-apps/api/core -- that runtime doesn't exist under
-// Electron post-migration, so it will always throw. It's caught by loadFrames' try/catch (shows
-// as an error state, not an unhandled rejection), but the panel would never actually load real
-// data -- rewire to electronBridgeService first (see how other panels do it, e.g.
-// StreamTreePanel/UnitHexPanel), same class of issue as the Tauri-leftover bugs documented in
-// bitvue-desktop/electron/main.ts's installNativeMacMenu doc (2026-08-10).
+// Not mounted in App.tsx yet (#567). Frames come from the sidecar's `get_frames_chunk` through
+// `useGraphFrames`; before the stream is indexed (or for a codec the indexer skips) the list is
+// empty and the panel shows "No stream loaded".
 export const ReferenceGraphPanel = memo(function ReferenceGraphPanel() {
-  const [frames, setFrames] = useState<FrameData[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { frames, loading, error, reload: loadFrames } = useGraphFrames();
   const [selectedFrame, setSelectedFrame] = useState<number | null>(null);
   const [visibleGop, setVisibleGop] = useState(0);
-
-  const loadFrames = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await invoke<FrameData[]>("get_frames");
-      setFrames(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadFrames();
-  }, [loadFrames]);
 
   // Split frames into GOPs (groups starting with I/KEY frames)
   const gops: GopInfo[] = useMemo(() => {
     const result: GopInfo[] = [];
-    let current: FrameData[] = [];
+    let current: GraphFrame[] = [];
     for (const frame of frames) {
       const isIntra = frame.frame_type === "I" || frame.frame_type === "KEY";
       if (isIntra && current.length > 0) {

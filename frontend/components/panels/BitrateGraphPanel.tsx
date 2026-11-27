@@ -2,20 +2,13 @@
  * Bitrate Graph Panel
  *
  * Displays frame sizes and running bitrate over time.
- * Data is loaded from the currently open stream via get_frames.
+ * Data is loaded from the currently open stream via the bridge's get_frames_chunk.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { memo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useGraphFrames } from "../../hooks/useGraphFrames";
 import "./BitrateGraphPanel.css";
-
-interface FrameData {
-  frame_index: number;
-  frame_type: string;
-  size: number;
-  pts: number | null;
-}
 
 const FRAME_TYPE_COLORS: Record<string, string> = {
   I: "#3b82f6",
@@ -31,37 +24,13 @@ function getFrameColor(frameType: string): string {
   return FRAME_TYPE_COLORS[frameType] ?? FRAME_TYPE_COLORS.UNKNOWN;
 }
 
-// WARNING: not currently rendered anywhere in App.tsx's panel lists (dead code, kept for its
-// tests + panels/index.ts barrel export). If this panel is ever mounted for real, note that
-// invoke("get_frames") below uses @tauri-apps/api/core -- that runtime doesn't exist under
-// Electron post-migration, so it will always throw. It's caught by loadFrames' try/catch (shows
-// as an error state, not an unhandled rejection), but the panel would never actually load real
-// data -- rewire to electronBridgeService first (see how other panels do it, e.g.
-// StreamTreePanel/UnitHexPanel), same class of issue as the Tauri-leftover bugs documented in
-// bitvue-desktop/electron/main.ts's installNativeMacMenu doc (2026-08-10).
+// Not mounted in App.tsx yet (#567). Frames come from the sidecar's `get_frames_chunk` through
+// `useGraphFrames`; before the stream is indexed (or for a codec the indexer skips) the list is
+// empty and the panel shows "No stream loaded".
 export const BitrateGraphPanel = memo(function BitrateGraphPanel() {
-  const [frames, setFrames] = useState<FrameData[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { frames, loading, error, reload: loadFrames } = useGraphFrames();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"size" | "bitrate">("size");
-
-  const loadFrames = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await invoke<FrameData[]>("get_frames");
-      setFrames(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadFrames();
-  }, [loadFrames]);
 
   // Compute running average bitrate (bytes per frame, smoothed over 10 frames)
   const smoothedSizes = useMemo(() => {
