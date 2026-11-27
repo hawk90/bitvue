@@ -8,6 +8,12 @@
 import { useState, useMemo } from "react";
 import { memo } from "react";
 import { useGraphFrames } from "../../hooks/useGraphFrames";
+import type { GraphFrame } from "../../services/electronBridgeService";
+import {
+  axisTickPositions,
+  formatAxisTick,
+  orderFramesForAxis,
+} from "../../utils/bitrateAxis";
 import "./BitrateGraphPanel.css";
 
 const FRAME_TYPE_COLORS: Record<string, string> = {
@@ -24,11 +30,34 @@ function getFrameColor(frameType: string): string {
   return FRAME_TYPE_COLORS[frameType] ?? FRAME_TYPE_COLORS.UNKNOWN;
 }
 
-// Not mounted in App.tsx yet (#567). Frames come from the sidecar's `get_frames_chunk` through
-// `useGraphFrames`; before the stream is indexed (or for a codec the indexer skips) the list is
-// empty and the panel shows "No stream loaded".
-export const BitrateGraphPanel = memo(function BitrateGraphPanel() {
-  const { frames, loading, error, reload: loadFrames } = useGraphFrames();
+interface BitrateGraphPanelProps {
+  /** The open stream's frames when the caller already has them (App passes `FrameDataContext`'s).
+   *  Omitted: the panel fetches them itself through `useGraphFrames`. */
+  frames?: GraphFrame[];
+  /** Frames per second; when known the x axis is labelled in seconds, else in frame numbers. */
+  frameRate?: number | null;
+}
+
+// Mounted in App.tsx as the "Bitrate" bottom-row tab (`BitrateGraphPanelFromContext`). Without
+// `frames` it reads the sidecar's `get_frames_chunk` through `useGraphFrames`; before the stream
+// is indexed (or for a codec the indexer skips) the list is empty and the panel shows "No stream
+// loaded".
+export const BitrateGraphPanel = memo(function BitrateGraphPanel({
+  frames: providedFrames,
+  frameRate,
+}: BitrateGraphPanelProps = {}) {
+  const {
+    frames: loadedFrames,
+    loading,
+    error,
+    reload: loadFrames,
+    canReload,
+  } = useGraphFrames(providedFrames);
+  // Bars are drawn along the time axis: display (PTS) order when every frame has its own PTS.
+  const { frames, order } = useMemo(
+    () => orderFramesForAxis(loadedFrames),
+    [loadedFrames],
+  );
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"size" | "bitrate">("size");
 
@@ -110,9 +139,11 @@ export const BitrateGraphPanel = memo(function BitrateGraphPanel() {
           >
             Smoothed
           </button>
-          <button className="bitrate-reload-btn" onClick={loadFrames}>
-            Reload
-          </button>
+          {canReload && (
+            <button className="bitrate-reload-btn" onClick={loadFrames}>
+              Reload
+            </button>
+          )}
         </div>
       </div>
 
@@ -164,6 +195,24 @@ export const BitrateGraphPanel = memo(function BitrateGraphPanel() {
               />
             );
           })}
+        </div>
+        <div className="bitrate-axis" aria-label="Time axis">
+          {axisTickPositions(displayFrames.length).map((pos) => (
+            <span
+              key={pos}
+              className="bitrate-axis-tick"
+              style={{
+                left: `${displayFrames.length > 1 ? (pos / (displayFrames.length - 1)) * 100 : 0}%`,
+              }}
+            >
+              {formatAxisTick(pos, frameRate)}
+            </span>
+          ))}
+        </div>
+        <div className="bitrate-axis-caption">
+          {order === "display"
+            ? "Display order (by PTS)"
+            : "Decode order (PTS missing or repeated)"}
         </div>
         {frames.length > 500 && (
           <div className="bitrate-truncated">
