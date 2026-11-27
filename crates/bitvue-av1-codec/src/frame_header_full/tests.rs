@@ -651,38 +651,43 @@ fn header_summary(clip: &[u8]) -> HeaderSummary {
 /// `v_dc_delta_q` and `v_ac_delta_q` (#245): same check, the old numbers came out with those three
 /// fields' text cut out. Once more when `FrameHeader` gained `delta_lf_res` (#591): with
 /// `, delta_lf_res: 0` cut out the old numbers came out again.
+/// And once more when `FrameHeader` gained `frame_presentation_time` and
+/// `buffer_removal_time` (#587): same check, the old numbers came out with
+/// `, frame_presentation_time: None, buffer_removal_time: []` cut out of every header's `Debug`
+/// (none of the six clips has a decoder model). `overlay_extraction/parser/parse_test.rs` did not
+/// need re-recording: `ParsedFrame`'s `Debug` does not render these fields.
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
     const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
-            (274, 1, 0, 5793667197573964951),
+            (274, 1, 0, 13807844543352846661),
         ),
         (
             "aomenc_testsrc2",
             include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
-            (16, 4, 3, 13869582206689778965),
+            (16, 4, 3, 8854805885434021865),
         ),
         (
             "aomenc_tilegroups",
             include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf"),
-            (12, 1, 0, 16686347594253864472),
+            (12, 1, 0, 14368130240972126540),
         ),
         (
             "aomenc_tiles5",
             include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf"),
-            (12, 1, 0, 3656541809696659856),
+            (12, 1, 0, 17280902780318808674),
         ),
         (
             "rav1e_testsrc2",
             include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
-            (17, 6, 5, 14047268066617097439),
+            (17, 6, 5, 14502872200063635592),
         ),
         (
             "svtav1_testsrc2",
             include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
-            (17, 6, 5, 2196947347639930637),
+            (17, 6, 5, 12640559783228430156),
         ),
     ];
     let mismatches: Vec<String> = CLIPS
@@ -693,6 +698,42 @@ fn every_frame_header_of_every_clip_is_unchanged() {
         })
         .collect();
     assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
+/// The timing values of every frame header of the aomenc `--timing-info=model` clip (#587): each
+/// shown frame has a `frame_presentation_time` and each header the `buffer_removal_time` of its one
+/// operating point; the clips without a decoder model have neither.
+#[test]
+fn the_decoder_model_clip_keeps_its_frame_timing_values() {
+    let clip = include_bytes!("../../../../test_data/av1_aomenc_decoder_model.ivf");
+    let (_hdr, frames) = crate::ivf::parse_ivf_frames(clip).unwrap();
+    let seq = parse_sequence_header(&find_seq_header_in(&frames).unwrap()).unwrap();
+    assert_eq!(seq.operating_points.len(), 1);
+    let mut ref_state = RefFrameState::new();
+    let mut removal = Vec::new();
+    for frame in &frames {
+        for payload in find_frame_header_payloads(&frame.data) {
+            let h = parse_frame_header_full(&payload, &seq, &mut ref_state).unwrap();
+            assert_eq!(h.buffer_removal_time.len(), 1);
+            assert_eq!(h.show_frame, h.frame_presentation_time.is_some());
+            removal.push(h.buffer_removal_time[0].expect("operating point 0 has a decoder model"));
+        }
+    }
+    assert_eq!(removal.len(), 3);
+    assert!(
+        removal.windows(2).all(|w| w[0] < w[1]),
+        "removal times rise in decoding order: {removal:?}"
+    );
+
+    let plain = include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf");
+    let (_hdr, frames) = crate::ivf::parse_ivf_frames(plain).unwrap();
+    let seq = parse_sequence_header(&find_seq_header_in(&frames).unwrap()).unwrap();
+    let mut ref_state = RefFrameState::new();
+    for payload in find_frame_header_payloads(&frames[0].data) {
+        let h = parse_frame_header_full(&payload, &seq, &mut ref_state).unwrap();
+        assert_eq!(h.frame_presentation_time, None);
+        assert!(h.buffer_removal_time.is_empty());
+    }
 }
 
 // ---- Hand-built headers for the branches no committed clip reaches ----------------------------

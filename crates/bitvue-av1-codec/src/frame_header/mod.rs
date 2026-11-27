@@ -81,6 +81,8 @@ fn unparsed_header() -> FrameHeader {
         show_existing_frame: false,
         frame_to_show_map_idx: None,
         error_resilient_mode: false,
+        frame_presentation_time: None,
+        buffer_removal_time: Vec::new(),
         base_q_idx: None,
         y_dc_delta_q: None,
         uv_dc_delta_q: None,

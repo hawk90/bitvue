@@ -45,6 +45,10 @@
   color: var(--color-warning);
 }
 
+.hrd-stat.violation {
+  color: var(--color-warning);
+}
+
 .stat-label {
   color: var(--text-secondary);
 }
@@ -115,7 +119,8 @@
   color: var(--color-error);
 }
 
-.tooltip-row.underflow {
+.tooltip-row.underflow,
+.tooltip-row.violation {
   color: var(--color-warning);
 }
 
@@ -150,16 +155,6 @@
   );
 }
 
-.legend-color.line-target {
-  background: repeating-linear-gradient(
-    90deg,
-    transparent,
-    transparent 2px,
-    #51cf66 2px,
-    #51cf66 4px
-  );
-}
-
 .legend-color.dot-overflow {
   height: 8px;
   width: 8px;
@@ -172,6 +167,26 @@
   width: 8px;
   border-radius: 50%;
   background: rgb(255 212 59 / 80%);
+}
+
+.legend-color.dot-violation {
+  height: 8px;
+  width: 8px;
+  border-radius: 50%;
+  background: rgb(255 146 43 / 80%);
+}
+
+.hrd-stream-violation {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--color-warning);
+  flex-shrink: 0;
+}
+
+.hrd-buffer-panel.hrd-unavailable .hrd-unavailable-reason {
+  margin: 0 12px;
+  color: var(--text-secondary, #8b8b8b);
+  font-size: 11px;
 }
 
 .hrd-buffer-panel.hrd-unavailable .hrd-unavailable-message {

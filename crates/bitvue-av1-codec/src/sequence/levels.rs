@@ -40,6 +40,28 @@ fn mbps_x10(seq_level_idx: u8, high_tier: bool) -> Option<u64> {
     }
 }
 
+/// `MaxDecodeRate` (luma samples per second) of the defined levels, indexed by `seq_level_idx`
+/// (spec A.3): what the decoder model divides a frame's luma samples by to get its decode time
+/// (Annex E.4.6). `None` for a level the spec defines no rate for.
+pub fn max_decode_rate(seq_level_idx: u8) -> Option<u64> {
+    Some(match seq_level_idx {
+        0 => 5_529_600,           // 2.0
+        1 => 10_454_400,          // 2.1
+        4 => 24_969_600,          // 3.0
+        5 => 39_938_400,          // 3.1
+        8 => 77_856_768,          // 4.0
+        9 => 155_713_536,         // 4.1
+        12 => 273_715_200,        // 5.0
+        13 => 547_430_400,        // 5.1
+        14 => 1_094_860_800,      // 5.2
+        15 | 16 => 1_176_502_272, // 5.3, 6.0
+        17 => 2_189_721_600,      // 6.1
+        18 => 4_379_443_200,      // 6.2
+        19 => 4_706_009_088,      // 6.3
+        _ => return None,
+    })
+}
+
 /// `X.Y` for a `seq_level_idx` (spec A.3: X = 2 + (idx >> 2), Y = idx & 3); `None` for the reserved
 /// values 24-30 and for 31, the "maximum parameters" level that has no level-based limits.
 pub fn level_name(seq_level_idx: u8) -> Option<String> {
@@ -115,6 +137,33 @@ mod tests {
         for (idx, main_bps, high_bps) in table {
             assert_eq!(main(idx), Some(main_bps), "main tier, level idx {idx}");
             assert_eq!(high(idx), high_bps, "high tier, level idx {idx}");
+        }
+    }
+
+    /// Spec A.3's MaxDecodeRate column, level by level; a level without a row has none.
+    #[test]
+    fn decode_rates_match_the_spec_table() {
+        let table: [(u8, u64); 14] = [
+            (0, 5_529_600),
+            (1, 10_454_400),
+            (4, 24_969_600),
+            (5, 39_938_400),
+            (8, 77_856_768),
+            (9, 155_713_536),
+            (12, 273_715_200),
+            (13, 547_430_400),
+            (14, 1_094_860_800),
+            (15, 1_176_502_272),
+            (16, 1_176_502_272),
+            (17, 2_189_721_600),
+            (18, 4_379_443_200),
+            (19, 4_706_009_088),
+        ];
+        for (idx, rate) in table {
+            assert_eq!(max_decode_rate(idx), Some(rate), "level idx {idx}");
+        }
+        for idx in [2, 3, 6, 7, 10, 11, 20, 31] {
+            assert_eq!(max_decode_rate(idx), None, "level idx {idx}");
         }
     }
 

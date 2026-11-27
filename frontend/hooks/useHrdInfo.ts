@@ -1,50 +1,35 @@
 /**
  * useHrdInfo
  *
- * Fetches the AV1 decoder model of the open stream (`get_hrd_info`) for the HRD Buffer view and
- * turns it into what `HRDBufferPanel` needs. AV1 signals no bit rate or buffer size: both come
- * from the first operating point's level, tier and profile, so the view has parameters to show
- * only when that operating point has a decoder model *and* a level the spec defines limits for.
- * Everything else (other codecs, no decoder model, an undefined level) gives no parameters and the
- * panel says there is no HRD information.
+ * Fetches the AV1 decoder model of the open stream (`get_hrd_info`) for the HRD Buffer view. The
+ * sidecar runs the model of spec Annex E over the whole stream (arrival and removal times, the
+ * smoothing buffer's occupancy, the conformance violations) when the stream signals timing it can
+ * run on; every other stream (other codecs, no decoder model, an undefined level) has no model and
+ * the panel says there is no HRD information.
  */
 
 import { useEffect, useState } from "react";
 import {
   getHrdInfo,
   type HrdInfoWireResult,
+  type HrdModelWire,
 } from "../services/electronBridgeService";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger("useHrdInfo");
 
-/** Frame rate assumed when the stream signals none (a variable display rate). */
-export const DEFAULT_FRAME_RATE = 30;
-
-export interface HrdPanelParams {
-  /** Bits per second; `undefined` when the stream signals no usable HRD parameters. */
-  targetBitrate?: number;
-  /** CPB size in bytes. */
-  bufferSize?: number;
-  frameRate: number;
+export interface HrdPanelModel {
+  /** `null` when the stream has no decoder model to run. */
+  model: HrdModelWire | null;
+  /** Why there is none, when the sidecar said. */
+  unavailableReason: string | null;
 }
 
 /** The panel's inputs from a decoder-model description. */
-export function hrdPanelParams(info: HrdInfoWireResult | null): HrdPanelParams {
-  const frameRate = info?.frame_rate ?? DEFAULT_FRAME_RATE;
-  const op = info?.operating_points[0];
-  if (
-    !info?.present ||
-    !op?.decoder_model ||
-    op.max_bitrate_bps === null ||
-    op.buffer_size_bits === null
-  ) {
-    return { frameRate };
-  }
+export function hrdPanelModel(info: HrdInfoWireResult | null): HrdPanelModel {
   return {
-    targetBitrate: op.max_bitrate_bps,
-    bufferSize: op.buffer_size_bits / 8,
-    frameRate,
+    model: info?.model ?? null,
+    unavailableReason: info?.model_unavailable ?? null,
   };
 }
 

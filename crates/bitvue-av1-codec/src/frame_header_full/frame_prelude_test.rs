@@ -156,7 +156,8 @@ fn consumed(f: impl FnOnce(&mut BitReader) -> Result<()>, data: &[u8]) -> u64 {
 #[test]
 fn temporal_point_info_is_read_only_with_a_decoder_model_and_unequal_picture_intervals() {
     let ones = [0xffu8; 8];
-    let tpi = |seq: &SequenceHeader| consumed(|r| skip_temporal_point_info(r, seq), &ones);
+    let tpi =
+        |seq: &SequenceHeader| consumed(|r| read_temporal_point_info(r, seq).map(drop), &ones);
     assert_eq!(tpi(&model_seq(false, &[(0, true)])), 4);
     assert_eq!(tpi(&model_seq(true, &[(0, true)])), 0);
     assert_eq!(tpi(&seq_from(0x5)), 0, "no decoder model");
@@ -173,7 +174,7 @@ fn temporal_point_info_is_read_only_with_a_decoder_model_and_unequal_picture_int
 #[test]
 fn buffer_removal_times_follow_the_operating_points_that_contain_the_frame() {
     let removal = |seq: &SequenceHeader, layer: Layer, data: &[u8]| {
-        consumed(|r| skip_buffer_removal_times(r, seq, layer), data)
+        consumed(|r| read_buffer_removal_times(r, seq, layer).map(drop), data)
     };
     let layer = |temporal_id, spatial_id| Layer {
         temporal_id,
@@ -201,6 +202,48 @@ fn buffer_removal_times_follow_the_operating_points_that_contain_the_frame() {
     let both = model_seq(false, &[(0x303, true), (0x101, true)]);
     assert_eq!(removal(&both, layer(0, 0), &ones), 1 + 3 + 3);
     assert_eq!(removal(&both, layer(1, 1), &ones), 1 + 3);
+}
+
+/// The values come back, one entry per operating point: `None` for a point with no decoder model
+/// or without this frame's layers, and nothing at all when the sequence has no decoder model or the
+/// present flag is clear (#587).
+#[test]
+fn buffer_removal_times_and_presentation_time_are_kept() {
+    let layer = Layer::default();
+    // flag 1, then 3-bit times 5 and 2 for the two operating points that have a decoder model
+    let data = [0b1101_0100u8, 0xff];
+    let seq = model_seq(false, &[(0, true), (0, false), (0, true)]);
+    let times = read_buffer_removal_times(&mut BitReader::new(&data), &seq, layer).unwrap();
+    assert_eq!(times, vec![Some(5), None, Some(2)]);
+
+    let flag_clear = [0x7fu8, 0xff];
+    let times = read_buffer_removal_times(&mut BitReader::new(&flag_clear), &seq, layer).unwrap();
+    assert!(times.is_empty());
+    let times =
+        read_buffer_removal_times(&mut BitReader::new(&data), &seq_from(0x5), layer).unwrap();
+    assert!(times.is_empty(), "no decoder model, no flag");
+
+    // an operating point that does not contain the frame's layers has no time for it
+    let layered = model_seq(false, &[(0x101, true), (0x202, true)]);
+    let data = [0b1110_0000u8];
+    let times = read_buffer_removal_times(
+        &mut BitReader::new(&data),
+        &layered,
+        Layer {
+            temporal_id: 1,
+            spatial_id: 1,
+        },
+    )
+    .unwrap();
+    assert_eq!(times, vec![None, Some(0b110)]);
+
+    // 4-bit frame_presentation_time; none with a constant picture interval or without a model
+    let data = [0b1001_0000u8];
+    let at =
+        |seq: &SequenceHeader| read_temporal_point_info(&mut BitReader::new(&data), seq).unwrap();
+    assert_eq!(at(&model_seq(false, &[(0, true)])), Some(9));
+    assert_eq!(at(&model_seq(true, &[(0, true)])), None);
+    assert_eq!(at(&seq_from(0x5)), None);
 }
 
 #[test]

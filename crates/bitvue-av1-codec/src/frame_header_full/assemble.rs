@@ -88,6 +88,8 @@ pub(super) fn assemble_frame_header(sections: HeaderSections) -> FrameHeader {
         show_existing_frame: false,
         frame_to_show_map_idx: None,
         error_resilient_mode: prelude.error_resilient_mode,
+        frame_presentation_time: prelude.frame_presentation_time,
+        buffer_removal_time: prelude.buffer_removal_time,
         base_q_idx: Some(quantizer.quant.base_q_idx),
         y_dc_delta_q: Some(quantizer.quant.y_dc),
         uv_dc_delta_q: Some(quantizer.quant.u_dc),

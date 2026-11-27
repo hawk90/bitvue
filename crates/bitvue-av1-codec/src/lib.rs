@@ -28,6 +28,7 @@
 pub mod advanced_features;
 pub mod bitreader;
 pub mod container;
+pub mod decoder_model;
 pub mod dependency;
 pub mod frame_header;
 pub mod frame_header_full;

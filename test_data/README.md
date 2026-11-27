@@ -60,6 +60,8 @@ expected sample sizes are ffprobe's packet sizes of `sample_h264.mp4`), and the 
 | `av1_aomenc_lossless_tiled.ivf`, `av1_aomenc_lossless_testsrc2.ivf` | aomenc, 128x128, 3 frames, `--lossless=1` (CodedLossless): the tiled pattern (504 bytes) and `testsrc2` (11 KB), 64x64 superblocks. Regression for #388 (chroma cut into 4x4 transform blocks); every frame decodes as `Verified` (`tests/tool_fixtures.rs`) | commands below |
 | `av1_aomenc_decoder_model.ivf` | aomenc, 128x128, 3 frames of `testsrc2`, CBR, `--timing-info=model`: the sequence header signals a decoder model (`decoder_model_info`, `decoder_model_present_for_this_op`), so every frame header carries `temporal_point_info()` and `buffer_removal_time` (spec 5.9.2). dav1d decodes 3/3; every frame is `Verified` (`tests/tool_fixtures.rs`, #538) | commands below |
 | `av1_aomenc_delta_lf.ivf` | aomenc, 192x128, 6 frames of `testsrc2`, `--deltaq-mode=1 --delta-lf-mode=1`: the key frame signals `delta_lf_present` (`delta_lf_res = 1`, not multi) and is `Verified`; 67 of its 93 blocks carry a non-zero `DeltaLF` (`tests/tool_fixtures.rs`, #591) | commands below |
+| `av1_aomenc_decoder_model_underflow.ivf` | `av1_aomenc_decoder_model.ivf` with `decoder_buffer_delay` and `encoder_buffer_delay` cut from 45000 to 600 (6.7 ms) in the sequence header: the key frame (14 240 bits, 9.5 ms at the level's 1.5 Mbit/s) is not complete at its removal time, so the decoder model reports a smoothing buffer underflow at frame 0 (spec E.6.4, #587). Same slice data, dav1d decodes 3/3 | commands below |
+| `av1_aomenc_timing_constant.ivf` | aomenc, 128x128, 12 frames of `testsrc2`, CBR, `--timing-info=constant`: `timing_info` with an equal picture interval and no `decoder_model_info`, the stream the decoder model's resource availability mode runs on (spec E.3.1, #587) | commands below |
 | `av1_test.ivf` | AV1, 320x240, 25 fps, 250 frames | command not recorded |
 | `avc_test.h264`, `hevc_test.hevc`, `vp9_test.ivf` | 320x240 | x264 / x265 / libvpx; content and command not recorded |
 
@@ -134,6 +136,9 @@ ffmpeg -f lavfi -i testsrc2=size=128x128:rate=30:duration=1 -pix_fmt yuv420p -f 
 aomenc s128.y4m --ivf -o av1_aomenc_decoder_model.ivf --end-usage=cbr --target-bitrate=200 --lag-in-frames=0 --timing-info=model --limit=3 --cpu-used=8
 ffmpeg -f lavfi -i testsrc2=size=192x128:rate=10 -frames:v 6 -pix_fmt yuv420p -f yuv4mpegpipe s192.y4m
 aomenc s192.y4m --ivf -o av1_aomenc_delta_lf.ivf --limit=6 --cpu-used=6 --end-usage=q --cq-level=30 --deltaq-mode=1 --delta-lf-mode=1 --enable-tpl-model=1
+python3 scripts/patch_av1_buffer_delay.py av1_aomenc_decoder_model.ivf av1_aomenc_decoder_model_underflow.ivf 600
+ffmpeg -f lavfi -i testsrc2=size=128x128:rate=30:duration=2 -pix_fmt yuv420p -f yuv4mpegpipe s60.y4m
+aomenc s60.y4m --ivf -o av1_aomenc_timing_constant.ivf --end-usage=cbr --target-bitrate=200 --lag-in-frames=0 --timing-info=constant --limit=12 --cpu-used=8 --threads=1
 ```
 
 (`src.y4m` here is the 128x128 `testsrc2` source of the commands above.)
