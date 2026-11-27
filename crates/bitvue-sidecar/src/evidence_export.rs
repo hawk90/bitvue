@@ -96,18 +96,9 @@ fn stream_fingerprint(core: &Core) -> String {
 }
 
 pub fn export_evidence_bundle_command(core: &Core, request: &Request) -> Response {
-    let params: ExportEvidenceBundleParams = match serde_json::from_value(request.params.clone()) {
+    let params: ExportEvidenceBundleParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
 
     let fingerprint = stream_fingerprint(core);

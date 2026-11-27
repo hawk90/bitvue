@@ -130,41 +130,23 @@ pub fn get_av1_features_command(
 ) -> bitvue_protocol::Response {
     use bitvue_protocol::{Response, WireError, WireErrorCode};
 
-    let params: GetAv1FeaturesParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetAv1FeaturesParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
 
-    let stream_state = core.get_stream(bitvue_engine::StreamId::A);
-    let state = stream_state.read();
-    let byte_cache = match state.byte_cache.as_ref() {
-        Some(cache) => std::sync::Arc::clone(cache),
-        None => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::NotFound,
-                    message: "stream not open".to_string(),
-                    offset: None,
-                },
-            )
-        }
+    let byte_cache = match crate::command_support::stream_byte_cache(
+        core,
+        bitvue_engine::StreamId::A,
+        request.id,
+    ) {
+        Ok(cache) => cache,
+        Err(response) => return response,
     };
-    drop(state);
 
-    let full_len = byte_cache.len() as usize;
-    let data = match byte_cache.read_range(0, full_len) {
+    let data = match crate::command_support::read_all(&byte_cache, request.id) {
         Ok(bytes) => bytes,
-        Err(err) => return crate::command_support::engine_error_response(request.id, &err),
+        Err(response) => return response,
     };
 
     match get_av1_features(data, params.frame_index) {

@@ -283,45 +283,23 @@ pub fn get_frame_analysis_command(
     use crate::command_support::single_control_frame;
     use bitvue_protocol::{FrameKind, Response, WireError, WireErrorCode};
 
-    let params: GetFrameAnalysisParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetFrameAnalysisParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            ))
-        }
+        Err(response) => return single_control_frame(response),
     };
 
-    let stream_state = core.get_stream(bitvue_engine::StreamId::A);
-    let state = stream_state.read();
-    let byte_cache = match state.byte_cache.as_ref() {
-        Some(cache) => std::sync::Arc::clone(cache),
-        None => {
-            return single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::NotFound,
-                    message: "stream not open".to_string(),
-                    offset: None,
-                },
-            ))
-        }
+    let byte_cache = match crate::command_support::stream_byte_cache(
+        core,
+        bitvue_engine::StreamId::A,
+        request.id,
+    ) {
+        Ok(cache) => cache,
+        Err(response) => return single_control_frame(response),
     };
-    drop(state);
 
-    let full_len = byte_cache.len() as usize;
-    let data = match byte_cache.read_range(0, full_len) {
+    let data = match crate::command_support::read_all(&byte_cache, request.id) {
         Ok(bytes) => bytes,
-        Err(err) => {
-            return single_control_frame(crate::command_support::engine_error_response(
-                request.id, &err,
-            ))
-        }
+        Err(response) => return single_control_frame(response),
     };
 
     let mut value = match get_frame_analysis(data, params.frame_index) {

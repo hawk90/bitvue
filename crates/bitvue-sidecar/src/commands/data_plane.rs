@@ -18,40 +18,19 @@ struct GetHexRangeParams {
 /// carrying the raw bytes — no JSON array, no base64. Both frames share `correlation_id` so the
 /// client can pair them without a nested envelope. Pure (no I/O) — see `compute_frames`.
 pub fn get_hex_range(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<u8>)> {
-    let params: GetHexRangeParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetHexRangeParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            ))
-        }
+        Err(response) => return single_control_frame(response),
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
         Err(response) => return single_control_frame(response),
     };
 
-    let stream_state = core.get_stream(stream);
-    let state = stream_state.read();
-    let byte_cache = match state.byte_cache.as_ref() {
-        Some(cache) => std::sync::Arc::clone(cache),
-        None => {
-            return single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::NotFound,
-                    message: "stream not open".to_string(),
-                    offset: None,
-                },
-            ))
-        }
+    let byte_cache = match crate::command_support::stream_byte_cache(core, stream, request.id) {
+        Ok(cache) => cache,
+        Err(response) => return single_control_frame(response),
     };
-    drop(state);
 
     match byte_cache.read_range(params.offset, params.len) {
         Ok(bytes) => {
@@ -89,49 +68,27 @@ pub fn get_decoded_frame_yuv(
     request: &Request,
     cancel_flag: &std::sync::atomic::AtomicBool,
 ) -> Vec<(FrameKind, Vec<u8>)> {
-    let params: GetDecodedFrameYuvParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetDecodedFrameYuvParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            ))
-        }
+        Err(response) => return single_control_frame(response),
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
         Err(response) => return single_control_frame(response),
     };
 
-    let stream_state = core.get_stream(stream);
-    let state = stream_state.read();
-    let byte_cache = match state.byte_cache.as_ref() {
-        Some(cache) => std::sync::Arc::clone(cache),
-        None => {
-            return single_control_frame(Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::NotFound,
-                    message: "stream not open".to_string(),
-                    offset: None,
-                },
-            ))
-        }
+    let byte_cache = match crate::command_support::stream_byte_cache(core, stream, request.id) {
+        Ok(cache) => cache,
+        Err(response) => return single_control_frame(response),
     };
-    drop(state);
 
     // Arc pointer identity, not StreamState::file_path -- see decode_session's module doc for
     // why (a close+reopen of the *same* path still needs to invalidate the old session).
     let byte_cache_identity = std::sync::Arc::as_ptr(&byte_cache) as usize;
 
-    let full_len = byte_cache.len() as usize;
-    let data = match byte_cache.read_range(0, full_len) {
+    let data = match crate::command_support::read_all(&byte_cache, request.id) {
         Ok(bytes) => bytes,
-        Err(err) => return single_control_frame(engine_error_response(request.id, &err)),
+        Err(response) => return single_control_frame(response),
     };
 
     match decode_sessions.get_decoded_frame_yuv(

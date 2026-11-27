@@ -544,18 +544,9 @@ struct IndexStreamParams {
 /// `Core::handle_command` variant: `Command::RunFullAnalysis` stays unused, this bypasses it
 /// entirely by calling the indexer directly against `Core::get_stream()`/`get_job_manager()`.
 fn index_stream(core: &Core, request: &Request, cancel_flag: &AtomicBool) -> Response {
-    let params: IndexStreamParams = match serde_json::from_value(request.params.clone()) {
+    let params: IndexStreamParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => {
-            return Response::failure(
-                request.id,
-                WireError {
-                    code: WireErrorCode::InvalidData,
-                    message: err.to_string(),
-                    offset: None,
-                },
-            )
-        }
+        Err(response) => return response,
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,

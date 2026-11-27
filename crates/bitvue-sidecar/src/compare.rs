@@ -16,24 +16,14 @@
 //! guard (`bitvue-indexer/src/lib.rs`'s module doc). Matches this crate's whole product path.
 
 use bitvue_engine::{CompareWorkspace, Core, DiffHeatmapData, DiffMode, StreamId, SyncMode};
-use bitvue_protocol::{Request, Response, WireError, WireErrorCode};
+use bitvue_protocol::{Request, Response, WireErrorCode};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::command_support::wire_failure;
 use crate::decode_bridge;
 
 pub type CompareSlot = Arc<Mutex<Option<CompareWorkspace>>>;
-
-fn failure(id: u32, code: WireErrorCode, message: impl Into<String>) -> Response {
-    Response::failure(
-        id,
-        WireError {
-            code,
-            message: message.into(),
-            offset: None,
-        },
-    )
-}
 
 /// Reads `(width, height)` from a stream's already-indexed `ContainerModel` -- same field
 /// `get_stream_info`'s `container_model_to_json` reads (`main.rs`).
@@ -103,19 +93,19 @@ fn decoded_luma(core: &Core, stream: StreamId, frame_index: usize) -> Result<Vec
 pub fn create_compare_workspace(core: &Core, slot: &CompareSlot, request: &Request) -> Response {
     let index_a = match bitvue_indexer::build_frame_index_map(core, StreamId::A) {
         Ok(m) => m,
-        Err(message) => return failure(request.id, WireErrorCode::NotFound, message),
+        Err(message) => return wire_failure(request.id, WireErrorCode::NotFound, message),
     };
     let index_b = match bitvue_indexer::build_frame_index_map(core, StreamId::B) {
         Ok(m) => m,
-        Err(message) => return failure(request.id, WireErrorCode::NotFound, message),
+        Err(message) => return wire_failure(request.id, WireErrorCode::NotFound, message),
     };
     let resolution_a = match stream_dimensions(core, StreamId::A) {
         Ok(dims) => dims,
-        Err(message) => return failure(request.id, WireErrorCode::NotFound, message),
+        Err(message) => return wire_failure(request.id, WireErrorCode::NotFound, message),
     };
     let resolution_b = match stream_dimensions(core, StreamId::B) {
         Ok(dims) => dims,
-        Err(message) => return failure(request.id, WireErrorCode::NotFound, message),
+        Err(message) => return wire_failure(request.id, WireErrorCode::NotFound, message),
     };
 
     let workspace = CompareWorkspace::new(index_a, index_b, resolution_a, resolution_b);
@@ -171,7 +161,7 @@ fn with_workspace<T>(
     let guard = slot.lock().unwrap();
     match guard.as_ref() {
         Some(workspace) => Ok(f(workspace)),
-        None => Err(failure(
+        None => Err(wire_failure(
             request_id,
             WireErrorCode::NotFound,
             "no compare workspace -- call create_compare_workspace first",
@@ -190,7 +180,7 @@ fn with_workspace_mut(
             f(workspace);
             Ok(())
         }
-        None => Err(failure(
+        None => Err(wire_failure(
             request_id,
             WireErrorCode::NotFound,
             "no compare workspace -- call create_compare_workspace first",
@@ -204,9 +194,9 @@ pub struct GetAlignedFrameParams {
 }
 
 pub fn get_aligned_frame(slot: &CompareSlot, request: &Request) -> Response {
-    let params: GetAlignedFrameParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetAlignedFrameParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => return failure(request.id, WireErrorCode::InvalidData, err.to_string()),
+        Err(response) => return response,
     };
 
     match with_workspace(slot, request.id, |workspace| {
@@ -233,9 +223,9 @@ pub struct SetSyncModeParams {
 }
 
 pub fn set_sync_mode(slot: &CompareSlot, request: &Request) -> Response {
-    let params: SetSyncModeParams = match serde_json::from_value(request.params.clone()) {
+    let params: SetSyncModeParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => return failure(request.id, WireErrorCode::InvalidData, err.to_string()),
+        Err(response) => return response,
     };
     match with_workspace_mut(slot, request.id, |workspace| {
         workspace.set_sync_mode(params.mode)
@@ -251,9 +241,9 @@ pub struct SetManualOffsetParams {
 }
 
 pub fn set_manual_offset(slot: &CompareSlot, request: &Request) -> Response {
-    let params: SetManualOffsetParams = match serde_json::from_value(request.params.clone()) {
+    let params: SetManualOffsetParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => return failure(request.id, WireErrorCode::InvalidData, err.to_string()),
+        Err(response) => return response,
     };
     match with_workspace_mut(slot, request.id, |workspace| {
         workspace.set_manual_offset(params.offset)
@@ -287,13 +277,15 @@ enum DiffFrameError {
 impl DiffFrameError {
     fn into_response(self, id: u32) -> Response {
         match self {
-            DiffFrameError::DiffDisabled(reason) => failure(id, WireErrorCode::InvalidData, reason),
-            DiffFrameError::NoAlignedFrame => failure(
+            DiffFrameError::DiffDisabled(reason) => {
+                wire_failure(id, WireErrorCode::InvalidData, reason)
+            }
+            DiffFrameError::NoAlignedFrame => wire_failure(
                 id,
                 WireErrorCode::FrameNotFound,
                 "no aligned stream B frame for this stream A frame",
             ),
-            DiffFrameError::ResolutionMismatch { a, b } => failure(
+            DiffFrameError::ResolutionMismatch { a, b } => wire_failure(
                 id,
                 WireErrorCode::InvalidData,
                 format!(
@@ -302,7 +294,9 @@ impl DiffFrameError {
                     a.0, a.1, b.0, b.1
                 ),
             ),
-            DiffFrameError::Other(message) => failure(id, WireErrorCode::FrameNotFound, message),
+            DiffFrameError::Other(message) => {
+                wire_failure(id, WireErrorCode::FrameNotFound, message)
+            }
         }
     }
 }
@@ -367,9 +361,9 @@ pub struct GetDiffFrameParams {
 /// A structured JSON grid, same reasoning as `get_frame_analysis`'s sibling commands -- not raw
 /// pixel bytes, so no data-plane binary framing needed.
 pub fn get_diff_frame(core: &Core, slot: &CompareSlot, request: &Request) -> Response {
-    let params: GetDiffFrameParams = match serde_json::from_value(request.params.clone()) {
+    let params: GetDiffFrameParams = match crate::command_support::parse_params(request) {
         Ok(p) => p,
-        Err(err) => return failure(request.id, WireErrorCode::InvalidData, err.to_string()),
+        Err(response) => return response,
     };
 
     match with_workspace(slot, request.id, |workspace| {
@@ -416,7 +410,7 @@ pub fn find_first_diff_frame(
     let mut checked = 0usize;
     for stream_a_frame_idx in 0..total_frames {
         if cancel_flag.load(Ordering::SeqCst) {
-            return failure(request.id, WireErrorCode::Cancelled, "cancelled");
+            return wire_failure(request.id, WireErrorCode::Cancelled, "cancelled");
         }
 
         let result = with_workspace(slot, request.id, |workspace| {
