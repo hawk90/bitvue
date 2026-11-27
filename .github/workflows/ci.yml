@@ -211,7 +211,9 @@ jobs:
       # largest third-party dependency set, so its cache serves every other crate's job.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          shared-key: test-${{ matrix.os }}
+          # v2: the v1 macOS cache held a dav1d-sys build with the old Homebrew Cellar path baked in
+          # (#594); bump again if a stale cache breaks linking.
+          shared-key: test-v2-${{ matrix.os }}
           save-if: ${{ github.ref == 'refs/heads/main' && matrix.crate == 'bitvue-cli' }}
       # Only these crates link dav1d (checked with `cargo tree -i dav1d-sys --edges all`).
       # Everything else skips the install -- on Windows it is a ~3.5 minute vcpkg build.
