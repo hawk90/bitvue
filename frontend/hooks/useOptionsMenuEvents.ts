@@ -9,55 +9,30 @@
  * panel cares to listen, rather than needing anything from `AppContent`.
  */
 
-import { useEffect } from "react";
+import { useWindowEventMap } from "./useWindowEvent";
+
+// CPU avx2 / auto-save-layout toggles — persist preference to localStorage
+const toggleStored = (key: string) => () => {
+  const next = !(localStorage.getItem(key) === "true");
+  localStorage.setItem(key, String(next));
+};
+// Codec settings — forward as viewer events so backend/panel can react
+const fwd = (eventName: string) => () =>
+  window.dispatchEvent(new CustomEvent(eventName));
+
+const OPTIONS_HANDLERS: Record<string, () => void> = {
+  "menu-cpu-avx2": toggleStored("bitvue:cpu-avx2"),
+  "menu-codec-hevc-ext": fwd("codec-hevc-extensions"),
+  "menu-codec-hevc-index": fwd("codec-hevc-index"),
+  "menu-codec-hevc-mv": fwd("codec-hevc-mv"),
+  "menu-codec-vvc-dynamic": fwd("codec-vvc-dynamic"),
+  "menu-codec-vvc-details": fwd("codec-vvc-details"),
+  "menu-digest-force": fwd("codec-digest-force"),
+  "menu-digest-none": fwd("codec-digest-none"),
+  "menu-digest-stream": fwd("codec-digest-stream"),
+  "menu-auto-save-layout": toggleStored("bitvue:auto-save-layout"),
+};
 
 export function useOptionsMenuEvents(): void {
-  useEffect(() => {
-    // CPU avx2 toggle — persist preference to localStorage
-    const handleCpuAvx2 = () => {
-      const key = "bitvue:cpu-avx2";
-      const next = !(localStorage.getItem(key) === "true");
-      localStorage.setItem(key, String(next));
-    };
-    // Codec settings — forward as viewer events so backend/panel can react
-    const fwd = (eventName: string) => () =>
-      window.dispatchEvent(new CustomEvent(eventName));
-    const handleHevcExt = fwd("codec-hevc-extensions");
-    const handleHevcIndex = fwd("codec-hevc-index");
-    const handleHevcMv = fwd("codec-hevc-mv");
-    const handleVvcDynamic = fwd("codec-vvc-dynamic");
-    const handleVvcDetails = fwd("codec-vvc-details");
-    const handleDigestForce = fwd("codec-digest-force");
-    const handleDigestNone = fwd("codec-digest-none");
-    const handleDigestStream = fwd("codec-digest-stream");
-    // Auto-save layout toggle
-    const handleAutoSaveLayout = () => {
-      const key = "bitvue:auto-save-layout";
-      const next = !(localStorage.getItem(key) === "true");
-      localStorage.setItem(key, String(next));
-    };
-
-    window.addEventListener("menu-cpu-avx2", handleCpuAvx2);
-    window.addEventListener("menu-codec-hevc-ext", handleHevcExt);
-    window.addEventListener("menu-codec-hevc-index", handleHevcIndex);
-    window.addEventListener("menu-codec-hevc-mv", handleHevcMv);
-    window.addEventListener("menu-codec-vvc-dynamic", handleVvcDynamic);
-    window.addEventListener("menu-codec-vvc-details", handleVvcDetails);
-    window.addEventListener("menu-digest-force", handleDigestForce);
-    window.addEventListener("menu-digest-none", handleDigestNone);
-    window.addEventListener("menu-digest-stream", handleDigestStream);
-    window.addEventListener("menu-auto-save-layout", handleAutoSaveLayout);
-    return () => {
-      window.removeEventListener("menu-cpu-avx2", handleCpuAvx2);
-      window.removeEventListener("menu-codec-hevc-ext", handleHevcExt);
-      window.removeEventListener("menu-codec-hevc-index", handleHevcIndex);
-      window.removeEventListener("menu-codec-hevc-mv", handleHevcMv);
-      window.removeEventListener("menu-codec-vvc-dynamic", handleVvcDynamic);
-      window.removeEventListener("menu-codec-vvc-details", handleVvcDetails);
-      window.removeEventListener("menu-digest-force", handleDigestForce);
-      window.removeEventListener("menu-digest-none", handleDigestNone);
-      window.removeEventListener("menu-digest-stream", handleDigestStream);
-      window.removeEventListener("menu-auto-save-layout", handleAutoSaveLayout);
-    };
-  }, []);
+  useWindowEventMap(OPTIONS_HANDLERS);
 }

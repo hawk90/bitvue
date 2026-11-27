@@ -8,22 +8,18 @@
  * the whole mac Mode menu was a no-op.
  */
 
-import { useEffect } from "react";
 import { MENU_EVENTS } from "../../bitvue-desktop/electron/menuEvents";
 import type { VisualizationMode } from "../utils/codecModeRegistry";
+import { useWindowEventMap } from "./useWindowEvent";
 
 export function useModeMenuEvents(
   setMode: (mode: VisualizationMode) => void,
 ): void {
-  useEffect(() => {
-    const handleModeChange = (e: Event) => {
+  useWindowEventMap({
+    [MENU_EVENTS.modeChange]: (e) => {
       const mode = (e as CustomEvent<unknown>).detail;
       // setMode itself ignores keys that aren't valid for the current codec / legacy list.
       if (typeof mode === "string" && mode) setMode(mode as VisualizationMode);
-    };
-    window.addEventListener(MENU_EVENTS.modeChange, handleModeChange);
-    return () => {
-      window.removeEventListener(MENU_EVENTS.modeChange, handleModeChange);
-    };
-  }, [setMode]);
+    },
+  });
 }
