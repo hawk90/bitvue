@@ -50,7 +50,7 @@ export function registerWindowLifecycleIpcHandlers(samplesDir: string): void {
   });
 
   // Quit menu item / TitleBar's Quit button / TitleBar's in-window close (X) button. Routed
-  // through requestQuit() (TAURI_WEB-006) instead of calling app.quit() directly -- see its doc
+  // through requestQuit() instead of calling app.quit() directly -- see its doc
   // for why (confirms first when a real bitstream is open) and for how this stays "quit the app"
   // cross-platform, not just "close the current window", same as before this fix.
   ipcMain.handle("bitvue:closeWindow", async () => {

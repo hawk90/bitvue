@@ -1,5 +1,5 @@
 /**
- * TAURI_WEB-006: the single choke point every "quit the app" trigger funnels through --
+ * The single choke point every "quit the app" trigger funnels through --
  * File > Quit / TitleBar's Quit menu item / TitleBar's in-window close (X) button / the
  * OS-native window-chrome close button all route through `requestQuit()` instead of calling
  * `app.quit()` directly, so a real open bitstream always gets a confirmation dialog first

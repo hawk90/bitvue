@@ -468,36 +468,20 @@ function AppContent() {
     if (filePath) void openFileAtPath(filePath);
   }, [filePath, openFileAtPath]);
 
-  const onToggleFullscreen = useCallback(async () => {
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const win = getCurrentWindow();
-      const isFs = await win.isFullscreen();
-      await win.setFullscreen(!isFs);
-    } catch {
-      // Fallback to browser fullscreen API
-      if (!document.fullscreenElement) {
-        void document.documentElement.requestFullscreen();
-      } else {
-        void document.exitFullscreen();
-      }
+  const onToggleFullscreen = useCallback(() => {
+    // Browser fullscreen API (Electron's renderer supports it)
+    if (!document.fullscreenElement) {
+      void document.documentElement.requestFullscreen();
+    } else {
+      void document.exitFullscreen();
     }
   }, []);
 
-  const onEscape = useCallback(async () => {
+  const onEscape = useCallback(() => {
     // Exit fullscreen if active
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const win = getCurrentWindow();
-      if (await win.isFullscreen()) {
-        await win.setFullscreen(false);
-        return;
-      }
-    } catch {
-      if (document.fullscreenElement) {
-        void document.exitFullscreen();
-        return;
-      }
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
     }
     // Clear selection
     window.dispatchEvent(new CustomEvent("clear-selection"));

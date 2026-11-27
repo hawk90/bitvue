@@ -32,7 +32,7 @@ import "./theme/tabs.css";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LayoutProvider } from "./contexts/LayoutContext";
 import { createLogger } from "./utils/logger";
-import { tauriLog } from "./utils/tauriLogger";
+import { consoleLog } from "./utils/consoleLogger";
 
 const logger = createLogger("main");
 
@@ -50,7 +50,7 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
   const originalError = console.error;
   const originalDebug = console.debug;
 
-  // Store original methods on window.console for tauriLogger to access
+  // Store original methods on window.console for consoleLogger to access
   bitvueWindow.console._originalLog = originalLog;
   bitvueWindow.console._originalInfo = originalInfo;
   bitvueWindow.console._originalWarn = originalWarn;
@@ -59,7 +59,7 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
 
   console.log = (...args) => {
     const first = args[0];
-    tauriLog.log(
+    consoleLog.log(
       typeof first === "string" ? first : JSON.stringify(first),
       ...args.slice(1),
     );
@@ -67,7 +67,7 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
   };
   console.info = (...args) => {
     const first = args[0];
-    tauriLog.info(
+    consoleLog.info(
       typeof first === "string" ? first : JSON.stringify(first),
       ...args.slice(1),
     );
@@ -75,7 +75,7 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
   };
   console.warn = (...args) => {
     const first = args[0];
-    tauriLog.warn(
+    consoleLog.warn(
       typeof first === "string" ? first : JSON.stringify(first),
       ...args.slice(1),
     );
@@ -83,7 +83,7 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
   };
   console.error = (...args) => {
     const first = args[0];
-    tauriLog.error(
+    consoleLog.error(
       typeof first === "string" ? first : JSON.stringify(first),
       ...args.slice(1),
     );
@@ -91,7 +91,7 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
   };
   console.debug = (...args) => {
     const first = args[0];
-    tauriLog.debug(
+    consoleLog.debug(
       typeof first === "string" ? first : JSON.stringify(first),
       ...args.slice(1),
     );
@@ -123,8 +123,8 @@ logger.info("Starting app...");
 
 // macOS's native menu bar is now built in the main process (bitvue-desktop/electron/main.ts's
 // installNativeMacMenu) via real Electron APIs. The renderer-side initializeSystemMenu() used to
-// live here, but it called @tauri-apps/api/menu -- a runtime that no longer exists post-Electron-
-// migration (src-tauri was deleted 2026-08-08) -- so it threw an unhandled rejection on every
+// live here, but it called a renderer-side menu API that no longer exists after the Electron
+// migration (2026-08-08) -- so it threw an unhandled rejection on every
 // single launch and never actually built a working menu. See installNativeMacMenu's doc for the
 // full story (found because macOS had *no* working menu at all as a result -- File, Export, Mode
 // switching, all silently unreachable).

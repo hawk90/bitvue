@@ -252,7 +252,7 @@ function createWindow(): BrowserWindow {
     },
   );
 
-  // TAURI_WEB-006: the OS-native window-chrome close button (the red traffic light on macOS, the
+  // The OS-native window-chrome close button (the red traffic light on macOS, the
   // title-bar X on Windows/Linux) fires this event directly -- it never goes through
   // `bitvue:closeWindow`'s IPC path at all, so without this listener it bypassed
   // requestQuit()'s confirmation entirely. Prevent the default close and route through the same
@@ -1170,7 +1170,7 @@ if (!gotSingleInstanceLock) {
 }
 
 app.on("window-all-closed", () => {
-  // Only reached once a window has actually closed for real -- with the TAURI_WEB-006 gate in
+  // Only reached once a window has actually closed for real -- with the quit-guard gate in
   // createWindow()'s 'close' listener, that only happens after requestQuit() has confirmed (or
   // decided confirmation wasn't needed), so this cleanup can't fire while a "Quit Bitvue?" dialog
   // is still pending / could still be cancelled.
@@ -1179,7 +1179,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-// TAURI_WEB-006: the other half of requestQuit()'s choke point (alongside createWindow()'s
+// The other half of requestQuit()'s choke point (alongside createWindow()'s
 // 'close' listener) -- catches every app.quit() call, including `bitvue:closeWindow`'s IPC
 // handler and the native macOS menu's "Quit" item (installNativeMacMenu's `menu-quit` dispatch,
 // via App.tsx's closeWindow() -> requestQuit() -> app.quit()). Before this fix, `before-quit`

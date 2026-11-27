@@ -9,14 +9,13 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./test/setup.ts"],
     include: ["tests/**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["node_modules", "dist", "src-tauri"],
+    exclude: ["node_modules", "dist"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
       exclude: [
         "node_modules/",
         "dist/",
-        "src-tauri/",
         "**/*.test.{ts,tsx}",
         "**/*.spec.{ts,tsx}",
         "test/",

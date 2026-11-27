@@ -28,14 +28,14 @@ export interface FileInfo {
 }
 
 /**
- * Theme change event from Tauri menu
+ * Theme change event from the native menu
  */
 export interface ThemeChangeEvent extends Event {
   detail: "dark" | "light"; // Theme name
 }
 
 /**
- * File opened event from Tauri
+ * File opened event from the main process
  */
 export interface FileOpenedEvent {
   success: boolean;

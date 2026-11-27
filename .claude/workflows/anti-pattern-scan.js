@@ -69,7 +69,7 @@ const audited = await pipeline(
   targets,
   fileKey =>
     agent(
-      `Bitvue project (video bitstream analyzer, Tauri + Rust + React). Audit docs/anti-patterns/${fileKey}.md ` +
+      `Bitvue project (video bitstream analyzer, Electron + Rust sidecar + React). Audit docs/anti-patterns/${fileKey}.md ` +
         `against the REAL codebase - this is Phase 2 of a two-phase plan; the catalog itself (Phase 1) is already ` +
         `written and every item currently reads "**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움".\n\n` +
         `Read the file, and for EACH item (every "### {ID}: ..." record) investigate whether the anti-pattern is ` +
