@@ -73,7 +73,7 @@ We regularly audit our dependencies using:
 
 bitvue includes the following security features:
 
-* **Sandboxing**: Tauri provides OS-level sandboxing
+* **Sandboxing**: Electron renderer runs with `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`; the preload only uses `contextBridge`/`ipcRenderer`. The Rust sidecar process is not OS-sandboxed
 * **Input Validation**: All file inputs are validated before processing
 * **Memory Safety**: Rust prevents entire classes of memory vulnerabilities
 * **No Remote Code Execution**: No eval or dynamic code execution
