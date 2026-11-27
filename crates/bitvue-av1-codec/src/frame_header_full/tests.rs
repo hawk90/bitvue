@@ -649,39 +649,40 @@ fn header_summary(clip: &[u8]) -> HeaderSummary {
 /// with those fields' text (all empty or zero in these clips) cut out of the `Debug` output the old
 /// numbers came out again. Re-recorded once more when `FrameHeader` gained `uv_ac_delta_q`,
 /// `v_dc_delta_q` and `v_ac_delta_q` (#245): same check, the old numbers came out with those three
-/// fields' text cut out.
+/// fields' text cut out. Once more when `FrameHeader` gained `delta_lf_res` (#591): with
+/// `, delta_lf_res: 0` cut out the old numbers came out again.
 #[test]
 fn every_frame_header_of_every_clip_is_unchanged() {
     const CLIPS: [(&str, &[u8], HeaderSummary); 6] = [
         (
             "av1_test",
             include_bytes!("../../../../test_data/av1_test.ivf"),
-            (274, 1, 0, 9072236015749208179),
+            (274, 1, 0, 5793667197573964951),
         ),
         (
             "aomenc_testsrc2",
             include_bytes!("../../../../test_data/av1_aomenc_testsrc2.ivf"),
-            (16, 4, 3, 2574182100946965769),
+            (16, 4, 3, 13869582206689778965),
         ),
         (
             "aomenc_tilegroups",
             include_bytes!("../../../../test_data/av1_aomenc_tilegroups.ivf"),
-            (12, 1, 0, 5404345889240383186),
+            (12, 1, 0, 16686347594253864472),
         ),
         (
             "aomenc_tiles5",
             include_bytes!("../../../../test_data/av1_aomenc_tiles5.ivf"),
-            (12, 1, 0, 4406273658431375066),
+            (12, 1, 0, 3656541809696659856),
         ),
         (
             "rav1e_testsrc2",
             include_bytes!("../../../../test_data/av1_rav1e_testsrc2.ivf"),
-            (17, 6, 5, 13609153085757198297),
+            (17, 6, 5, 14047268066617097439),
         ),
         (
             "svtav1_testsrc2",
             include_bytes!("../../../../test_data/av1_svtav1_testsrc2.ivf"),
-            (17, 6, 5, 4901141376858294291),
+            (17, 6, 5, 2196947347639930637),
         ),
     ];
     let mismatches: Vec<String> = CLIPS

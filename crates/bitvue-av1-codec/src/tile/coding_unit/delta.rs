@@ -7,6 +7,9 @@ use crate::symbol::SymbolDecoder;
 use crate::tile::{FrameCodingParams, MiRect, SuperblockCtx};
 use bitvue_engine::Result;
 
+/// `MAX_LOOP_FILTER` (spec 3): the largest loop filter level, and the `DeltaLF` clamp bound.
+const MAX_LOOP_FILTER: i32 = 63;
+
 /// `cdef_idx()` -- previously never read at all in this crate. Gated only on `!skip` (NOT on
 /// whether CDEF is enabled: `cdef_bits` is already `0` then, making the read a no-op), and read at
 /// most once per 64x64 CDEF unit within the superblock; `sb.cdef_idx` (`-1` = "not yet read",
@@ -45,7 +48,8 @@ pub(super) fn read_cdef_idx(
     Ok(())
 }
 
-/// `read_delta_qindex()` + `read_delta_lf()`. Returns the QP in effect for this block.
+/// `read_delta_qindex()` + `read_delta_lf()`. Returns the QP in effect for this block and folds
+/// each `delta_lf` read into `delta_lf`, the tile's running `DeltaLF` state.
 ///
 /// Real spec gate (dav1d's `decode_b`): only at the first leaf visited within each superblock
 /// (`x4/y4 == sb.x4/sb.y4`, always the top-left-most leaf given AV1's partition decode order), and
@@ -60,6 +64,7 @@ pub(super) fn read_delta_q_lf(
     skip: bool,
     frame: &FrameCodingParams,
     current_qp: i16,
+    delta_lf: &mut [i16; 4],
 ) -> i16 {
     let is_first_cu_in_sb = mi.x4 == sb.x4 && mi.y4 == sb.y4;
     let is_full_sb_size = mi.width == sb.size4 && mi.height == sb.size4;
@@ -105,9 +110,18 @@ pub(super) fn read_delta_q_lf(
         };
         for i in 0..n_lfs {
             let cdf_index = if frame.delta_lf_multi { i + 1 } else { 0 };
-            if let Err(e) = decoder.read_delta_lf(cdf_index) {
-                tracing::warn!("Failed to read delta_lf[{}] at ({}, {}): {}", i, x, y, e);
-                break;
+            match decoder.read_delta_lf(cdf_index) {
+                // Spec 5.11.39: DeltaLF[i] = Clip3(-MAX_LOOP_FILTER, MAX_LOOP_FILTER,
+                // DeltaLF[i] + (reducedDeltaLfLevel << delta_lf_res)).
+                Ok(step) => {
+                    delta_lf[i] = (i32::from(delta_lf[i]) + (i32::from(step) << frame.delta_lf_res))
+                        .clamp(-MAX_LOOP_FILTER, MAX_LOOP_FILTER)
+                        as i16;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to read delta_lf[{}] at ({}, {}): {}", i, x, y, e);
+                    break;
+                }
             }
         }
     }
@@ -224,7 +238,15 @@ mod tests {
     ) {
         let sb = SuperblockCtx::new(0, 0, 64);
         let mut got = SymbolDecoder::new(data).unwrap();
-        let qp = read_delta_q_lf(&mut got, &sb, mi(0, 0, 4, 4), false, frame, current_qp);
+        let qp = read_delta_q_lf(
+            &mut got,
+            &sb,
+            mi(0, 0, 4, 4),
+            false,
+            frame,
+            current_qp,
+            &mut [0; 4],
+        );
 
         let mut want = SymbolDecoder::new(data).unwrap();
         let delta = want.read_delta_q().unwrap();
@@ -263,7 +285,7 @@ mod tests {
             ];
             for (n, (rect, skip, frame, read)) in cases.iter().enumerate() {
                 let mut d = SymbolDecoder::new(&data).unwrap();
-                let qp = read_delta_q_lf(&mut d, &sb, *rect, *skip, frame, 100);
+                let qp = read_delta_q_lf(&mut d, &sb, *rect, *skip, frame, 100, &mut [0; 4]);
                 if *read {
                     assert_eq!(qp, (100 + delta).clamp(0, 255), "seed {seed} case {n}");
                     assert_eq!(next_bits(&mut d), after_read, "seed {seed} case {n}");
@@ -289,7 +311,15 @@ mod tests {
             let frame = params(true, false, false, false);
             for current in [0i16, 255] {
                 let mut d = SymbolDecoder::new(&data).unwrap();
-                let qp = read_delta_q_lf(&mut d, &sb, mi(0, 0, 4, 4), false, &frame, current);
+                let qp = read_delta_q_lf(
+                    &mut d,
+                    &sb,
+                    mi(0, 0, 4, 4),
+                    false,
+                    &frame,
+                    current,
+                    &mut [0; 4],
+                );
                 assert!((0..=255).contains(&qp));
                 assert_eq!(qp, (current + delta).clamp(0, 255));
                 hit_low |= current + delta < 0;
@@ -352,7 +382,15 @@ mod tests {
         );
         let mut got = SymbolDecoder::new(&data).unwrap();
         got.cdf_context.get_delta_q_cdf_mut().fill(32768);
-        let qp = read_delta_q_lf(&mut got, &sb, mi(0, 0, 4, 4), false, &frame, 77);
+        let qp = read_delta_q_lf(
+            &mut got,
+            &sb,
+            mi(0, 0, 4, 4),
+            false,
+            &frame,
+            77,
+            &mut [0; 4],
+        );
         assert_eq!(qp, 77);
 
         // The failed read consumed nothing, so the single delta_lf read starts at the beginning.
@@ -369,7 +407,15 @@ mod tests {
 
         let mut got = SymbolDecoder::new(&data).unwrap();
         got.cdf_context.get_delta_lf_cdf_mut(2).fill(32768); // the second component
-        let qp = read_delta_q_lf(&mut got, &sb, mi(0, 0, 4, 4), false, &frame, 100);
+        let qp = read_delta_q_lf(
+            &mut got,
+            &sb,
+            mi(0, 0, 4, 4),
+            false,
+            &frame,
+            100,
+            &mut [0; 4],
+        );
 
         // delta_q, component 1 (index 1) read normally; component 2 fails and ends the loop.
         let mut want = SymbolDecoder::new(&data).unwrap();
@@ -385,5 +431,70 @@ mod tests {
             next_bits(&mut want),
             "components 3 and 4 are skipped"
         );
+    }
+
+    #[test]
+    fn delta_lf_state_adds_each_step_shifted_by_res_and_stays_within_the_filter_level_range() {
+        let (mut saw_nonzero, mut saw_clamp) = (false, false);
+        for seed in 1..=48u64 {
+            let data = noise(seed, 64);
+            let mut want = SymbolDecoder::new(&data).unwrap();
+            want.read_delta_q().unwrap();
+            let steps: Vec<i32> = (1..=4)
+                .map(|i| i32::from(want.read_delta_lf(i).unwrap()))
+                .collect();
+            for res in 0..=3u8 {
+                for start in [[0i16; 4], [60, -60, 5, -1]] {
+                    let mut frame = params(true, true, true, false);
+                    frame.delta_lf_res = res;
+                    let mut state = start;
+                    let mut d = SymbolDecoder::new(&data).unwrap();
+                    let sb = SuperblockCtx::new(0, 0, 64);
+                    read_delta_q_lf(&mut d, &sb, mi(0, 0, 4, 4), false, &frame, 100, &mut state);
+                    for i in 0..4 {
+                        let raw = i32::from(start[i]) + (steps[i] << res);
+                        assert_eq!(i32::from(state[i]), raw.clamp(-63, 63), "seed {seed} i {i}");
+                        saw_nonzero |= steps[i] != 0;
+                        saw_clamp |= raw.abs() > 63;
+                    }
+                }
+            }
+        }
+        assert!(
+            saw_nonzero && saw_clamp,
+            "the seeds must exercise a step and the clamp"
+        );
+    }
+
+    #[test]
+    fn without_delta_lf_multi_only_the_first_component_changes() {
+        for seed in 1..=16u64 {
+            let data = noise(seed, 64);
+            let mut frame = params(true, true, false, false);
+            frame.delta_lf_res = 1;
+            let mut state = [3i16, 4, 5, 6];
+            let mut d = SymbolDecoder::new(&data).unwrap();
+            let sb = SuperblockCtx::new(0, 0, 64);
+            read_delta_q_lf(&mut d, &sb, mi(0, 0, 4, 4), false, &frame, 100, &mut state);
+            assert_eq!(state[1..], [4, 5, 6], "seed {seed}");
+        }
+    }
+
+    #[test]
+    fn delta_lf_state_is_untouched_when_no_delta_is_read() {
+        let data = noise(7, 64);
+        let sb = SuperblockCtx::new(0, 0, 64);
+        let mut frame = params(true, true, true, false);
+        frame.delta_lf_res = 2;
+        let mut state = [9i16, -9, 9, -9];
+        // not the first block of the superblock
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        read_delta_q_lf(&mut d, &sb, mi(4, 0, 4, 4), false, &frame, 100, &mut state);
+        assert_eq!(state, [9, -9, 9, -9]);
+        // delta_lf_present off
+        let frame = params(true, false, true, false);
+        let mut d = SymbolDecoder::new(&data).unwrap();
+        read_delta_q_lf(&mut d, &sb, mi(0, 0, 4, 4), false, &frame, 100, &mut state);
+        assert_eq!(state, [9, -9, 9, -9]);
     }
 }

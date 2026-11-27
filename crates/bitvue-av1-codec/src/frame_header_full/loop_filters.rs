@@ -3,30 +3,29 @@
 use super::*;
 
 const RESTORATION_TILESIZE_MAX: u32 = 256;
-/// `delta_lf_params()` (spec 5.9.14) -- real `delta_lf_present`/`delta_lf_multi` (`delta_lf_res` is
-/// consumed for bitstream position but not retained: it only scales the *decoded* per-CU
-/// `delta_lf` magnitude, never affects tile-data bit position -- same reasoning as this crate not
-/// tracking `delta_q_res` either).
+/// `delta_lf_params()` (spec 5.9.14) -> `(delta_lf_present, delta_lf_multi, delta_lf_res)`.
+/// `delta_lf_res` shifts every decoded `delta_lf` step (spec 5.11.39), so the per-block `DeltaLF`
+/// the loop filter adds to its level depends on it.
 pub(super) fn parse_delta_lf_params(
     reader: &mut BitReader,
     delta_q_present: bool,
     allow_intrabc: bool,
-) -> Result<(bool, bool)> {
+) -> Result<(bool, bool, u8)> {
     if !delta_q_present {
-        return Ok((false, false));
+        return Ok((false, false, 0));
     }
     let delta_lf_present = if !allow_intrabc {
         reader.read_bit()?
     } else {
         false
     };
-    let delta_lf_multi = if delta_lf_present {
-        reader.read_bits(2)?; // delta_lf_res
-        reader.read_bit()?
+    let (delta_lf_res, delta_lf_multi) = if delta_lf_present {
+        let res = reader.read_bits(2)? as u8;
+        (res, reader.read_bit()?)
     } else {
-        false
+        (0, false)
     };
-    Ok((delta_lf_present, delta_lf_multi))
+    Ok((delta_lf_present, delta_lf_multi, delta_lf_res))
 }
 
 /// Parse `loop_filter_params()` per AV1 spec Section 5.9.11. Unlike `skip_loop_filter_params`
@@ -252,7 +251,7 @@ mod tests {
         let mut r = BitReader::new(&data);
         assert_eq!(
             parse_delta_lf_params(&mut r, false, false).unwrap(),
-            (false, false)
+            (false, false, 0)
         );
         assert_eq!(r.position(), 0);
     }
@@ -263,7 +262,7 @@ mod tests {
         let mut r = BitReader::new(&data);
         assert_eq!(
             parse_delta_lf_params(&mut r, true, true).unwrap(),
-            (false, false)
+            (false, false, 0)
         );
         assert_eq!(r.position(), 0);
     }
@@ -276,7 +275,7 @@ mod tests {
         let mut r = BitReader::new(&data);
         assert_eq!(
             parse_delta_lf_params(&mut r, true, false).unwrap(),
-            (false, false)
+            (false, false, 0)
         );
         assert_eq!(r.position(), 1);
     }
@@ -290,7 +289,7 @@ mod tests {
             let mut r = BitReader::new(&data);
             assert_eq!(
                 parse_delta_lf_params(&mut r, true, false).unwrap(),
-                (true, multi == 1)
+                (true, multi == 1, 0b10)
             );
             assert_eq!(r.position(), 4, "multi={multi}");
         }

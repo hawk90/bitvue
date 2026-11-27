@@ -94,8 +94,6 @@ fn deblocking_to_json(frame_index: usize, d: &DeblockingData) -> Value {
             "ref_deltas": d.loop_filter.ref_deltas,
             "mode_deltas": d.loop_filter.mode_deltas,
         },
-        // The levels use DeltaLF = 0 when the frame signals per-block delta_lf (not kept by the parser).
-        "delta_lf_ignored": d.delta_lf_ignored,
         "stats": {
             "edge_segments": total,
             "filtered_segments": filtered,
@@ -210,7 +208,6 @@ mod tests {
             stats["filtered_segments"].as_u64().unwrap(),
             "every filtered segment has one of the three sizes"
         );
-        assert_eq!(result["delta_lf_ignored"], false);
     }
 
     /// Every edge of a real frame obeys what the spec derivation guarantees, key frame and inter

@@ -490,7 +490,7 @@ Places where the application differs from the reference guide or shows something
 | Player | In screenshots the decoded picture is missing (`F10 YUV` and `F4` are black, only the overlays show). It appears when WebGPU is turned off, so decoding and drawing work; the picture sits on a WebGPU canvas that screenshot capture does not include. Whether a person sees it on a real screen is not verified | #456 |
 | Filmstrip, timeline, statistics | Frames that re-show an earlier frame (2, 5, 8) are labelled `I`; they are actually P | #454 |
 | Frame information | For some frames `qp_avg` is the hidden frame's value, not the shown frame's (frames 1 and 6) | #455 |
-| `F5 Loop Filter` | Only luma edges are drawn. The levels assume `DeltaLF = 0` on a frame that signals per-block `delta_lf` (the parser does not keep it; the view says so). The filter actually applied per sample line is not shown | #457 |
+| `F5 Loop Filter` | Only luma edges are drawn. Per-block `delta_lf` is added to the level (7.14.4). The filter actually applied per sample line is not shown | #457 |
 | `HM` | Draws motion-vector magnitude instead of bit usage | #458 |
 | `HRD Buffer` | Only AV1 reports HRD data (AVC and HEVC `hrd_parameters` are not read). The AV1 fullness curve is a simulation from frame sizes, not the Annex E timing model | #587, #588 |
 | Overlays on a mode | The overlay label is drawn over the mode label and is hard to read | #451 |

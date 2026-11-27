@@ -250,6 +250,8 @@ pub struct FrameHeader {
     /// for the same reason `allow_screen_content_tools`'s doc gives.
     pub delta_lf_present: bool,
     pub delta_lf_multi: bool,
+    /// `delta_lf_res` (spec 5.9.14): each decoded `delta_lf` step is shifted left by this.
+    pub delta_lf_res: u8,
     /// `skip_mode_present` (spec 5.9.22 `skip_mode_params()`) -- gates the real per-CU
     /// `skip_mode` read (spec 5.11.5). Same basic-vs-full caveat as `reference_select`; always
     /// `false` from `parse_frame_header_basic` (matches real spec's own `skip_mode_present = 0`

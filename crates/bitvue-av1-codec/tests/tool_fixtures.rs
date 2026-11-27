@@ -275,3 +275,41 @@ fn a_stream_with_a_decoder_model_is_decoded_in_step() {
 }
 
 bitvue_test_alloc::install!();
+
+const DELTA_LF: &[u8] = include_bytes!("../../../test_data/av1_aomenc_delta_lf.ivf");
+
+/// aomenc `--deltaq-mode=1 --delta-lf-mode=1` (#591): the key frame signals `delta_lf_present` with
+/// `delta_lf_res = 1` and is `Verified`, so the `delta_lf` symbols are read in step. Blocks carry
+/// the accumulated `DeltaLF` (each step is shifted left by `res = 1`, so every value is even),
+/// `delta_lf_multi` is off (aomenc never sets it) so only component 0 is used, and frames that do
+/// not signal `delta_lf_present` keep zeros.
+#[test]
+fn delta_lf_values_are_kept_per_block() {
+    let f = frames(DELTA_LF);
+    assert_eq!(f.len(), 6);
+    assert_eq!(verified(&f).first(), Some(&0));
+
+    let key = &f[0];
+    assert!(key.parsed.delta_lf_present);
+    assert!(!key.parsed.delta_lf_multi);
+    assert_eq!(key.parsed.delta_lf_res, 1);
+    let nonzero: Vec<[i16; 4]> = key
+        .units
+        .iter()
+        .map(|u| u.delta_lf)
+        .filter(|d| *d != [0; 4])
+        .collect();
+    assert!(!nonzero.is_empty(), "the encoder signalled non-zero deltas");
+    assert!(nonzero
+        .iter()
+        .all(|d| d[0] % 2 == 0 && d[1..] == [0, 0, 0] && d[0].abs() <= 63));
+
+    for fr in f.iter().filter(|fr| !fr.parsed.delta_lf_present) {
+        assert!(fr.units.iter().all(|u| u.delta_lf == [0; 4]));
+    }
+    assert_eq!(
+        nonzero.len(),
+        67,
+        "key frame blocks with a non-zero DeltaLF"
+    );
+}

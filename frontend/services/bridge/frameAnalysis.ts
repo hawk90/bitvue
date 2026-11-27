@@ -138,8 +138,6 @@ export interface DeblockingAnalysisWireResult {
   height: number;
   edges: DeblockingEdgeWire[];
   params: DeblockingParamsWire;
-  /** The frame signals per-block `delta_lf`, which is not kept: levels use 0 for it. */
-  delta_lf_ignored: boolean;
   stats: DeblockingStatsWire;
 }
 
