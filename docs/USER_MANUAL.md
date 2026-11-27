@@ -78,7 +78,7 @@ Choose a view with the drop-down at the top right of the filmstrip (it shows `Th
 | `Thumbnails` | Frame thumbnails | Red border = I, green border = P. The `D:` and `C:` numbers are display and coding order |
 | `Frame Sizes` | A bar per frame | Taller bars cost more bits. The left axis is size (`BITRATE`), the right axis is QP. The pop-up at the top right switches `Bitrate Bar`, `Bitrate Curve`, `Avg Size`, `Min Size`, `Max Size`, `Moving Avg`, `Block Min QP` and `Block Max QP` on and off |
 | `B-Pyramid` | Reference hierarchy | Frames are dots on a line. Red = I, green = P. `Show All Refs` shows every reference |
-| `HRD Buffer` | Decoder buffer fullness | For an AV1 stream whose sequence header signals a decoder model (aomenc `--timing-info=model`) the header shows the target rate and the buffer size. AV1 signals no bit rate or buffer size: both are the limits of the stream's level, tier and profile (spec Annex A.3 and E). The fullness curve is simulated from the frame sizes, not from the signaled delays (#587). For a stream without a decoder model, and for AVC and HEVC, it shows `No HRD information in this stream.` ([Known issues](#known-issues)) |
+| `HRD Buffer` | Decoder smoothing buffer over time | Runs the AV1 decoder model (spec Annex E) for the first operating point and plots the bits in the smoothing buffer against time, the buffer size limit, and the selected frame's removal. AV1 signals no bit rate or buffer size: both are the limits of the stream's level, tier and profile (Annex A.3). Each frame's arrival and removal times come from the signaled `decoder_buffer_delay`, `encoder_buffer_delay`, `low_delay_mode_flag`, `num_units_in_decoding_tick` and every frame's `buffer_removal_time` (decoding schedule mode, aomenc `--timing-info=model`), or from when a frame buffer is free (resource availability mode: `timing_info` with an equal picture interval and no decoder model, aomenc `--timing-info=constant`). The header counts frames that break a requirement of Annex E.6 (underflow, overflow, `decoder_buffer_delay` limits, late decode or display); hover a frame for its times and violations. For a stream with no timing, and for AVC and HEVC, it shows `No HRD information in this stream.` ([Known issues](#known-issues)) |
 | `Enhanced` | GOP and scene navigation | `GOP` previous/next buttons, `SCENE` previous/next buttons and scene-change markers |
 
 ## 5. Player modes (`Mode`)
@@ -229,7 +229,7 @@ Modes in the reference guide: Coding Flow, Predictions, Transform, Reconstructio
 | Error resilience, parallelism | `--error-resilient`, `--frame-parallel` | `error_resilient_mode=1` | Not covered | No item |
 | S-frames | `--sframe-dist`, `--sframe-mode` | Not tested | Not covered | No item |
 | Bit depth, chroma | `--bit-depth`, `--input-bit-depth`, `--profile`, `--monochrome` | `high_bitdepth=1` (10-bit), `mono_chrome=1`, `seq_profile=1` with `yuv444p` (4:4:4) | Selection info | CODEC-008 done |
-| Timing, decoder model | `--timing-info` | Default is `timing_info_present_flag=0` | `HRD Buffer` view | `No HRD information` message; with `--timing-info=model` the view shows the level's rate and buffer limits |
+| Timing, decoder model | `--timing-info` | Default is `timing_info_present_flag=0` | `HRD Buffer` view | `No HRD information` message; with `--timing-info=model` (decoding schedule) or `--timing-info=constant` (resource availability) the view plots the smoothing buffer |
 | Large-scale tile, Annex B | `--large-scale-tile`, `--annexb` | Not tested | (Guide: AV1 input is IVF/WebM only) | The app opens IVF only |
 
 Decoder-side references used to check the analyzer's screens:
@@ -492,7 +492,7 @@ Places where the application differs from the reference guide or shows something
 | Frame information | For some frames `qp_avg` is the hidden frame's value, not the shown frame's (frames 1 and 6) | #455 |
 | `F5 Loop Filter` | Only luma edges are drawn. Per-block `delta_lf` is added to the level (7.14.4). The filter actually applied per sample line is not shown | #457 |
 | `HM` | Draws motion-vector magnitude instead of bit usage | #458 |
-| `HRD Buffer` | Only AV1 reports HRD data (AVC and HEVC `hrd_parameters` are not read). The AV1 fullness curve is a simulation from frame sizes, not the Annex E timing model | #587, #588 |
+| `HRD Buffer` | Only AV1 reports HRD data (AVC and HEVC `hrd_parameters` are not read). The AV1 model covers the first sequence header's first operating point; the minimum decode time and minimum presentation interval requirements (E.6.5, E.6.6), delayed random access points and spatial layer sizes are not modelled | #588 |
 | Overlays on a mode | The overlay label is drawn over the mode label and is hard to read | #451 |
 | `EFF` overlay | Draws bits per pixel instead of coding efficiency | #488 |
 | Window layout | At the default window size `Stream Tree` and `Syntax Detail` show only one or two rows | #489 |

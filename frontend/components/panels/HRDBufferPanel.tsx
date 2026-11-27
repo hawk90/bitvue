@@ -1,106 +1,98 @@
 /**
  * HRD (Hypothetical Reference Decoder) Buffer Panel - F9
  *
- * Visualizes CPB (Coded Picture Buffer) fullness over time
- * Shows buffer occupancy, overflow/underflow detection, and target bitrate
- *
- * Per parity: HRD buffer plot with occupancy graph
+ * Plots the AV1 decoder model's smoothing buffer (spec Annex E): bits in the buffer over time at
+ * the level's BitRate, the BufferSize limit, each frame's removal, and the frames that break a
+ * conformance requirement (E.6). The model is computed by the sidecar from the sequence header's
+ * decoder model, every frame's `buffer_removal_time` and the frame sizes; a stream that signals no
+ * timing has no model and the panel says so (#587).
  */
 
 import { useMemo, useRef, useEffect, useState, useCallback, memo } from "react";
-import type { FrameInfo } from "../../types/video";
+import type {
+  HrdModelFrameWire,
+  HrdModelWire,
+} from "../../services/electronBridgeService";
+import {
+  VIOLATION_LABELS,
+  countViolations,
+  formatSeconds,
+  frameOfPacket,
+  nearestFrame,
+  occupancyBefore,
+  violationsAt,
+} from "../../utils/hrdModel";
 import "./HRDBufferPanel.css";
 
 export interface HRDBufferPanelProps {
-  frames: FrameInfo[];
+  /** The decoder model run over the stream; `null` when the stream has none. */
+  model: HrdModelWire | null;
+  /** Why there is no model, when the sidecar said. */
+  unavailableReason?: string | null;
+  /** Index of the selected frame in the frame list (the IVF packet). */
   currentFrameIndex: number;
-  frameRate: number;
-  targetBitrate?: number; // in bits per second
-  bufferSize?: number; // in bytes (CPB size)
 }
 
-interface HRDState {
-  occupancy: number; // Current buffer occupancy in bytes
-  occupancyHistory: {
-    frame: number;
-    occupancy: number;
-    overflow: boolean;
-    underflow: boolean;
-  }[];
-  maxOccupancy: number;
+const MARGIN = { top: 20, right: 10, bottom: 30, left: 56 };
+const COLOR_OVERFLOW = "#ff6b6b";
+const COLOR_UNDERFLOW = "#ffd43b";
+const COLOR_OTHER = "#ff922b";
+const MODE_LABEL: Record<HrdModelWire["mode"], string> = {
+  decoding_schedule: "Decoding schedule",
+  resource_availability: "Resource availability",
+};
+
+/** The time and bit ranges of the graph: from 0 to the last removal or arrival, and from the
+ *  lowest level (below 0 after an underflow) to the BufferSize limit or the peak. */
+function graphBounds(model: HrdModelWire) {
+  let endTime = 0;
+  let minBits = 0;
+  for (const [time, bits] of model.curve) {
+    endTime = Math.max(endTime, time);
+    minBits = Math.min(minBits, bits);
+  }
+  const maxBits = Math.max(model.buffer_size_bits, model.peak_bits) * 1.1;
+  return { endTime: endTime || 1, minBits: minBits * 1.1, maxBits };
+}
+
+function violationColor(kinds: string[]): string {
+  if (kinds.includes("smoothing_buffer_overflow")) return COLOR_OVERFLOW;
+  if (kinds.includes("smoothing_buffer_underflow")) return COLOR_UNDERFLOW;
+  return COLOR_OTHER;
 }
 
 const HRDBufferPanelInternal = ({
-  frames,
+  model,
   currentFrameIndex,
-  frameRate,
-  targetBitrate,
-  bufferSize = 1000000, // Default 1MB CPB
-}: HRDBufferPanelProps & { targetBitrate: number }) => {
+}: {
+  model: HrdModelWire;
+  currentFrameIndex: number;
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [hoverData, setHoverData] = useState<{
-    frame: number;
-    occupancy: number;
-    overflow: boolean;
-    underflow: boolean;
-  } | null>(null);
+  const [hoverFrame, setHoverFrame] = useState<HrdModelFrameWire | null>(null);
 
-  // Calculate HRD buffer state for each frame
-  const hrdState = useMemo(() => {
-    const state: HRDState = {
-      occupancy: 0,
-      occupancyHistory: [],
-      maxOccupancy: 0,
-    };
+  const bounds = useMemo(() => graphBounds(model), [model]);
+  const counts = useMemo(
+    () => countViolations(model.violations),
+    [model.violations],
+  );
+  const currentFrame = useMemo(
+    () => frameOfPacket(model.frames, currentFrameIndex),
+    [model.frames, currentFrameIndex],
+  );
+  // The header "Buffer:" stat follows the selected frame: the level just before it is removed.
+  const currentBits = currentFrame
+    ? occupancyBefore(model.curve, currentFrame.removal)
+    : undefined;
 
-    let currentOccupancy = bufferSize * 0.5; // Start half full
-
-    for (let i = 0; i < frames.length; i++) {
-      const frame = frames[i];
-      if (!frame) continue;
-
-      const frameSize = frame.size || 0;
-
-      // Decoder drains at (real or estimated) target bitrate, then the frame's own bytes are
-      // added -- a frame bigger than the average causes real net buildup, a smaller one real
-      // net drain, unlike the old same-as-frameSize fallback (see doc above).
-      const drainPerFrame = targetBitrate
-        ? targetBitrate / frameRate / 8 // bytes drained per frame interval
-        : frameSize; // only reachable with zero frames loaded
-      currentOccupancy = Math.max(0, currentOccupancy - drainPerFrame);
-      currentOccupancy = Math.min(bufferSize, currentOccupancy + frameSize);
-
-      // Check overflow
-      const overflow = currentOccupancy > bufferSize;
-      // Check underflow (buffer less than 10% full)
-      const underflow = currentOccupancy < bufferSize * 0.1;
-
-      state.occupancyHistory.push({
-        frame: i,
-        occupancy: currentOccupancy,
-        overflow,
-        underflow,
-      });
-
-      state.maxOccupancy = Math.max(state.maxOccupancy, currentOccupancy);
-    }
-
-    state.occupancy = currentOccupancy;
-    return state;
-  }, [frames, bufferSize, targetBitrate, frameRate]);
-
-  // Draw HRD buffer graph — wrapped in useCallback so the ResizeObserver can
-  // call it directly without re-subscribing on every render.
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container || hrdState.occupancyHistory.length === 0) return;
-
+    if (!canvas || !container) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Set canvas size
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
     canvas.width = rect.width * dpr;
@@ -109,228 +101,124 @@ const HRDBufferPanelInternal = ({
     canvas.style.height = `${rect.height}px`;
     ctx.scale(dpr, dpr);
 
-    const width = rect.width;
-    const height = rect.height;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
-
-    // Draw background
     ctx.fillStyle = "#1e1e1e";
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, rect.width, rect.height);
 
-    // Graph margins
-    const margin = { top: 20, right: 10, bottom: 30, left: 50 };
-    const graphWidth = width - margin.left - margin.right;
-    const graphHeight = height - margin.top - margin.bottom;
+    const graphWidth = rect.width - MARGIN.left - MARGIN.right;
+    const graphHeight = rect.height - MARGIN.top - MARGIN.bottom;
+    const { endTime, minBits, maxBits } = bounds;
+    const x = (time: number) => MARGIN.left + (time / endTime) * graphWidth;
+    const y = (bits: number) =>
+      MARGIN.top +
+      graphHeight -
+      ((bits - minBits) / (maxBits - minBits)) * graphHeight;
 
-    // All three reference lines below use the same y(value) convention as the occupancy curve
-    // itself (further down this function) and its overflow/underflow markers: bigger value ->
-    // smaller y -> higher on screen (`margin.top + graphHeight - (value / maxOccupancy) *
-    // graphHeight`). The two fixed-percentage lines previously used the opposite-signed
-    // `margin.top + (value / maxOccupancy) * graphHeight` -- a real, confirmed-via-screenshot bug
-    // (Buffer Limit rendered at the very *bottom*, Underflow at the very *top*, both backwards)
-    // found by comparing against the occupancy curve's own (correct) formula, not by assumption.
-    const maxOccupancy = Math.max(bufferSize, hrdState.maxOccupancy * 1.1);
-    const yForOccupancy = (value: number) =>
-      margin.top + graphHeight - (value / maxOccupancy) * graphHeight;
-
-    // Draw buffer limit line (100%)
-    ctx.strokeStyle = "#ff6b6b";
+    // BufferSize: the smoothing buffer must never hold more
+    ctx.strokeStyle = COLOR_OVERFLOW;
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.moveTo(margin.left, yForOccupancy(bufferSize));
-    ctx.lineTo(margin.left + graphWidth, yForOccupancy(bufferSize));
+    ctx.moveTo(MARGIN.left, y(model.buffer_size_bits));
+    ctx.lineTo(MARGIN.left + graphWidth, y(model.buffer_size_bits));
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw underflow warning line (10%)
-    ctx.strokeStyle = "#ffd43b";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
+    // empty buffer: a removal that takes the level below it is an underflow
+    ctx.strokeStyle = "#555";
     ctx.beginPath();
-    ctx.moveTo(margin.left, yForOccupancy(bufferSize * 0.1));
-    ctx.lineTo(margin.left + graphWidth, yForOccupancy(bufferSize * 0.1));
+    ctx.moveTo(MARGIN.left, y(0));
+    ctx.lineTo(MARGIN.left + graphWidth, y(0));
     ctx.stroke();
-    ctx.setLineDash([]);
 
-    // Draw target/estimated-bitrate reference line: the occupancy simulation above starts at
-    // `bufferSize * 0.5` and, every frame, subtracts `drainPerFrame` (derived from
-    // `targetBitrate`) then adds that frame's real byte size. For the estimated case,
-    // `targetBitrate` is defined as exactly `avgBytesPerFrame * frameRate * 8`, so
-    // `drainPerFrame === avgBytesPerFrame` -- a stream whose every frame matched that average
-    // exactly would drain and add the same amount every time, leaving occupancy flat at its
-    // starting point forever. So "the buffer level implied by the target rate" IS
-    // `bufferSize * 0.5`, confirmed empirically (not just derived): the real occupancy curve for
-    // this fixture already hovers almost exactly there, since per-frame variance mostly averages
-    // out over 250 frames. (Previous formula mixed bits and bytes with no conversion and an
-    // unexplained `* 5` multiplier, rendering this line collided with the buffer-limit line.)
-    if (targetBitrate) {
-      const targetY = yForOccupancy(bufferSize * 0.5);
-      ctx.strokeStyle = "#51cf66";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([2, 2]);
-      ctx.beginPath();
-      ctx.moveTo(margin.left, targetY);
-      ctx.lineTo(margin.left + graphWidth, targetY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // Draw occupancy line
+    // occupancy
     ctx.strokeStyle = "#339af0";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-
-    const history = hrdState.occupancyHistory;
-    const stepX = graphWidth / Math.max(1, history.length - 1);
-
-    history.forEach((point, i) => {
-      const x = margin.left + i * stepX;
-      const y =
-        margin.top +
-        graphHeight -
-        (point.occupancy / maxOccupancy) * graphHeight;
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
+    model.curve.forEach(([time, bits], i) => {
+      if (i === 0) ctx.moveTo(x(time), y(bits));
+      else ctx.lineTo(x(time), y(bits));
     });
-
     ctx.stroke();
 
-    // Draw overflow/underflow markers
-    history.forEach((point, i) => {
-      const x = margin.left + i * stepX;
-      const y =
-        margin.top +
-        graphHeight -
-        (point.occupancy / maxOccupancy) * graphHeight;
+    // frames that break a requirement, at the level just before their removal
+    for (const frame of model.frames) {
+      const kinds = violationsAt(model, frame.dfg).map((v) => v.kind);
+      if (kinds.length === 0) continue;
+      ctx.fillStyle = violationColor(kinds);
+      ctx.beginPath();
+      ctx.arc(
+        x(frame.removal),
+        y(occupancyBefore(model.curve, frame.removal)),
+        4,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
 
-      if (point.overflow) {
-        ctx.fillStyle = "rgba(255, 107, 107, 0.8)";
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    // selected frame's removal
+    if (currentFrame) {
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x(currentFrame.removal), MARGIN.top);
+      ctx.lineTo(x(currentFrame.removal), MARGIN.top + graphHeight);
+      ctx.stroke();
+    }
 
-      if (point.underflow) {
-        ctx.fillStyle = "rgba(255, 212, 59, 0.8)";
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-
-    // Draw current frame marker
-    const currentX = margin.left + currentFrameIndex * stepX;
-
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(currentX, margin.top);
-    ctx.lineTo(currentX, margin.top + graphHeight);
-    ctx.stroke();
-
-    // Draw Y-axis labels
+    // axes: kbit on Y, seconds on X
     ctx.fillStyle = "#888";
     ctx.font = "10px monospace";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-
-    // This panel shares the filmstrip's fixed-height strip with the other view modes, so
-    // `graphHeight` here is typically small (tens of pixels once header/legend/margins are
-    // subtracted) -- a fixed 5-label set (0/25/50/75/100%) doesn't leave enough room for 10px
-    // text between adjacent labels and visibly overlaps into an illegible stack. Scale the label
-    // count to how much vertical room is actually available instead.
-    const minYLabelSpacingPx = 14;
-    const maxYLabelCount = Math.max(
-      2,
-      Math.floor(graphHeight / minYLabelSpacingPx) + 1,
+    const yLabelCount = Math.min(
+      5,
+      Math.max(2, Math.floor(graphHeight / 14) + 1),
     );
-    const yLabelCount = Math.min(5, maxYLabelCount);
-    const yLabels = Array.from(
-      { length: yLabelCount },
-      (_, i) => (100 * i) / (yLabelCount - 1),
-    );
-    yLabels.forEach((percent) => {
-      const y = margin.top + graphHeight - (percent / 100) * graphHeight;
-      const value = Math.round((bufferSize * percent) / 100 / 1024);
-      ctx.fillText(`${value}KB`, margin.left - 8, y);
-    });
-
-    // Draw X-axis labels (frames)
+    for (let i = 0; i < yLabelCount; i++) {
+      const bits = minBits + ((maxBits - minBits) * i) / (yLabelCount - 1);
+      ctx.fillText(`${Math.round(bits / 1000)}kb`, MARGIN.left - 8, y(bits));
+    }
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-
-    const xSteps = 5;
-    const xStep = Math.ceil(history.length / xSteps);
-    for (let i = 0; i < history.length; i += xStep) {
-      const x = margin.left + i * stepX;
-      ctx.fillText(`${history[i].frame}`, x, margin.top + graphHeight + 8);
+    for (let i = 0; i <= 5; i++) {
+      const time = (endTime * i) / 5;
+      ctx.fillText(
+        `${time.toFixed(2)}s`,
+        x(time),
+        MARGIN.top + graphHeight + 8,
+      );
     }
-  }, [hrdState, currentFrameIndex, bufferSize, targetBitrate]);
+  }, [model, bounds, currentFrame]);
 
-  // Redraw when data changes
   useEffect(() => {
     drawCanvas();
   }, [drawCanvas]);
 
-  // Redraw canvas on container resize
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const observer = new ResizeObserver(() => drawCanvas());
     observer.observe(container);
     return () => observer.disconnect();
   }, [drawCanvas]);
 
-  // Handle mouse move for tooltip
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
-
-      const margin = { top: 20, right: 10, bottom: 30, left: 50 };
-      const graphWidth = rect.width - margin.left - margin.right;
-
-      if (x < margin.left || x > margin.left + graphWidth) {
-        setHoverData(null);
+      const graphWidth = rect.width - MARGIN.left - MARGIN.right;
+      if (x < MARGIN.left || x > MARGIN.left + graphWidth) {
+        setHoverFrame(null);
         return;
       }
-
-      const history = hrdState.occupancyHistory;
-      const stepX = graphWidth / Math.max(1, history.length - 1);
-      const frameIndex = Math.round((x - margin.left) / stepX);
-
-      if (frameIndex >= 0 && frameIndex < history.length) {
-        setHoverData(history[frameIndex]);
-      }
+      const time = ((x - MARGIN.left) / graphWidth) * bounds.endTime;
+      setHoverFrame(nearestFrame(model.frames, time) ?? null);
     },
-    [hrdState],
+    [model.frames, bounds.endTime],
   );
-
-  const overflowCount = hrdState.occupancyHistory.filter(
-    (p) => p.overflow,
-  ).length;
-  const underflowCount = hrdState.occupancyHistory.filter(
-    (p) => p.underflow,
-  ).length;
-  // The header "Buffer:" stat must track the currently viewed frame, not the stream's last frame
-  // -- `hrdState.occupancy` is left over from the end of the simulation loop regardless of
-  // `currentFrameIndex`, which previously made this stat show the same (coincidentally
-  // math-guaranteed-to-return-to-baseline) value no matter which frame was selected.
-  const currentOccupancyAtFrame =
-    hrdState.occupancyHistory[currentFrameIndex]?.occupancy ??
-    hrdState.occupancy;
-  const currentPercent = (currentOccupancyAtFrame / bufferSize) * 100;
 
   return (
     <div className="hrd-buffer-panel">
@@ -338,27 +226,42 @@ const HRDBufferPanelInternal = ({
         <h3>HRD Buffer</h3>
         <div className="hrd-stats">
           <span className="hrd-stat">
-            <span className="stat-label">Buffer:</span>
-            <span className="stat-value">{currentPercent.toFixed(1)}%</span>
+            <span className="stat-label">Mode:</span>
+            <span className="stat-value">
+              {MODE_LABEL[model.mode]}
+              {model.low_delay_mode ? " (low delay)" : ""}
+            </span>
           </span>
-          {targetBitrate !== undefined && (
+          {currentBits !== undefined && (
             <span className="hrd-stat">
-              <span className="stat-label">Target:</span>
+              <span className="stat-label">Buffer:</span>
               <span className="stat-value">
-                {(targetBitrate / 1000000).toFixed(2)} Mbps
+                {((currentBits / model.buffer_size_bits) * 100).toFixed(1)}%
               </span>
             </span>
           )}
-          {overflowCount > 0 && (
+          <span className="hrd-stat">
+            <span className="stat-label">BitRate:</span>
+            <span className="stat-value">
+              {(model.bit_rate_bps / 1_000_000).toFixed(2)} Mbps
+            </span>
+          </span>
+          {counts.overflow > 0 && (
             <span className="hrd-stat overflow">
               <span className="stat-label">Overflow:</span>
-              <span className="stat-value">{overflowCount}</span>
+              <span className="stat-value">{counts.overflow}</span>
             </span>
           )}
-          {underflowCount > 0 && (
+          {counts.underflow > 0 && (
             <span className="hrd-stat underflow">
               <span className="stat-label">Underflow:</span>
-              <span className="stat-value">{underflowCount}</span>
+              <span className="stat-value">{counts.underflow}</span>
+            </span>
+          )}
+          {counts.other > 0 && (
+            <span className="hrd-stat violation">
+              <span className="stat-label">Other violations:</span>
+              <span className="stat-value">{counts.other}</span>
             </span>
           )}
         </div>
@@ -368,46 +271,77 @@ const HRDBufferPanelInternal = ({
         <canvas
           ref={canvasRef}
           onMouseMove={handleMouseMove}
-          onMouseLeave={() => {
-            setHoverData(null);
-          }}
+          onMouseLeave={() => setHoverFrame(null)}
         />
       </div>
 
-      {hoverData && (
+      {hoverFrame && (
         <div className="hrd-tooltip">
           <div className="tooltip-row">
             <span className="tooltip-label">Frame:</span>
-            <span className="tooltip-value">{hoverData.frame}</span>
+            <span className="tooltip-value">
+              {hoverFrame.packet} ({hoverFrame.frame_type})
+            </span>
+          </div>
+          <div className="tooltip-row">
+            <span className="tooltip-label">Size:</span>
+            <span className="tooltip-value">
+              {(hoverFrame.coded_bits / 8 / 1024).toFixed(1)} KB
+            </span>
+          </div>
+          <div className="tooltip-row">
+            <span className="tooltip-label">Arrives:</span>
+            <span className="tooltip-value">
+              {formatSeconds(hoverFrame.first_bit_arrival)} to{" "}
+              {formatSeconds(hoverFrame.last_bit_arrival)}
+            </span>
+          </div>
+          <div className="tooltip-row">
+            <span className="tooltip-label">Removed:</span>
+            <span className="tooltip-value">
+              {formatSeconds(hoverFrame.removal)}
+              {hoverFrame.removal > hoverFrame.scheduled_removal
+                ? ` (due ${formatSeconds(hoverFrame.scheduled_removal)})`
+                : ""}
+            </span>
           </div>
           <div className="tooltip-row">
             <span className="tooltip-label">Occupancy:</span>
             <span className="tooltip-value">
-              {(hoverData.occupancy / 1024).toFixed(1)} KB (
-              {((hoverData.occupancy / bufferSize) * 100).toFixed(1)}%)
+              {(
+                occupancyBefore(model.curve, hoverFrame.removal) / 1000
+              ).toFixed(1)}{" "}
+              kb (
+              {(
+                (occupancyBefore(model.curve, hoverFrame.removal) /
+                  model.buffer_size_bits) *
+                100
+              ).toFixed(1)}
+              %)
             </span>
           </div>
-          {hoverData.overflow && (
-            <div className="tooltip-row overflow">
-              <span className="tooltip-label">⚠ Overflow</span>
+          {violationsAt(model, hoverFrame.dfg).map((v) => (
+            <div key={v.kind} className="tooltip-row violation">
+              <span className="tooltip-label">
+                ⚠ {VIOLATION_LABELS[v.kind]}
+              </span>
             </div>
-          )}
-          {hoverData.underflow && (
-            <div className="tooltip-row underflow">
-              <span className="tooltip-label">⚠ Underflow</span>
-            </div>
-          )}
+          ))}
         </div>
       )}
+
+      {model.violations
+        .filter((v) => v.dfg === null)
+        .map((v) => (
+          <div key={v.kind} className="hrd-stream-violation" role="alert">
+            ⚠ {VIOLATION_LABELS[v.kind]}
+          </div>
+        ))}
 
       <div className="hrd-legend">
         <div className="legend-item">
           <span className="legend-color line-buffer"></span>
-          <span className="legend-label">Buffer Limit</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-color line-target"></span>
-          <span className="legend-label">Target</span>
+          <span className="legend-label">BufferSize</span>
         </div>
         <div className="legend-item">
           <span className="legend-color dot-overflow"></span>
@@ -417,18 +351,24 @@ const HRDBufferPanelInternal = ({
           <span className="legend-color dot-underflow"></span>
           <span className="legend-label">Underflow</span>
         </div>
+        <div className="legend-item">
+          <span className="legend-color dot-violation"></span>
+          <span className="legend-label">Other violation</span>
+        </div>
       </div>
     </div>
   );
 };
 
-// HRD parameters (AV1 decoder_model_info / operating_parameters_info, AVC/HEVC hrd_parameters)
-// aren't parsed into anything the UI receives yet, so no real caller passes `targetBitrate`.
-// Simulating from an average-bitrate guess drew plausible-looking numbers the stream never
-// signaled (#461); without signaled parameters this view shows "no HRD info" instead, matching
-// the reference analyzer (HRD view greyed out when the stream has no HRD parameters).
-const HRDBufferPanelGate = (props: HRDBufferPanelProps) => {
-  if (props.targetBitrate === undefined) {
+// A stream with no decoder model the view can run (other codecs, no timing_info, an undefined
+// level) has nothing signaled to show: the view says so instead of drawing numbers the stream
+// never gave (#461), matching the reference analyzer's greyed-out HRD view.
+const HRDBufferPanelGate = ({
+  model,
+  unavailableReason,
+  currentFrameIndex,
+}: HRDBufferPanelProps) => {
+  if (!model) {
     return (
       <div className="hrd-buffer-panel hrd-unavailable" role="status">
         <div className="hrd-header">
@@ -437,11 +377,17 @@ const HRDBufferPanelGate = (props: HRDBufferPanelProps) => {
         <p className="hrd-unavailable-message">
           No HRD information in this stream.
         </p>
+        {unavailableReason && (
+          <p className="hrd-unavailable-reason">{unavailableReason}</p>
+        )}
       </div>
     );
   }
   return (
-    <HRDBufferPanelInternal {...props} targetBitrate={props.targetBitrate} />
+    <HRDBufferPanelInternal
+      model={model}
+      currentFrameIndex={currentFrameIndex}
+    />
   );
 };
 

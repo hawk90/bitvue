@@ -244,9 +244,65 @@ export interface HrdOperatingPointWire {
   } | null;
 }
 
+/** One decodable frame group (a decoded frame) of the decoder model run (spec Annex E.4); times in
+ *  seconds. */
+export interface HrdModelFrameWire {
+  dfg: number;
+  /** The IVF packet the frame is in -- the index of the frame list. */
+  packet: number;
+  frame_type: string;
+  show_frame: boolean;
+  coded_bits: number;
+  buffer_removal_time: number | null;
+  frame_presentation_time: number | null;
+  first_bit_arrival: number;
+  last_bit_arrival: number;
+  scheduled_removal: number;
+  removal: number;
+}
+
+export type HrdViolationKind =
+  | "smoothing_buffer_underflow"
+  | "smoothing_buffer_overflow"
+  | "decoder_buffer_delay_consistency"
+  | "decoder_buffer_delay_level"
+  | "decode_buffer_available_late"
+  | "decode_frame_buf_unavailable"
+  | "decode_existing_frame_buf_empty"
+  | "display_frame_late";
+
+export interface HrdViolationWire {
+  kind: HrdViolationKind;
+  /** The decodable frame group it is found at; `null` for a stream-wide requirement or a
+   *  `show_existing_frame`. */
+  dfg: number | null;
+  packet: number | null;
+}
+
+/** The decoder model (spec Annex E) run over the whole stream for the first operating point. */
+export interface HrdModelWire {
+  mode: "decoding_schedule" | "resource_availability";
+  bit_rate_bps: number;
+  buffer_size_bits: number;
+  decoder_buffer_delay: number;
+  encoder_buffer_delay: number;
+  low_delay_mode: boolean;
+  /** `DecCT` in seconds; decoding schedule mode only. */
+  dec_ct_seconds: number | null;
+  peak_bits: number;
+  frames: HrdModelFrameWire[];
+  /** `[seconds, bits]` breakpoints of the smoothing buffer's piecewise linear occupancy; a
+   *  removal is two points at one time (the level before and after it). */
+  curve: [number, number][];
+  violations: HrdViolationWire[];
+}
+
 export interface HrdInfoWireResult {
-  /** The first operating point has a decoder model: the stream signals something to show. */
+  /** The decoder model ran: the stream has timing the HRD view can show. */
   present: boolean;
+  /** The decoder model, `null` when the stream signals none (see `model_unavailable`). */
+  model: HrdModelWire | null;
+  model_unavailable: string | null;
   profile: string;
   /** From `timing_info` with an equal picture interval; `null` for a variable display rate. */
   frame_rate: number | null;
