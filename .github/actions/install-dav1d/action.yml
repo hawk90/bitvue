@@ -14,7 +14,17 @@ runs:
     - name: Install dav1d (macOS)
       if: runner.os == 'macOS'
       shell: bash
-      run: brew install dav1d
+      run: |
+        brew install dav1d
+        # pkg-config reports the versioned keg (`Cellar/dav1d/<version>/lib`), and `dav1d-sys`
+        # bakes that into its cached build output; when the runner image ships another dav1d the
+        # cached path is gone and linking fails with `library 'dav1d' not found` (#594). Point
+        # system-deps at Homebrew's version-independent `opt/dav1d` link instead.
+        {
+          echo "SYSTEM_DEPS_DAV1D_NO_PKG_CONFIG=1"
+          echo "SYSTEM_DEPS_DAV1D_LIB=dav1d"
+          echo "SYSTEM_DEPS_DAV1D_SEARCH_NATIVE=$(brew --prefix dav1d)/lib"
+        } >> "$GITHUB_ENV"
 
     # windows-latest ships vcpkg at C:\vcpkg; the cache key is bumped manually (v1) if the port
     # set below changes.
