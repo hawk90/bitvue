@@ -4,24 +4,16 @@
  * from the rest of App.tsx's menu-event wiring.
  */
 
-import { useEffect } from "react";
+import { useWindowEventMap } from "./useWindowEvent";
 
 export function useLayoutMenuEvents(
   saveLayout: () => void,
   loadLayout: () => void,
   resetLayout: () => void,
 ): void {
-  useEffect(() => {
-    const handleSaveLayout = () => saveLayout();
-    const handleLoadLayout = () => loadLayout();
-    const handleResetLayout = () => resetLayout();
-    window.addEventListener("menu-save-layout", handleSaveLayout);
-    window.addEventListener("menu-load-layout", handleLoadLayout);
-    window.addEventListener("menu-reset-layout", handleResetLayout);
-    return () => {
-      window.removeEventListener("menu-save-layout", handleSaveLayout);
-      window.removeEventListener("menu-load-layout", handleLoadLayout);
-      window.removeEventListener("menu-reset-layout", handleResetLayout);
-    };
-  }, [saveLayout, loadLayout, resetLayout]);
+  useWindowEventMap({
+    "menu-save-layout": () => saveLayout(),
+    "menu-load-layout": () => loadLayout(),
+    "menu-reset-layout": () => resetLayout(),
+  });
 }

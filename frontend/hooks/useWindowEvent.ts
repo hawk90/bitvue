@@ -89,4 +89,35 @@ export function useWindowEvents<K extends keyof WindowEventMap>(
   }, [events, options]);
 }
 
+/**
+ * Subscribe to a table of window events by arbitrary name (e.g. the `menu-*` CustomEvents).
+ *
+ * Unlike `useWindowEvents` the names are plain strings and the table may be a fresh object each
+ * render: listeners are (re)registered only when the set of names changes, and each one calls the
+ * latest handler for its name via a ref (so no stale closures and no re-subscribe per render).
+ * Cleanup removes every listener it added.
+ */
+export function useWindowEventMap(
+  handlers: Readonly<Record<string, (event: Event) => void>>,
+): void {
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+  const namesKey = Object.keys(handlers).join("\n");
+
+  useEffect(() => {
+    const added: Array<[string, EventListener]> = [];
+    for (const name of namesKey === "" ? [] : namesKey.split("\n")) {
+      const listener: EventListener = (event) =>
+        handlersRef.current[name]?.(event);
+      window.addEventListener(name, listener);
+      added.push([name, listener]);
+    }
+    return () => {
+      for (const [name, listener] of added) {
+        window.removeEventListener(name, listener);
+      }
+    };
+  }, [namesKey]);
+}
+
 export default useWindowEvent;
