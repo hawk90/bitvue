@@ -132,19 +132,19 @@
 
 /* Type-colored border (I=red, P=green, B=blue) */
 .filmstrip-frame.frame-i .frame-thumbnail-wrapper {
-  border: 2px solid var(--frame-i);
+  border: 2px solid var(--frame-color);
 }
 
 .filmstrip-frame.frame-p .frame-thumbnail-wrapper {
-  border: 2px solid var(--frame-p);
+  border: 2px solid var(--frame-color);
 }
 
 .filmstrip-frame.frame-b .frame-thumbnail-wrapper {
-  border: 2px solid var(--frame-b);
+  border: 2px solid var(--frame-color);
 }
 
 .filmstrip-frame.frame-switch .frame-thumbnail-wrapper {
-  border: 2px solid var(--frame-switch);
+  border: 2px solid var(--frame-color);
 }
 
 /* Thumbnail background */

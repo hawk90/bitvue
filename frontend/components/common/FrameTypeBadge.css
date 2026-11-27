@@ -13,24 +13,24 @@
 
 .frame-type-i {
   background: rgb(208 64 64 / 20%);
-  color: var(--frame-i);
+  color: var(--frame-color);
   border: 1px solid rgb(208 64 64 / 30%);
 }
 
 .frame-type-p {
   background: rgb(80 192 80 / 20%);
-  color: var(--frame-p);
+  color: var(--frame-color);
   border: 1px solid rgb(80 192 80 / 30%);
 }
 
 .frame-type-b {
   background: rgb(80 144 208 / 20%);
-  color: var(--frame-b);
+  color: var(--frame-color);
   border: 1px solid rgb(80 144 208 / 30%);
 }
 
 .frame-type-switch {
   background: rgb(212 167 23 / 20%);
-  color: var(--frame-switch);
+  color: var(--frame-color);
   border: 1px solid rgb(212 167 23 / 30%);
 }
