@@ -1,7 +1,7 @@
 #!/bin/bash
 # Bitvue Development Script
 # Starts the Electron dev shell (spawns bitvue-sidecar, loads the renderer).
-# See docs/DEVELOPMENT_PHASES.md for the Tauri->Electron migration; src-tauri retired 2026-08-08.
+# Architecture: see docs/DEVELOPMENT_PHASES.md.
 
 echo "🚀 Starting Bitvue development environment..."
 

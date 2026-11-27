@@ -24,7 +24,7 @@ export default defineConfig({
     css: true,
   },
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
+  // Keep the terminal output visible alongside the Electron dev window's logs.
   clearScreen: false,
   server: {
     port: 5173,
@@ -37,10 +37,6 @@ export default defineConfig({
         searchForWorkspaceRoot(process.cwd()),
         path.resolve(__dirname, "../bitvue-desktop/electron/menuEvents.ts"),
       ],
-    },
-    watch: {
-      // Tell vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
     },
   },
 });
