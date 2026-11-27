@@ -108,13 +108,13 @@ pub(super) fn read_delta_q_lf(
         } else {
             1
         };
-        for i in 0..n_lfs {
+        for (i, slot) in delta_lf.iter_mut().enumerate().take(n_lfs) {
             let cdf_index = if frame.delta_lf_multi { i + 1 } else { 0 };
             match decoder.read_delta_lf(cdf_index) {
                 // Spec 5.11.39: DeltaLF[i] = Clip3(-MAX_LOOP_FILTER, MAX_LOOP_FILTER,
                 // DeltaLF[i] + (reducedDeltaLfLevel << delta_lf_res)).
                 Ok(step) => {
-                    delta_lf[i] = (i32::from(delta_lf[i]) + (i32::from(step) << frame.delta_lf_res))
+                    *slot = (i32::from(*slot) + (i32::from(step) << frame.delta_lf_res))
                         .clamp(-MAX_LOOP_FILTER, MAX_LOOP_FILTER)
                         as i16;
                 }
