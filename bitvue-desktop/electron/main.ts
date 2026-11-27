@@ -11,8 +11,6 @@
  * Electron app that a renderer can talk to.
  *
  * Known simplifications (prototype proving the architecture, not production-hardened):
- *  - `sandbox: false` on the preload's `webPreferences` — sidesteps Electron's
- *    sandboxed-preload ESM/CommonJS restrictions for now. Revisit before shipping.
  *  - No input validation on the IPC handler params beyond what the sidecar itself rejects.
  *  - Single global `SidecarClient` instance, no multi-window/multi-stream-session story yet.
  */
@@ -221,7 +219,9 @@ function createWindow(): BrowserWindow {
       preload: path.join(here, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false, // see module doc — simplification, revisit before shipping
+      // preload.cjs only requires "electron" (contextBridge/ipcRenderer), which a sandboxed
+      // preload may use; keep it free of fs/path/other Node modules.
+      sandbox: true,
       offscreen: process.env.BITVUE_ELECTRON_OFFSCREEN === "1",
     },
   });
