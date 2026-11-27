@@ -8,6 +8,14 @@
  */
 
 import { memo, useEffect, useMemo, useState } from "react";
+import { useBridgeQuery } from "../../../hooks/useBridgeQuery";
+import {
+  deblockingAnalysisFromWire,
+  type DeblockingAnalysis,
+  type DeblockingBoundaryEdge,
+  type DeblockingFilterParams,
+  type DeblockingFilterStats,
+} from "../../../services/bridge/frameAnalysis";
 import type { FrameInfo } from "../../../types/video";
 import type { YUVFrame } from "../../../types/yuv";
 import { Colorspace } from "../../../types/yuv";
@@ -64,27 +72,8 @@ export const FILTER_SIZE_COLORS: Record<FilterSize, string> = {
 };
 export const UNFILTERED_EDGE_COLOR = "#e03131";
 
-interface BoundaryEdge {
-  x: number;
-  y: number;
-  length: number;
-  orientation: "vertical" | "horizontal";
-  /** Filter level 0-63 */
-  level: number;
-  filtered: boolean;
-  /** Largest filter the edge allows, in samples. */
-  filterSize: FilterSize;
-}
-
-/** Real AV1 loop_filter_params() fields (spec 5.9.11) -- level[0]/[1] are luma
- *  vertical/horizontal edges, level[2]/[3] are U/V (only set when num_planes > 1). */
-interface DeblockingParams {
-  level: [number, number, number, number];
-  sharpness: number;
-  deltaEnabled: boolean;
-  refDeltas: number[];
-  modeDeltas: number[];
-}
+type BoundaryEdge = DeblockingBoundaryEdge;
+type DeblockingParams = DeblockingFilterParams;
 
 const DEFAULT_PARAMS: DeblockingParams = {
   level: [0, 0, 0, 0],
@@ -93,6 +82,17 @@ const DEFAULT_PARAMS: DeblockingParams = {
   refDeltas: [],
   modeDeltas: [],
 };
+
+const EMPTY_STATS: DeblockingFilterStats = {
+  edgeSegments: 0,
+  filteredSegments: 0,
+  filtered16: 0,
+  filtered8: 0,
+  filtered4: 0,
+  unfilteredSegments: 0,
+};
+
+const NO_EDGES: BoundaryEdge[] = [];
 
 export const DeblockingView = memo(function DeblockingView({
   frame,
@@ -117,69 +117,31 @@ export const DeblockingView = memo(function DeblockingView({
   // same case-sensitivity gap as useAv1Features.ts's `activeCodec === "AV1"` bug, just lower
   // impact (one explanatory paragraph silently never showing, not a whole missing overlay).
   const normalizedCodec = codec.toUpperCase();
-  const [boundaries, setBoundaries] = useState<BoundaryEdge[]>([]);
-  const [params, setParams] = useState<DeblockingParams>(DEFAULT_PARAMS);
-  const [stats, setStats] = useState({
-    edgeSegments: 0,
-    filteredSegments: 0,
-    filtered16: 0,
-    filtered8: 0,
-    filtered4: 0,
-    unfilteredSegments: 0,
-  });
-
-  useEffect(() => {
-    if (!frame) {
-      setBoundaries([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    getDeblockingAnalysis(frame.frame_index)
-      .then((data) => {
-        if (cancelled) return;
-        setBoundaries(
-          data.edges.map((e) => ({
-            x: e.x,
-            y: e.y,
-            length: e.length,
-            orientation: e.orientation,
-            level: e.level,
-            filtered: e.filtered,
-            filterSize: e.filter_size,
-          })),
-        );
-        setParams({
-          level: data.params.level,
-          sharpness: data.params.sharpness,
-          deltaEnabled: data.params.delta_enabled,
-          refDeltas: data.params.ref_deltas,
-          modeDeltas: data.params.mode_deltas,
-        });
-        setStats({
-          edgeSegments: data.stats.edge_segments,
-          filteredSegments: data.stats.filtered_segments,
-          filtered16: data.stats.filtered_16,
-          filtered8: data.stats.filtered_8,
-          filtered4: data.stats.filtered_4,
-          unfilteredSegments: data.stats.unfiltered_segments,
-        });
-      })
-      .catch((err) => {
-        if (cancelled) return;
+  const { data } = useBridgeQuery(
+    async () =>
+      deblockingAnalysisFromWire(
+        await getDeblockingAnalysis(frame!.frame_index),
+      ),
+    [frame],
+    {
+      enabled: frame !== null,
+      onError: (err) =>
         logger.warn(
           "Failed to fetch deblocking analysis for frame",
-          frame.frame_index,
+          frame?.frame_index,
           err,
-        );
-        setBoundaries([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [frame]);
+        ),
+    },
+  );
+  const boundaries = data?.edges ?? NO_EDGES;
+  // Only the edge list is cleared when there is no frame or a request fails; the parameters and
+  // statistics keep the last successful answer (this view's behavior before useBridgeQuery).
+  const [{ params, stats }, setLastGood] = useState<
+    Pick<DeblockingAnalysis, "params" | "stats">
+  >({ params: DEFAULT_PARAMS, stats: EMPTY_STATS });
+  useEffect(() => {
+    if (data) setLastGood({ params: data.params, stats: data.stats });
+  }, [data]);
 
   const getEdgeColor = (edge: BoundaryEdge) =>
     edge.filtered ? FILTER_SIZE_COLORS[edge.filterSize] : UNFILTERED_EDGE_COLOR;

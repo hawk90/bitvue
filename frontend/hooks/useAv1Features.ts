@@ -9,7 +9,7 @@
  *   2. The current visualization mode requires AV1 feature data
  */
 
-import { useState, useEffect } from "react";
+import { useBridgeQuery } from "./useBridgeQuery";
 import type { Av1FeaturesData } from "../components/panels/OverlayRenderer/types";
 import {
   getAv1Features as bridgeGetAv1Features,
@@ -86,9 +86,6 @@ export function useAv1Features(
   activeCodec: string | null,
   currentMode: string,
 ): { av1Features: Av1FeaturesData | null; loading: boolean } {
-  const [av1Features, setAv1Features] = useState<Av1FeaturesData | null>(null);
-  const [loading, setLoading] = useState(false);
-
   // `activeCodec` comes straight from the sidecar's `get_stream_info` (real value is lowercase
   // "av1", not "AV1") -- codecModeRegistry.ts already normalizes via toUpperCase() before
   // comparing; this needs the same normalization, or shouldFetch is always false and this hook's
@@ -98,43 +95,15 @@ export function useAv1Features(
   const shouldFetch =
     activeCodec?.toUpperCase() === "AV1" && AV1_FEATURE_MODES.has(currentMode);
 
-  useEffect(() => {
-    if (!shouldFetch) {
-      setAv1Features(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const fetchFeatures = async () => {
-      setLoading(true);
-      try {
-        const data = await bridgeGetAv1Features(frameIndex);
-        if (!cancelled) {
-          setAv1Features(wireToAv1FeaturesData(data));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          logger.warn(
-            "Failed to fetch AV1 features for frame",
-            frameIndex,
-            err,
-          );
-          setAv1Features(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void fetchFeatures();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [frameIndex, shouldFetch]);
+  const { data: av1Features, loading } = useBridgeQuery(
+    async () => wireToAv1FeaturesData(await bridgeGetAv1Features(frameIndex)),
+    [frameIndex],
+    {
+      enabled: shouldFetch,
+      onError: (err) =>
+        logger.warn("Failed to fetch AV1 features for frame", frameIndex, err),
+    },
+  );
 
   return { av1Features, loading };
 }
