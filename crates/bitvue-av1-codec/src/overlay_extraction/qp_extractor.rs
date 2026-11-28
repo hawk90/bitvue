@@ -5,8 +5,7 @@
 use bitvue_engine::qp_heatmap::QPGrid;
 use bitvue_engine::BitvueError;
 
-use super::cu_parser::parse_all_coding_units;
-use super::cu_spatial_index::CuSpatialIndex;
+use super::grid_spec::{decode_units_strict, map_cells, GridSpec};
 use super::parser::ParsedFrame;
 use super::OVERLAY_BLOCK_SIZE;
 use crate::Qp;
@@ -56,78 +55,31 @@ fn extract_qp_grid_from_parsed_typed(
     _frame_index: usize,
     base_qp: Qp,
 ) -> Result<QPGrid, BitvueError> {
-    let block_w = OVERLAY_BLOCK_SIZE;
-    let block_h = OVERLAY_BLOCK_SIZE;
-    let grid_w = parsed.dimensions.width.div_ceil(block_w);
-    let grid_h = parsed.dimensions.height.div_ceil(block_h);
-
-    // Check for overflow in grid size calculation
-    grid_w.checked_mul(grid_h).ok_or_else(|| {
-        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
-    })?;
-
+    let spec = GridSpec::new(
+        parsed.dimensions.width,
+        parsed.dimensions.height,
+        OVERLAY_BLOCK_SIZE,
+        OVERLAY_BLOCK_SIZE,
+    )?;
     let base_qp_value = base_qp.value();
 
-    if !super::provenance::has_decodable_tile(parsed) {
-        return Err(super::provenance::no_decodable_tile());
-    }
-    let coding_units = parse_all_coding_units(parsed)?;
+    let coding_units = decode_units_strict(parsed)?;
     tracing::debug!(
         "Extracting QP values from {} coding units",
         coding_units.len()
     );
-    let qp = build_qp_grid_from_cus(
-        &coding_units,
-        grid_w,
-        grid_h,
-        block_w,
-        block_h,
-        base_qp_value,
-    );
+    // O(1) coding unit lookup per cell (a linear search was O(n^2): 510k comparisons for 1080p).
+    let qp = map_cells(&spec, &coding_units, |cu| {
+        cu.map_or(MISSING_QP, |cu| cu.effective_qp(base_qp_value))
+    });
     Ok(QPGrid::new(
-        grid_w, grid_h, block_w, block_h, qp, MISSING_QP,
+        spec.grid_w,
+        spec.grid_h,
+        spec.block_w,
+        spec.block_h,
+        qp,
+        MISSING_QP,
     ))
-}
-
-/// Helper: Build QP grid from coding units using spatial index
-///
-/// Creates a QP grid by using a spatial index for O(1) coding unit lookup.
-/// Eliminates O(n²) linear search bottleneck (510k→510 lookups for 1080p).
-///
-/// # Safety
-///
-/// Grid dimensions are expected to be validated by the caller before this function is invoked.
-/// This function uses saturating arithmetic for capacity allocation to prevent panic on overflow.
-fn build_qp_grid_from_cus(
-    coding_units: &[crate::tile::CodingUnit],
-    grid_w: u32,
-    grid_h: u32,
-    block_w: u32,
-    block_h: u32,
-    base_qp: i16,
-) -> Vec<i16> {
-    // Use saturating multiplication for capacity to prevent overflow panic
-    // If overflow occurs, use a reasonable maximum capacity (8K video with 4x4 blocks)
-    const MAX_REASONABLE_CAPACITY: u32 = 512 * 512; // ~262K blocks
-    let total_blocks = grid_w.saturating_mul(grid_h).min(MAX_REASONABLE_CAPACITY) as usize;
-    let mut qp = Vec::with_capacity(total_blocks);
-
-    // Build spatial index (O(n×k) where k=cells per CU, typically ~4)
-    let spatial_index = CuSpatialIndex::new(coding_units, grid_w, grid_h, block_w, block_h);
-
-    // Populate QP grid using O(1) lookups instead of O(n) searches
-    for grid_y in 0..grid_h {
-        for grid_x in 0..grid_w {
-            let cu_qp = spatial_index
-                .get_cu_index(grid_x, grid_y)
-                .map(|cu_idx| coding_units[cu_idx].effective_qp(base_qp))
-                .unwrap_or(MISSING_QP);
-
-            qp.push(cu_qp);
-        }
-    }
-
-    qp
 }
 
 #[cfg(test)]

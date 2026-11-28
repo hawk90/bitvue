@@ -7,8 +7,7 @@ use bitvue_engine::{
     BitvueError,
 };
 
-use super::cu_parser::parse_all_coding_units;
-use super::cu_spatial_index::CuSpatialIndex;
+use super::grid_spec::{decode_units_strict, map_cells, GridSpec};
 use super::parser::ParsedFrame;
 use super::OVERLAY_BLOCK_SIZE;
 
@@ -42,76 +41,61 @@ pub fn extract_mv_grid(obu_data: &[u8], _frame_index: usize) -> Result<MVGrid, B
 ///   point where decoding stopped are `BlockMode::None`
 /// - Uses quarter-pel precision motion vectors from AV1 bitstream
 pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, BitvueError> {
-    let block_w = OVERLAY_BLOCK_SIZE;
-    let block_h = OVERLAY_BLOCK_SIZE;
-    let grid_w = parsed.dimensions.width.div_ceil(block_w);
-    let grid_h = parsed.dimensions.height.div_ceil(block_h);
+    let spec = GridSpec::new(
+        parsed.dimensions.width,
+        parsed.dimensions.height,
+        OVERLAY_BLOCK_SIZE,
+        OVERLAY_BLOCK_SIZE,
+    )?;
 
-    // Check for overflow in grid size calculation
-    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
-        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
-    })? as usize;
-
-    let mut mv_l0 = Vec::with_capacity(total_blocks);
-    let mut mv_l1 = Vec::with_capacity(total_blocks);
-    let mut mode = Vec::with_capacity(total_blocks);
-
-    if !super::provenance::has_decodable_tile(parsed) {
-        return Err(super::provenance::no_decodable_tile());
-    }
-    let coding_units = parse_all_coding_units(parsed)?;
+    let coding_units = decode_units_strict(parsed)?;
     tracing::debug!("Extracting MV from {} coding units", coding_units.len());
 
-    // Build spatial index for O(1) CU lookups (eliminates O(n²) bottleneck)
-    let spatial_index = CuSpatialIndex::new(&coding_units, grid_w, grid_h, block_w, block_h);
-
-    for sb_y in 0..grid_h {
-        for sb_x in 0..grid_w {
-            let Some(cu_idx) = spatial_index.get_cu_index(sb_x, sb_y) else {
-                // No decoded block covers this cell (the decode stopped before it).
-                mv_l0.push(CoreMV::MISSING);
-                mv_l1.push(CoreMV::MISSING);
-                mode.push(BlockMode::None);
-                continue;
-            };
-            let cu = &coding_units[cu_idx];
-            if cu.use_intrabc {
-                // Always a subset of intra (ref_frame[0] == Intra) -- see BlockMode::IntraBc's doc.
-                mv_l0.push(CoreMV::MISSING);
-                mv_l1.push(CoreMV::MISSING);
-                mode.push(BlockMode::IntraBc);
-            } else if cu.is_inter() {
-                mv_l0.push(overlay_mv(cu.mv[0]));
-                let is_compound = cu.ref_frames[1] != crate::tile::RefFrame::Intra;
-                // L1 (backward reference MV) is only meaningful for compound blocks --
-                // `cu.mv[1]` is always zero for single-ref blocks (see `parse_coding_unit`), so
-                // reporting it as MISSING there (rather than a misleading real-looking zero)
-                // matches how intra/no-CU blocks already report MISSING for both planes.
-                mv_l1.push(if is_compound {
-                    overlay_mv(cu.mv[1])
-                } else {
-                    CoreMV::MISSING
-                });
-                mode.push(if cu.skip {
-                    BlockMode::Skip
-                } else if is_compound {
-                    BlockMode::Compound
-                } else {
-                    BlockMode::Inter
-                });
+    let cells = map_cells(&spec, &coding_units, |cu| {
+        let Some(cu) = cu else {
+            // No decoded block covers this cell (the decode stopped before it).
+            return (CoreMV::MISSING, CoreMV::MISSING, BlockMode::None);
+        };
+        if cu.use_intrabc {
+            // Always a subset of intra (ref_frame[0] == Intra) -- see BlockMode::IntraBc's doc.
+            (CoreMV::MISSING, CoreMV::MISSING, BlockMode::IntraBc)
+        } else if cu.is_inter() {
+            let is_compound = cu.ref_frames[1] != crate::tile::RefFrame::Intra;
+            // L1 (backward reference MV) is only meaningful for compound blocks --
+            // `cu.mv[1]` is always zero for single-ref blocks (see `parse_coding_unit`), so
+            // reporting it as MISSING there (rather than a misleading real-looking zero)
+            // matches how intra/no-CU blocks already report MISSING for both planes.
+            let mv_l1 = if is_compound {
+                overlay_mv(cu.mv[1])
             } else {
-                mv_l0.push(CoreMV::MISSING);
-                mv_l1.push(CoreMV::MISSING);
-                mode.push(BlockMode::Intra);
-            }
+                CoreMV::MISSING
+            };
+            let mode = if cu.skip {
+                BlockMode::Skip
+            } else if is_compound {
+                BlockMode::Compound
+            } else {
+                BlockMode::Inter
+            };
+            (overlay_mv(cu.mv[0]), mv_l1, mode)
+        } else {
+            (CoreMV::MISSING, CoreMV::MISSING, BlockMode::Intra)
         }
+    });
+    let mut mv_l0 = Vec::with_capacity(cells.len());
+    let mut mv_l1 = Vec::with_capacity(cells.len());
+    let mut mode = Vec::with_capacity(cells.len());
+    for (l0, l1, m) in cells {
+        mv_l0.push(l0);
+        mv_l1.push(l1);
+        mode.push(m);
     }
 
     Ok(MVGrid::new(
         parsed.dimensions.width,
         parsed.dimensions.height,
-        block_w,
-        block_h,
+        spec.block_w,
+        spec.block_h,
         mv_l0,
         mv_l1,
         Some(mode),

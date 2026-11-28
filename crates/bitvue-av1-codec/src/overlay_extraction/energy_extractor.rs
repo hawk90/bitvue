@@ -12,7 +12,7 @@
 //! uses for the same grid-cell-to-CU mapping problem.
 
 use super::cu_parser::parse_all_coding_units;
-use super::cu_spatial_index::CuSpatialIndex;
+use super::grid_spec::{map_cells, GridSpec};
 use super::parser::ParsedFrame;
 use super::OVERLAY_BLOCK_SIZE;
 use bitvue_engine::BitvueError;
@@ -32,29 +32,28 @@ pub struct EnergyGrid {
 }
 
 /// Extract an energy grid from an already-parsed frame. Falls back to all-zero cells (rather
-/// than erroring) when tile data is absent or CU parsing fails, matching
-/// `extract_qp_grid_from_parsed`'s fallback-to-scaffold behavior for the same conditions.
+/// than erroring) when tile data is absent or CU parsing fails -- unlike the QP, MV, prediction
+/// mode and transform extractors, which return an error for those conditions.
 pub fn extract_energy_grid_from_parsed(parsed: &ParsedFrame) -> Result<EnergyGrid, BitvueError> {
-    let block_w = OVERLAY_BLOCK_SIZE;
-    let block_h = OVERLAY_BLOCK_SIZE;
-    let grid_w = parsed.dimensions.width.div_ceil(block_w);
-    let grid_h = parsed.dimensions.height.div_ceil(block_h);
-
-    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
-        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
-    })? as usize;
+    let spec = GridSpec::new(
+        parsed.dimensions.width,
+        parsed.dimensions.height,
+        OVERLAY_BLOCK_SIZE,
+        OVERLAY_BLOCK_SIZE,
+    )?;
+    let grid_of = |energy_bpp: Vec<f64>| EnergyGrid {
+        grid_w: spec.grid_w,
+        grid_h: spec.grid_h,
+        block_w: spec.block_w,
+        block_h: spec.block_h,
+        energy_bpp,
+    };
 
     // Any tile that exists is decoded: a small one can still hold residual (a 10-byte guess here
     // reported 0.0 for tiles of 4 and 9 bytes that decode to non-zero energy, #239). The other
     // extractors use `provenance::has_decodable_tile` for the same reason.
     if !parsed.has_tile_data() {
-        return Ok(EnergyGrid {
-            grid_w,
-            grid_h,
-            block_w,
-            block_h,
-            energy_bpp: vec![0.0; total_blocks],
-        });
+        return Ok(grid_of(vec![0.0; spec.total]));
     }
 
     let coding_units = match parse_all_coding_units(parsed) {
@@ -64,45 +63,23 @@ pub fn extract_energy_grid_from_parsed(parsed: &ParsedFrame) -> Result<EnergyGri
                 "Failed to parse coding units for energy grid: {}, using zeros",
                 e
             );
-            return Ok(EnergyGrid {
-                grid_w,
-                grid_h,
-                block_w,
-                block_h,
-                energy_bpp: vec![0.0; total_blocks],
-            });
+            return Ok(grid_of(vec![0.0; spec.total]));
         }
     };
 
-    let spatial_index = CuSpatialIndex::new(&coding_units, grid_w, grid_h, block_w, block_h);
-    let mut energy_bpp = Vec::with_capacity(total_blocks);
-    for grid_y in 0..grid_h {
-        for grid_x in 0..grid_w {
-            let val = spatial_index
-                .get_cu_index(grid_x, grid_y)
-                .map(|idx| {
-                    let cu = &coding_units[idx];
-                    let area = cu.width as f64 * cu.height as f64;
-                    if area <= 0.0 {
-                        0.0
-                    } else {
-                        cu.residual
-                            .map(|r| r.sum_abs_level as f64 / area)
-                            .unwrap_or(0.0)
-                    }
-                })
-                .unwrap_or(0.0);
-            energy_bpp.push(val);
-        }
-    }
-
-    Ok(EnergyGrid {
-        grid_w,
-        grid_h,
-        block_w,
-        block_h,
-        energy_bpp,
-    })
+    let energy_bpp = map_cells(&spec, &coding_units, |cu| {
+        cu.map_or(0.0, |cu| {
+            let area = cu.width as f64 * cu.height as f64;
+            if area <= 0.0 {
+                0.0
+            } else {
+                cu.residual
+                    .map(|r| r.sum_abs_level as f64 / area)
+                    .unwrap_or(0.0)
+            }
+        })
+    });
+    Ok(grid_of(energy_bpp))
 }
 
 #[cfg(test)]

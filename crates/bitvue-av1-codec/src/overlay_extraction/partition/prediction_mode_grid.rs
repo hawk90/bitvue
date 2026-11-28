@@ -1,12 +1,10 @@
 //! The prediction mode of each grid block of a frame.
 
-use super::super::cu_parser::parse_all_coding_units;
+use super::super::grid_spec::{decode_units_strict, GridSpec};
 use super::super::parser::ParsedFrame;
 use super::grid_build::build_grid_from_coding_units_spatial;
 use crate::tile::PredictionMode;
-use bitvue_engine::{
-    limits::AV1_BLOCK_SIZE, limits::MAX_GRID_BLOCKS, limits::MAX_GRID_DIMENSION, BitvueError,
-};
+use bitvue_engine::{limits::AV1_BLOCK_SIZE, limits::MAX_GRID_DIMENSION, BitvueError};
 
 /// Prediction Mode Grid for visualization
 #[derive(Debug, Clone)]
@@ -105,36 +103,20 @@ pub fn extract_prediction_mode_grid_from_parsed(
 ) -> Result<PredictionModeGrid, BitvueError> {
     let block_w = AV1_BLOCK_SIZE;
     let block_h = AV1_BLOCK_SIZE;
-    let grid_w = parsed.dimensions.width.div_ceil(block_h);
-    let grid_h = parsed.dimensions.height.div_ceil(block_h);
+    let spec = GridSpec::new(
+        parsed.dimensions.width,
+        parsed.dimensions.height,
+        block_w,
+        block_h,
+    )?;
+    spec.ensure_within_max_blocks()?;
 
-    // Check for overflow and validate grid dimensions
-    let total_blocks = match grid_w.checked_mul(grid_h) {
-        Some(product) => product as usize,
-        None => {
-            return Err(BitvueError::Decode(format!(
-                "Grid dimensions too large: {}x{}",
-                grid_w, grid_h
-            )))
-        }
-    };
-
-    if total_blocks > MAX_GRID_BLOCKS {
-        return Err(BitvueError::Decode(format!(
-            "Grid exceeds maximum size: {}x{} = {} blocks",
-            grid_w, grid_h, total_blocks
-        )));
-    }
-
-    if !super::super::provenance::has_decodable_tile(parsed) {
-        return Err(super::super::provenance::no_decodable_tile());
-    }
-    let coding_units = parse_all_coding_units(parsed)?;
+    let coding_units = decode_units_strict(parsed)?;
     tracing::debug!(
         "Extracting prediction modes from {} coding units",
         coding_units.len()
     );
-    let mut modes = Vec::with_capacity(total_blocks);
+    let mut modes = Vec::with_capacity(spec.total);
     build_grid_from_coding_units_spatial(
         &coding_units,
         parsed,
@@ -155,6 +137,7 @@ pub fn extract_prediction_mode_grid_from_parsed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::overlay_extraction::parse_all_coding_units;
     use crate::tile::CodingUnit;
 
     const FIXTURE: &[u8] = include_bytes!("../../../../../test_data/av1_aomenc_testsrc2.ivf");
