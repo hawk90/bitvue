@@ -19,10 +19,13 @@ export const VIOLATION_LABELS: Record<HrdViolationKind, string> = {
     "decoder_buffer_delay longer than the gap before this key frame",
   decoder_buffer_delay_level:
     "decoder_buffer_delay is 0 or longer than BufferSize / BitRate",
-  decode_buffer_available_late: "No free frame buffer before its presentation",
-  decode_frame_buf_unavailable: "All frame buffers in use",
+  decode_buffer_available_late:
+    "No free frame buffer before its presentation, at the timing the stream signals",
+  decode_frame_buf_unavailable:
+    "All frame buffers in use, at the timing the stream signals",
   decode_existing_frame_buf_empty: "Shown frame slot is empty",
-  display_frame_late: "Decoded after its presentation time",
+  display_frame_late:
+    "Decoded after its presentation time, at the timing the stream signals",
 };
 
 /**
