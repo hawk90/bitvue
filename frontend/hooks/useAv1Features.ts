@@ -11,6 +11,7 @@
 
 import { useBridgeQuery } from "./useBridgeQuery";
 import type { Av1FeaturesData } from "../components/panels/OverlayRenderer/types";
+import { MAIN_MODES_NEEDING_AV1_FEATURES } from "../components/panels/OverlayRenderer/registry";
 import {
   getAv1Features as bridgeGetAv1Features,
   type Av1FeaturesWireResult,
@@ -72,12 +73,12 @@ function wireToAv1FeaturesData(data: Av1FeaturesWireResult): Av1FeaturesData {
   };
 }
 
-/** Modes that require AV1 feature data from the backend. */
-const AV1_FEATURE_MODES = new Set([
-  "cdef-filter",
-  "loop-restoration",
-  "film-grain",
-  "super-res",
+/**
+ * Modes that require AV1 feature data from the backend: the registry's `needsAv1Features` modes
+ * plus the legacy "av1-features" catch-all, which has no renderer of its own.
+ */
+export const AV1_FEATURE_MODES: ReadonlySet<string> = new Set([
+  ...MAIN_MODES_NEEDING_AV1_FEATURES,
   "av1-features",
 ]);
 
