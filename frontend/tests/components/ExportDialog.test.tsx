@@ -8,17 +8,6 @@ import userEvent from "@testing-library/user-event";
 import { ExportDialog } from "@/components/ExportDialog";
 import type { FrameInfo } from "@/types/video";
 
-// Mock Tauri invoke
-const mockInvoke = vi.fn();
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: mockInvoke,
-}));
-
-const mockSave = vi.fn();
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  save: mockSave,
-}));
-
 // Mock exportUtils - must be defined inline due to hoisting
 vi.mock("@/utils/exportUtils", () => ({
   exportUtils: {
@@ -85,7 +74,6 @@ describe("ExportDialog", () => {
   beforeEach(() => {
     mockOnClose = vi.fn();
     vi.clearAllMocks();
-    mockSave.mockResolvedValue("/mock/path/export.csv");
   });
 
   it("renders when isOpen is true", () => {
