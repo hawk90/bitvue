@@ -47,6 +47,10 @@ export const PANEL_SIZES = {
   BODY: 76,
 } as const;
 
+/** Narrowest a bottom-row panel can be and still show its content (Bitrate's header and bars,
+ *  Diagnostics' filter chips). Below `panels * this` the row switches to one tab at a time (#628). */
+export const BOTTOM_ROW_MIN_PANEL_WIDTH_PX = 190;
+
 /**
  * Panel minimum size constraints (in percentages)
  */
@@ -515,34 +519,64 @@ const BottomRowPanelBar = memo(function BottomRowPanelBar({
 }: {
   panels: PanelConfig[];
 }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  // The row's own width decides, not the window's: dragging the left sidebar wider squeezes this
+  // row the same way shrinking the window does (#628). 0 = not measured yet (jsdom): stay side by side.
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const update = (width: number) =>
+      setNarrow(
+        width > 0 && width < panels.length * BOTTOM_ROW_MIN_PANEL_WIDTH_PX,
+      );
+    const observer = new ResizeObserver((entries) =>
+      update(entries[0].contentRect.width),
+    );
+    observer.observe(el);
+    update(el.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, [panels.length]);
+
   return (
-    <div className="bottom-row-panel-bar">
-      <Group orientation="horizontal" className="bottom-row-layout">
-        {panels.map((panel, index) => (
-          <React.Fragment key={panel.id}>
-            {index > 0 && <Separator className="resize-handle-horizontal" />}
-            <Panel
-              defaultSize={panel.defaultSize || 33}
-              minSize={panel.minSize || 10}
-              collapsible={panel.collapsible}
-              id={`bottom-row-${panel.id}`}
-              className="bottom-row-item"
-            >
-              <div className="bottom-row-item-content">
-                <div className="bottom-row-item-header">
-                  {panel.icon && (
-                    <span className={`codicon codicon-${panel.icon}`}></span>
-                  )}
-                  <span>{panel.title}</span>
+    <div className="bottom-row-panel-bar" ref={barRef}>
+      {narrow ? (
+        <TabbedPanelContainer
+          panels={panels}
+          tabsClassName="bottom-panel-tabs"
+          tabClassName="bottom-panel-tab"
+          activeTabClassName="active"
+          contentClassName="bottom-panel-content"
+          ariaLabel="Bottom row panels"
+        />
+      ) : (
+        <Group orientation="horizontal" className="bottom-row-layout">
+          {panels.map((panel, index) => (
+            <React.Fragment key={panel.id}>
+              {index > 0 && <Separator className="resize-handle-horizontal" />}
+              <Panel
+                defaultSize={panel.defaultSize || 33}
+                minSize={panel.minSize || 10}
+                collapsible={panel.collapsible}
+                id={`bottom-row-${panel.id}`}
+                className="bottom-row-item"
+              >
+                <div className="bottom-row-item-content">
+                  <div className="bottom-row-item-header">
+                    {panel.icon && (
+                      <span className={`codicon codicon-${panel.icon}`}></span>
+                    )}
+                    <span>{panel.title}</span>
+                  </div>
+                  <div className="bottom-row-item-body">
+                    <panel.component />
+                  </div>
                 </div>
-                <div className="bottom-row-item-body">
-                  <panel.component />
-                </div>
-              </div>
-            </Panel>
-          </React.Fragment>
-        ))}
-      </Group>
+              </Panel>
+            </React.Fragment>
+          ))}
+        </Group>
+      )}
     </div>
   );
 });
