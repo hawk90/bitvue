@@ -307,6 +307,10 @@ function createWindow(): BrowserWindow {
  */
 async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
   const tempDir = mkdtempSync(path.join(tmpdir(), "bitvue-desktop-selftest-"));
+  // The evidence-bundle folder comes from a main-process dialog (#640); this answers it. The
+  // request below also carries an `outputDir` of its own, which must be ignored.
+  const smuggledEvidenceDir = path.join(tempDir, "smuggled_evidence_dir");
+  process.env.BITVUE_ELECTRON_SELFTEST_EVIDENCE_DIR = tempDir;
   const tempFile = path.join(tempDir, "fixture.bin");
   const knownBytes = Buffer.from(Array.from({ length: 64 }, (_, i) => i));
   writeFileSync(tempFile, knownBytes);
@@ -370,7 +374,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const contextMenuItems = await window.bitvue.getContextMenuItems("Player", false, false);
         const screenshotDataUrl = await window.bitvue.captureScreenshot();
         const evidenceBundle = await window.bitvue.exportEvidenceBundle({
-          outputDir: ${JSON.stringify(tempDir)},
+          outputDir: ${JSON.stringify(smuggledEvidenceDir)},
           workspace: "player",
           mode: "normal",
           orderType: "display",
@@ -594,7 +598,10 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     console.log("[selftest] get_context_menu_items OK:", contextMenuItemsOk);
     const evidenceBundleOk =
       result.evidenceBundle?.success === true &&
-      (result.evidenceBundle?.files_created?.length ?? 0) > 0;
+      (result.evidenceBundle?.files_created?.length ?? 0) > 0 &&
+      // written under the dialog's folder, not under the renderer-supplied `outputDir`
+      String(result.evidenceBundle?.bundle_path).startsWith(tempDir) &&
+      !existsSync(smuggledEvidenceDir);
     // Real end-to-end proof of the 2026-08-11 screenshot-capture addition: not just that the
     // export succeeded, but that a real captured screenshot (via the actual
     // bitvue:captureScreenshot -> capturePage() path, not a mock) made it into the bundle as an

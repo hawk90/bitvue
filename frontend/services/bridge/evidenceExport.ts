@@ -30,7 +30,6 @@ export interface EvidenceBundleExportResultWire {
 }
 
 export interface ExportEvidenceBundleParams {
-  outputDir: string;
   workspace?: string;
   mode?: string;
   orderType?: "display" | "decode";
@@ -55,17 +54,14 @@ export async function getContextMenuItems(
 }
 
 /** Writes a diagnostic evidence bundle (manifest, env/version info, selection state, order type,
- *  backend fingerprint, warnings) to `params.outputDir`. Throws on failure (write error). */
+ *  backend fingerprint, warnings) into a folder the user picks in a native dialog the main process
+ *  shows -- the renderer never supplies an output path (#640). Resolves to `null` when the user
+ *  cancels the dialog (nothing written). Throws on an invalid request. A failed write is reported
+ *  as `success: false` in the result. */
 export async function exportEvidenceBundle(
   params: ExportEvidenceBundleParams,
-): Promise<EvidenceBundleExportResultWire> {
+): Promise<EvidenceBundleExportResultWire | null> {
   return requireBridge().exportEvidenceBundle(params);
-}
-
-/** Native "choose a folder" dialog, for evidence-bundle export. Returns the selected directory,
- *  or null if cancelled. */
-export async function showDirectoryDialog(): Promise<string | null> {
-  return requireBridge().showDirectoryDialog();
 }
 
 /** Captures the current window as a `data:image/png;base64,...` string, for embedding in an
