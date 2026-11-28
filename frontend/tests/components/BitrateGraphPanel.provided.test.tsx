@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@/test/test-utils";
+import { render, screen, fireEvent } from "@/test/test-utils";
 import { BitrateGraphPanel } from "../BitrateGraphPanel";
 import {
   frameInfoToGraphFrame,
@@ -31,6 +31,7 @@ const gf = (
   pts,
   ref_frames: null,
   temporal_id: null,
+  qp: null,
 });
 
 describe("BitrateGraphPanel with provided frames", () => {
@@ -108,6 +109,42 @@ describe("BitrateGraphPanel with provided frames", () => {
   });
 });
 
+describe("BitrateGraphPanel QP view (#614)", () => {
+  const withQp = (g: GraphFrame, qp: number | null): GraphFrame => ({
+    ...g,
+    qp,
+  });
+
+  it("offers no QP button when no frame has a QP", () => {
+    render(<BitrateGraphPanel frames={[gf(0, "I", 9000, 0)]} />);
+    expect(
+      screen.queryByRole("button", { name: "QP" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("draws bar heights as base_q_idx / 255 in QP view, and shows it in the tooltip", () => {
+    const { container } = render(
+      <BitrateGraphPanel
+        frames={[
+          withQp(gf(0, "I", 9000, 0), 255),
+          withQp(gf(1, "P", 3000, 1), 51),
+          withQp(gf(2, "P", 2000, 2), null),
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "QP" }));
+
+    const bars = container.querySelectorAll<HTMLElement>(".bitrate-bar");
+    expect(bars[0].style.height).toBe("100%");
+    expect(bars[1].style.height).toBe("20%");
+    // No QP: drawn at the 1% floor, not as QP 0
+    expect(bars[2].style.height).toBe("1%");
+
+    fireEvent.mouseEnter(bars[1]);
+    expect(screen.getByText("base_q_idx: 51")).toBeInTheDocument();
+  });
+});
+
 describe("frameInfoToGraphFrame", () => {
   it("maps missing optional fields to null", () => {
     const info: FrameInfo = { frame_index: 4, frame_type: "B", size: 77 };
@@ -118,6 +155,7 @@ describe("frameInfoToGraphFrame", () => {
       pts: null,
       ref_frames: null,
       temporal_id: null,
+      qp: null,
     });
   });
 
@@ -129,6 +167,7 @@ describe("frameInfoToGraphFrame", () => {
       pts: 0,
       ref_frames: [1, 2],
       temporal_id: 1,
+      qp_avg: 85,
     };
     expect(frameInfoToGraphFrame(info)).toEqual({
       frame_index: 0,
@@ -137,6 +176,7 @@ describe("frameInfoToGraphFrame", () => {
       pts: 0,
       ref_frames: [1, 2],
       temporal_id: 1,
+      qp: 85,
     });
   });
 });

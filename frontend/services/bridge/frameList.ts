@@ -17,6 +17,8 @@ export interface GraphFrame {
   pts: number | null;
   ref_frames: number[] | null;
   temporal_id: number | null;
+  /** AV1 `base_q_idx` (0-255); `null` when the unit has none (a repeated frame, unreadable header). */
+  qp: number | null;
 }
 
 /** The same shape from a `FrameInfo` the contexts already hold (`unitNodeToFrameInfo` maps
@@ -29,6 +31,7 @@ export function frameInfoToGraphFrame(frame: FrameInfo): GraphFrame {
     pts: frame.pts ?? null,
     ref_frames: frame.ref_frames ?? null,
     temporal_id: frame.temporal_id ?? null,
+    qp: frame.qp_avg ?? null,
   };
 }
 
@@ -48,6 +51,7 @@ export function unitNodeToGraphFrame(unit: BridgeUnitNode): GraphFrame | null {
     pts: unit.pts,
     ref_frames: unit.ref_frames,
     temporal_id: unit.temporal_id,
+    qp: unit.qp_avg,
   };
 }
 

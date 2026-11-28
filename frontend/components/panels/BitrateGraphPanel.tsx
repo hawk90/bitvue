@@ -26,6 +26,9 @@ const FRAME_TYPE_COLORS: Record<string, string> = {
   UNKNOWN: "#9ca3af",
 };
 
+/** AV1 `base_q_idx` range: bar heights in QP view are `qp / QP_MAX`. */
+const QP_MAX = 255;
+
 function getFrameColor(frameType: string): string {
   return FRAME_TYPE_COLORS[frameType] ?? FRAME_TYPE_COLORS.UNKNOWN;
 }
@@ -59,7 +62,7 @@ export const BitrateGraphPanel = memo(function BitrateGraphPanel({
     [loadedFrames],
   );
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"size" | "bitrate">("size");
+  const [viewMode, setViewMode] = useState<"size" | "bitrate" | "qp">("size");
 
   // Compute running average bitrate (bytes per frame, smoothed over 10 frames)
   const smoothedSizes = useMemo(() => {
@@ -72,6 +75,12 @@ export const BitrateGraphPanel = memo(function BitrateGraphPanel({
       return sum / (end - start);
     });
   }, [frames]);
+
+  // AV1 base_q_idx is 0-255; only offered when the stream has any (a repeated frame has none).
+  const hasQp = useMemo(
+    () => frames.some((f) => typeof f.qp === "number"),
+    [frames],
+  );
 
   const maxSize = useMemo(
     () => Math.max(...frames.map((f) => f.size), 1),
@@ -139,6 +148,15 @@ export const BitrateGraphPanel = memo(function BitrateGraphPanel({
           >
             Smoothed
           </button>
+          {hasQp && (
+            <button
+              className={`bitrate-mode-btn${viewMode === "qp" ? " active" : ""}`}
+              onClick={() => setViewMode("qp")}
+              title="AV1 base_q_idx per frame (0-255)"
+            >
+              QP
+            </button>
+          )}
           {canReload && (
             <button className="bitrate-reload-btn" onClick={loadFrames}>
               Reload
@@ -180,9 +198,11 @@ export const BitrateGraphPanel = memo(function BitrateGraphPanel({
         <div className="bitrate-chart">
           {displayFrames.map((frame, i) => {
             const h =
-              viewMode === "size"
-                ? (frame.size / maxSize) * 100
-                : (smoothedSizes[i] / maxSize) * 100;
+              viewMode === "qp"
+                ? ((frame.qp ?? 0) / QP_MAX) * 100
+                : viewMode === "size"
+                  ? (frame.size / maxSize) * 100
+                  : (smoothedSizes[i] / maxSize) * 100;
             const color = getFrameColor(frame.frame_type);
             const isHovered = hoveredIdx === i;
             return (
@@ -229,6 +249,9 @@ export const BitrateGraphPanel = memo(function BitrateGraphPanel({
             {displayFrames[hoveredIdx].frame_type})
           </span>
           <span>{(displayFrames[hoveredIdx].size / 1024).toFixed(2)} KB</span>
+          {typeof displayFrames[hoveredIdx].qp === "number" && (
+            <span>base_q_idx: {displayFrames[hoveredIdx].qp}</span>
+          )}
           {displayFrames[hoveredIdx].pts !== null && (
             <span>PTS: {displayFrames[hoveredIdx].pts}</span>
           )}

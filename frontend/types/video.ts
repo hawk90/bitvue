@@ -134,6 +134,9 @@ export interface FrameInfo {
   // Frame properties
   key_frame?: boolean; // Whether this is a keyframe
   temporal_id?: number; // Temporal layer ID
+  /** AV1 `base_q_idx` (0-255) of the frame the unit shows, from the indexer; absent when the unit
+   *  shows an earlier frame again (`show_existing_frame`) or its header could not be read. */
+  qp_avg?: number;
   spatial_id?: number; // Spatial layer ID (for scalable codecs)
 
   // References
