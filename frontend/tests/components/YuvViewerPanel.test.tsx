@@ -76,12 +76,6 @@ vi.mock("@/contexts/YuvDiffContext", () => ({
   })),
 }));
 
-// Mock Tauri invoke — still used by the debug-YUV path (get_decoded_frame_yuv's Tauri call was
-// replaced by the Electron bridge below; get_debug_yuv_frame has no sidecar equivalent yet).
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(() => Promise.resolve({ success: false, error: "Test mode" })),
-}));
-
 // Mock the Electron bridge's getDecodedFrameYuv — the real decode path (2026-08-08 migration
 // off Tauri's get_decoded_frame_yuv). The component actually calls the cancellable variant
 // (axis-6 cancellation wiring) -- that's implemented here as a thin wrapper around the same
@@ -1786,13 +1780,9 @@ function setupStandardMocks() {
 // Error state tests
 // ---------------------------------------------------------------------------
 
-// Obtain the shared mocks at module level (after the vi.mock calls at top). get_decoded_frame_yuv
-// moved from Tauri's invoke() to the Electron bridge (2026-08-08) -- sharedInvokeMock still
-// covers the debug-YUV path (get_debug_yuv_frame, unmigrated), sharedGetDecodedFrameYuvMock
-// covers the real primary decode path.
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+// Obtain the shared mock at module level (after the vi.mock calls at top): the real primary
+// decode path.
 import { getDecodedFrameYuv as bridgeGetDecodedFrameYuv } from "@/services/electronBridgeService";
-const sharedInvokeMock = tauriInvoke as ReturnType<typeof vi.fn>;
 const sharedGetDecodedFrameYuvMock = bridgeGetDecodedFrameYuv as ReturnType<
   typeof vi.fn
 >;
@@ -1800,12 +1790,11 @@ const sharedGetDecodedFrameYuvMock = bridgeGetDecodedFrameYuv as ReturnType<
 describe("YuvViewerPanel frame load error handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    sharedInvokeMock.mockResolvedValue({ success: false });
     sharedGetDecodedFrameYuvMock.mockRejectedValue(new Error("Test mode"));
     setupStandardMocks();
   });
 
-  it("shows error overlay when invoke throws", async () => {
+  it("shows error overlay when the bridge call throws", async () => {
     sharedGetDecodedFrameYuvMock.mockRejectedValue(
       new Error("Backend unavailable"),
     );
@@ -1896,8 +1885,6 @@ describe("YuvViewerPanel frame load error handling", () => {
 describe("YuvViewerPanel playback edge cases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Restore default invoke mock behaviour after clearAllMocks
-    sharedInvokeMock.mockResolvedValue({ success: false });
     vi.useFakeTimers();
     setupStandardMocks();
   });
@@ -1970,7 +1957,6 @@ describe("YuvViewerPanel playback edge cases", () => {
 describe("YuvViewerPanel navigation boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    sharedInvokeMock.mockResolvedValue({ success: false });
     setupStandardMocks();
   });
 
@@ -2069,7 +2055,6 @@ describe("YuvViewerPanel navigation boundaries", () => {
 describe("YuvViewerPanel loading and placeholder states", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    sharedInvokeMock.mockResolvedValue({ success: false });
     setupStandardMocks();
   });
 
@@ -2077,11 +2062,6 @@ describe("YuvViewerPanel loading and placeholder states", () => {
     // The placeholder is rendered when: !frameImage && !yuvData && !isLoading && !loadError
     // We need both YUV AND RGB to return success:false WITHOUT an error field so
     // loadError stays null but also no data is loaded.
-    sharedInvokeMock
-      .mockResolvedValueOnce({ success: false }) // yuv — no error field
-      .mockResolvedValueOnce({ success: false }) // rgb — no error field → loadError gets default msg
-      .mockResolvedValue({ success: false }); // analysis
-
     // NOTE: When RGB returns success:false with no error field,
     // `result.error || "Failed to load frame"` still sets loadError.
     // So the only way to show placeholder is when YUV succeeds but produces
@@ -2091,8 +2071,8 @@ describe("YuvViewerPanel loading and placeholder states", () => {
     expect(container.firstChild).toBeInTheDocument();
   });
 
-  it("loading overlay disappears and error overlay appears when invoke rejects", async () => {
-    sharedInvokeMock.mockRejectedValue(new Error("fail"));
+  it("loading overlay disappears and error overlay appears when the bridge call rejects", async () => {
+    sharedGetDecodedFrameYuvMock.mockRejectedValue(new Error("fail"));
 
     const { container, findByText } = await renderPanel(
       <YuvViewerPanel {...mockProps} />,

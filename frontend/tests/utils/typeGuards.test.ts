@@ -13,8 +13,8 @@ import {
   isFunction,
   isError,
   isErrorWithCode,
-  isTauriError,
-  isTauriSuccess,
+  isFailureResult,
+  isSuccessResult,
   isValidFrameIndex,
   isValidFilePath,
   hasProperty,
@@ -22,8 +22,8 @@ import {
   tryParseJSON,
   assertNotNil,
   type ErrorWithCode,
-  type TauriError,
-  type TauriSuccess,
+  type FailureResult,
+  type SuccessResult,
 } from "@/utils/typeGuards";
 
 describe("isObject", () => {
@@ -180,42 +180,42 @@ describe("isErrorWithCode", () => {
   });
 });
 
-describe("isTauriError", () => {
-  it("should return true for Tauri error objects", () => {
-    const error: TauriError = { success: false, error: "Test error" };
-    expect(isTauriError(error)).toBe(true);
+describe("isFailureResult", () => {
+  it("should return true for failed result objects", () => {
+    const error: FailureResult = { success: false, error: "Test error" };
+    expect(isFailureResult(error)).toBe(true);
   });
 
-  it("should return false for Tauri success", () => {
+  it("should return false for a success result", () => {
     const response = { success: true, data: "test" };
-    expect(isTauriError(response)).toBe(false);
+    expect(isFailureResult(response)).toBe(false);
   });
 
   it("should return false for non-objects", () => {
-    expect(isTauriError(null)).toBe(false);
-    expect(isTauriError(undefined)).toBe(false);
+    expect(isFailureResult(null)).toBe(false);
+    expect(isFailureResult(undefined)).toBe(false);
   });
 });
 
-describe("isTauriSuccess", () => {
-  it("should return true for Tauri success objects", () => {
-    const response: TauriSuccess<string> = { success: true, data: "test" };
-    expect(isTauriSuccess(response)).toBe(true);
+describe("isSuccessResult", () => {
+  it("should return true for success result objects", () => {
+    const response: SuccessResult<string> = { success: true, data: "test" };
+    expect(isSuccessResult(response)).toBe(true);
   });
 
   it("should return true for success without data", () => {
     const response = { success: true };
-    expect(isTauriSuccess(response)).toBe(true);
+    expect(isSuccessResult(response)).toBe(true);
   });
 
-  it("should return false for Tauri error", () => {
+  it("should return false for a failure result", () => {
     const error = { success: false, error: "Test error" };
-    expect(isTauriSuccess(error)).toBe(false);
+    expect(isSuccessResult(error)).toBe(false);
   });
 
   it("should return false for non-objects", () => {
-    expect(isTauriSuccess(null)).toBe(false);
-    expect(isTauriSuccess(undefined)).toBe(false);
+    expect(isSuccessResult(null)).toBe(false);
+    expect(isSuccessResult(undefined)).toBe(false);
   });
 });
 
@@ -315,9 +315,9 @@ describe("getErrorMessage", () => {
     expect(getErrorMessage("Error message")).toBe("Error message");
   });
 
-  it("should return error from Tauri error", () => {
-    const tauriError = { success: false, error: "Tauri error" };
-    expect(getErrorMessage(tauriError)).toBe("Tauri error");
+  it("should return the message from a failure result", () => {
+    const failure = { success: false, error: "Backend failed" };
+    expect(getErrorMessage(failure)).toBe("Backend failed");
   });
 
   it("should return default message for unknown errors", () => {

@@ -2588,7 +2588,7 @@ items:
       - DEVELOPMENT_PHASES.md §get_frame_syntax frontend 소비
       - VQA_PARITY_SPEC_V3.md §2.1
     notes: 'Doc said [x] (SyntaxPanel). Code: SyntaxDetailPanel + FrameSyntaxTab (get_frame_syntax) mounted and real for AV1/IVF;
-      QM/Probs/APS per-codec tabs use dead @tauri-apps invoke and other codecs cannot be indexed. BitViewPanel also calls
+      QM/Probs/APS per-codec tabs show "no data" (no sidecar source; other codecs cannot be indexed, #643/#604). BitViewPanel also calls
       getFrameSyntax but is not mounted (test-only).'
   - id: SYN-002
     title: Hex view (raw bytes, offset, ASCII) of the selected unit
@@ -2840,8 +2840,8 @@ items:
       - DEVELOPMENT_PHASES.md §Phase 3
       - DEVELOPMENT_PHASES.md §Phase 8
       - VQA_PARITY_SPEC_V3.md §4.3 VVC
-    notes: 'Doc said unverified. Code: ApsTab mounted for VVC in SyntaxDetailPanel but fetches via dead @tauri-apps invoke().
-      | UI shell with dead Tauri invoke; no backend wiring.'
+    notes: 'Doc said unverified. Code: ApsTab mounted for VVC in SyntaxDetailPanel but shows "no data": no sidecar command and VVC cannot be indexed (#643, #604).
+      | UI shell without backend wiring.'
   - id: SYN-011
     title: AVS3 syntax tab
     area: syntax
@@ -2872,8 +2872,8 @@ items:
     source:
       - DEVELOPMENT_PHASES.md §Phase 8
       - VQA_PARITY_SPEC_V3.md §4.3 HEVC
-    notes: UI exists but calls dead @tauri-apps invoke; no sidecar command, sidecar has no HEVC path (codec_extended_info.rs
-      header).
+    notes: UI exists but shows "no data"; no sidecar command, sidecar has no HEVC path (codec_extended_info.rs
+      header; #643, #604).
   - id: SYN-013
     title: VP9 probabilities/counts tab
     area: syntax
@@ -4061,8 +4061,7 @@ items:
     source:
       - PARITY_CHECKLIST.md §Layer 4
       - VQA_PARITY_SPEC_V3.md §4.2
-    notes: Works via the browser Fullscreen API fallback; App.tsx still tries a dead @tauri-apps/api/window import first.
-      | Primary path imports @tauri-apps/api/window (dead under Electron); works through browser Fullscreen API fallback.
+    notes: Works through the browser Fullscreen API (App.tsx onToggleFullscreen).
   - id: UX-006
     title: 'Selection shortcuts: Escape clear, Ctrl+Z undo selection, Ctrl+C copy block info'
     area: ux
@@ -7050,21 +7049,23 @@ items:
     title: Rewire remaining frontend @tauri-apps invoke() calls to window.bitvue sidecar bridge
     area: infra
     priority: P1
-    status: partial
+    status: done
     phase: '0'
     acceptance:
       - No frontend source file imports @tauri-apps/*
       - All former invoke() call sites go through frontend/services/electronBridgeService.ts
     evidence:
       - frontend/services/electronBridgeService.ts
-      - frontend/components/panels/SyntaxDetailPanel/ApsTab.tsx:10
+      - frontend/services/bridge/fileExport.ts
+      - bitvue-desktop/electron/saveTextFile.ts
     source:
       - DEVELOPMENT_PHASES.md §⚠️ 주의 — Phase 0-12는 Tauri 구현 시절 작성됨
       - DEVELOPMENT_PHASES.md §남은 invoke() 콜사이트 재조사 (Tauri 창/메뉴 API 포함)
       - DEVELOPMENT_PHASES.md §실제 앱 첫 실행 블랭크 스크린 (initializeSystemMenu)
-    notes: 'Doc said invoke() in ''dozens of files'', none rewired. Code: bridge exists and most paths migrated, but 9 non-test
-      source files still import @tauri-apps/* (App.tsx dynamic window import, ApsTab/QmTab/ProbsTab, BitrateGraph/QualityMetrics/ReferenceGraph
-      panels, utils/exportUtils.ts, utils/tauriLogger.ts); package.json still lists @tauri-apps deps.'
+    notes: 'No frontend source file, test mock or package.json entry references @tauri-apps/* any more (#565). Export saves
+      through the main-process save dialog (saveTextFile, #605); the unmounted QualityMetricsPanel was replaced by the YUV Diff
+      "All Frames" row (#606); the QM/Probs/APS tabs show "no data" instead of calling a dead invoke() (#564), until other codecs
+      can be indexed (#643, #604).'
   - id: INFRA-007
     title: Electron + Rust sidecar + React/TS project structure and Cargo workspace
     area: infra
@@ -7108,8 +7109,8 @@ items:
       - 'DEVELOPMENT_PHASES.md §제품 아키텍처 확정 (브리지 방식 결정: sidecar)'
       - DEVELOPMENT_PHASES.md §bitvue-desktop Electron 셸
     notes: 'Doc said 23 Tauri commands / only 9 ported. Code: ~40 sidecar methods in dispatch/compute_frames. Chosen over
-      napi-rs for crash isolation of FFI decoders. src-tauri deleted (e7194cc). frontend/ was not renamed to bitvue-ui; 9
-      non-test frontend files still import @tauri-apps/* (INFRA-006).'
+      napi-rs for crash isolation of FFI decoders. src-tauri deleted (e7194cc). frontend/ was not renamed to bitvue-ui; no frontend
+      file imports @tauri-apps/* any more (INFRA-006).'
   - id: INFRA-009
     title: React context + hooks state architecture
     area: infra

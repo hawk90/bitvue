@@ -51,7 +51,7 @@ export function isFunction(
 /**
  * Check if error is an Error object or an error-like plain object.
  *
- * The duck-type fallback handles cases where Tauri or system APIs return
+ * The duck-type fallback handles cases where bridge or system APIs return
  * plain objects instead of proper Error instances.
  */
 export function isError(value: unknown): value is Error {
@@ -62,7 +62,7 @@ export function isError(value: unknown): value is Error {
 }
 
 /**
- * Check if error has a code property (for Tauri/System errors)
+ * Check if error has a code property (for system errors)
  */
 export interface ErrorWithCode extends Error {
   code?: string | number;
@@ -73,28 +73,28 @@ export function isErrorWithCode(value: unknown): value is ErrorWithCode {
 }
 
 /**
- * Check if value is a Tauri invoke error response
+ * Check if value is a failed `{ success: false, error }` result (the shape some sidecar/bridge helpers return)
  */
-export interface TauriError {
+export interface FailureResult {
   success: false;
   error: string;
 }
 
-export function isTauriError(value: unknown): value is TauriError {
+export function isFailureResult(value: unknown): value is FailureResult {
   return isObject(value) && value.success === false && "error" in value;
 }
 
 /**
- * Check if value is a successful Tauri response
+ * Check if value is a successful `{ success: true, data? }` result
  */
-export interface TauriSuccess<T = unknown> {
+export interface SuccessResult<T = unknown> {
   success: true;
   data?: T;
 }
 
-export function isTauriSuccess<T = unknown>(
+export function isSuccessResult<T = unknown>(
   value: unknown,
-): value is TauriSuccess<T> {
+): value is SuccessResult<T> {
   return isObject(value) && value.success === true;
 }
 
@@ -145,7 +145,7 @@ export function getErrorMessage(error: unknown): string {
   if (isString(error)) {
     return error;
   }
-  if (isTauriError(error)) {
+  if (isFailureResult(error)) {
     return error.error;
   }
   return "Unknown error occurred";

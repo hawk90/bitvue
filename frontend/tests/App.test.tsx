@@ -92,11 +92,6 @@ vi.mock("@/contexts/CompareContext", () => ({
   })),
 }));
 
-// Mock Tauri APIs
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
-}));
-
 const { closeWindow, setHasOpenFile } = vi.hoisted(() => ({
   closeWindow: vi.fn(),
   setHasOpenFile: vi.fn(),
@@ -105,14 +100,6 @@ vi.mock("@/services/electronBridgeService", () => ({
   closeWindow,
   setHasOpenFile,
   onSidecarRestarted: vi.fn(() => () => {}),
-}));
-
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(() => Promise.resolve(() => {})),
-}));
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: vi.fn(),
 }));
 
 // Mock components
@@ -290,15 +277,8 @@ vi.mock("@/utils/logger", () => ({
   }),
 }));
 
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import { listen } from "@tauri-apps/api/event";
 import { shouldShowTitleBar } from "@/utils/platform";
 import { globalShortcutHandler } from "@/utils/keyboardShortcuts";
-
-const _mockInvoke = invoke as ReturnType<typeof vi.fn>;
-const mockOpen = open as ReturnType<typeof vi.fn>;
-const mockListen = listen as ReturnType<typeof vi.fn>;
 
 describe("App component", () => {
   beforeEach(() => {
@@ -1231,7 +1211,6 @@ describe("AppContent - menu event listeners", () => {
       clearAll: vi.fn(),
       subscribe: vi.fn(),
     });
-    mockOpen.mockResolvedValue(null);
   });
 
   it("should handle menu-open-bitstream event", () => {
@@ -1267,83 +1246,6 @@ describe("AppContent - menu event listeners", () => {
   });
 
   it("should cleanup menu event listeners on unmount", () => {
-    const { unmount } = render(<App />);
-
-    expect(() => unmount()).not.toThrow();
-  });
-});
-
-describe("AppContent - Tauri event listeners", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(useTheme).mockReturnValue({
-      theme: "dark",
-      setTheme: vi.fn(),
-      toggleTheme: vi.fn(),
-    });
-    vi.mocked(useMode).mockReturnValue({
-      currentMode: "overview",
-      setMode: vi.fn(),
-      cycleMode: vi.fn(),
-      componentMask: "yuv",
-      toggleComponent: vi.fn(),
-      setComponentMask: vi.fn(),
-      showGrid: false,
-      toggleGrid: vi.fn(),
-      showLabels: true,
-      toggleLabels: vi.fn(),
-      showBlockTypes: false,
-      toggleBlockTypes: vi.fn(),
-    });
-    vi.mocked(useStreamData).mockReturnValue({
-      frames: [],
-      filePath: null,
-      currentFrameIndex: 0,
-      loading: false,
-      error: null,
-      setCurrentFrameIndex: vi.fn(),
-      refreshFrames: vi.fn(),
-      clearData: vi.fn(),
-      getFrameStats: vi.fn(),
-      setFilePath: vi.fn(),
-      setFrames: vi.fn(),
-    });
-    vi.mocked(useFrameData).mockReturnValue({
-      frames: [],
-      setFrames: vi.fn(),
-      getFrameStats: vi.fn(),
-    } as any);
-    vi.mocked(useFileState).mockReturnValue({
-      filePath: null,
-      loading: false,
-      error: null,
-      setFilePath: vi.fn(),
-      refreshFrames: vi.fn().mockResolvedValue([]),
-      loadMoreFrames: vi.fn().mockResolvedValue([]),
-      hasMoreFrames: false,
-      totalFrames: 0,
-      clearData: vi.fn(),
-    } as any);
-    vi.mocked(useCurrentFrame).mockReturnValue({
-      currentFrameIndex: 0,
-      setCurrentFrameIndex: vi.fn(),
-    } as any);
-    vi.mocked(useSelection).mockReturnValue({
-      selection: null,
-      setTemporalSelection: vi.fn(),
-      setFrameSelection: vi.fn(),
-      setUnitSelection: vi.fn(),
-      setSyntaxSelection: vi.fn(),
-      setBitRangeSelection: vi.fn(),
-      clearTemporal: vi.fn(),
-      clearAll: vi.fn(),
-      subscribe: vi.fn(),
-    });
-
-    mockListen.mockResolvedValue(() => {});
-  });
-
-  it("should cleanup Tauri listeners on unmount", () => {
     const { unmount } = render(<App />);
 
     expect(() => unmount()).not.toThrow();

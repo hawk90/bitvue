@@ -7,11 +7,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, renderWithoutProviders } from "@/test/test-utils";
 import { TimelineThumbnails } from "@/components/TimelineThumbnails";
 
-// Mock Tauri invoke to prevent actual calls during tests
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(() => Promise.resolve([])),
-}));
-
 const mockFrames = [
   { frame_index: 0, frame_type: "I", size: 50000, poc: 0, key_frame: true },
   { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
