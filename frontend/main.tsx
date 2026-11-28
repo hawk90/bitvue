@@ -10,16 +10,9 @@ import ReactDOM from "react-dom/client";
 import "@vscode/codicons/dist/codicon.css";
 import App from "./App";
 
-// Extend Window to allow custom console override guard and stored originals
+// Extend Window to allow the guard that installs the global error handlers only once
 interface BitvueWindow extends Window {
-  __bitvue_console_override_installed__?: boolean;
-  console: Console & {
-    _originalLog?: typeof console.log;
-    _originalInfo?: typeof console.info;
-    _originalWarn?: typeof console.warn;
-    _originalError?: typeof console.error;
-    _originalDebug?: typeof console.debug;
-  };
+  __bitvue_global_error_handlers_installed__?: boolean;
 }
 import "./index.css";
 import "./theme/colors.css";
@@ -32,77 +25,24 @@ import "./theme/tabs.css";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LayoutProvider } from "./contexts/LayoutContext";
 import { createLogger } from "./utils/logger";
-import { consoleLog } from "./utils/consoleLogger";
 
 const logger = createLogger("main");
 
-// Guard to prevent multiple console overrides due to HMR
-const CONSOLE_OVERRIDE_KEY = "__bitvue_console_override_installed__";
+// Guard to prevent installing the global error handlers twice (HMR re-runs this module).
+//
+// This block used to replace console.log/info/warn/error/debug so logs could also be forwarded to
+// the terminal through Tauri's frontend_log command. That forwarding path never runs under
+// Electron (the main process already forwards renderer console output, see createWindow's
+// `console-message` listener), so the override only made every console call print twice (#609).
+const GLOBAL_HANDLERS_KEY = "__bitvue_global_error_handlers_installed__";
 
 const bitvueWindow = window as BitvueWindow;
-if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
-  bitvueWindow[CONSOLE_OVERRIDE_KEY] = true;
-
-  // Override console methods to also send logs to terminal
-  const originalLog = console.log;
-  const originalInfo = console.info;
-  const originalWarn = console.warn;
-  const originalError = console.error;
-  const originalDebug = console.debug;
-
-  // Store original methods on window.console for consoleLogger to access
-  bitvueWindow.console._originalLog = originalLog;
-  bitvueWindow.console._originalInfo = originalInfo;
-  bitvueWindow.console._originalWarn = originalWarn;
-  bitvueWindow.console._originalError = originalError;
-  bitvueWindow.console._originalDebug = originalDebug;
-
-  console.log = (...args) => {
-    const first = args[0];
-    consoleLog.log(
-      typeof first === "string" ? first : JSON.stringify(first),
-      ...args.slice(1),
-    );
-    originalLog(...args);
-  };
-  console.info = (...args) => {
-    const first = args[0];
-    consoleLog.info(
-      typeof first === "string" ? first : JSON.stringify(first),
-      ...args.slice(1),
-    );
-    originalInfo(...args);
-  };
-  console.warn = (...args) => {
-    const first = args[0];
-    consoleLog.warn(
-      typeof first === "string" ? first : JSON.stringify(first),
-      ...args.slice(1),
-    );
-    originalWarn(...args);
-  };
-  console.error = (...args) => {
-    const first = args[0];
-    consoleLog.error(
-      typeof first === "string" ? first : JSON.stringify(first),
-      ...args.slice(1),
-    );
-    originalError(...args);
-  };
-  console.debug = (...args) => {
-    const first = args[0];
-    consoleLog.debug(
-      typeof first === "string" ? first : JSON.stringify(first),
-      ...args.slice(1),
-    );
-    originalDebug(...args);
-  };
-
-  originalLog("[main] Console override installed (once)");
+if (!bitvueWindow[GLOBAL_HANDLERS_KEY]) {
+  bitvueWindow[GLOBAL_HANDLERS_KEY] = true;
 
   // Global error handlers to catch all unhandled errors
   window.addEventListener("error", (event) => {
-    originalError(
+    console.error(
       "[GLOBAL ERROR]",
       event.message,
       event.filename,
@@ -113,10 +53,10 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    originalError("[UNHANDLED REJECTION]", event.reason);
+    console.error("[UNHANDLED REJECTION]", event.reason);
   });
 } else {
-  // Override already installed (HMR re-run) — skip silently
+  // Handlers already installed (HMR re-run) — skip silently
 }
 
 logger.info("Starting app...");
