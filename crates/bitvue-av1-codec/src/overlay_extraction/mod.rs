@@ -37,6 +37,7 @@ mod deblocking;
 mod energy_extractor;
 #[cfg(test)]
 mod grid_golden_test;
+mod grid_spec;
 mod mv_extractor;
 mod parser;
 mod partition;

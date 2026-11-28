@@ -13,6 +13,7 @@
 //! libaom's binarized bools, so "symbols per bit" is comparable within this app only.
 
 use super::cu_parser::parse_all_coding_units;
+use super::grid_spec::GridSpec;
 use super::parser::ParsedFrame;
 use super::OVERLAY_BLOCK_SIZE;
 use crate::tile::CodingUnit;
@@ -57,12 +58,13 @@ pub fn bit_grid_from_units(
     height: u32,
     units: &[CodingUnit],
 ) -> Result<BitGrid, BitvueError> {
-    let (block_w, block_h) = (OVERLAY_BLOCK_SIZE, OVERLAY_BLOCK_SIZE);
-    let grid_w = width.div_ceil(block_w);
-    let grid_h = height.div_ceil(block_h);
-    let total = grid_w.checked_mul(grid_h).ok_or_else(|| {
-        BitvueError::Decode(format!("Grid dimensions too large: {grid_w}x{grid_h}"))
-    })? as usize;
+    let GridSpec {
+        grid_w,
+        grid_h,
+        block_w,
+        block_h,
+        total,
+    } = GridSpec::new(width, height, OVERLAY_BLOCK_SIZE, OVERLAY_BLOCK_SIZE)?;
     let (coded_w, coded_h) = (width.div_ceil(8) * 8, height.div_ceil(8) * 8);
 
     let mut bits = vec![0.0f64; total];
