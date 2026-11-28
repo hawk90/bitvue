@@ -9,6 +9,7 @@
  */
 
 import type { FrameInfo } from "../../../../types/video";
+import { drawNoDataNotice } from "../utils/drawing";
 import type { Av1SuperResData } from "../types";
 
 interface Av1SuperResRendererProps {
@@ -31,17 +32,12 @@ export function Av1SuperResRenderer({
   if (!superResolution?.enabled) {
     // ── Disabled notice ───────────────────────────────────────────────────
     const msg = "SuperRes: disabled";
-    ctx.font = "14px monospace";
-    const measured = ctx.measureText(msg);
-    const boxW = measured.width + 24;
-    const boxH = 32;
-    const boxX = (width - boxW) / 2;
-    const boxY = (height - boxH) / 2;
-
-    ctx.fillStyle = "rgba(0, 0, 0, 0.70)";
-    ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.fillStyle = "#aaaaaa";
-    ctx.fillText(msg, boxX + 12, boxY + 21);
+    drawNoDataNotice(ctx, width, height, msg, {
+      font: "14px monospace",
+      boxH: 32,
+      textDy: 21,
+      textColor: "#aaaaaa",
+    });
     ctx.restore();
     return;
   }

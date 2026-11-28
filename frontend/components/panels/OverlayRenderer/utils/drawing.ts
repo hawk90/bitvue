@@ -143,6 +143,92 @@ export function drawLegend(
   });
 }
 
+export interface NoDataNoticeStyle {
+  font?: string;
+  boxH?: number;
+  /** Baseline offset of the text from the box top. */
+  textDy?: number;
+  textColor?: string;
+}
+
+/**
+ * Centered "no data" notice: translucent black box sized to the text, grey message.
+ * Defaults match the codec renderers' 13px notice; the AV1 feature renderers pass a
+ * 14px/32px variant. Does not save/restore the context (callers that need it do so).
+ */
+export function drawNoDataNotice(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  msg: string,
+  {
+    font = "13px monospace",
+    boxH = 30,
+    textDy = 20,
+    textColor = "#888888",
+  }: NoDataNoticeStyle = {},
+): void {
+  ctx.font = font;
+  const boxW = ctx.measureText(msg).width + 24;
+  const boxX = (width - boxW) / 2;
+  const boxY = (height - boxH) / 2;
+  ctx.fillStyle = "rgba(0,0,0,0.70)";
+  ctx.fillRect(boxX, boxY, boxW, boxH);
+  ctx.fillStyle = textColor;
+  ctx.fillText(msg, boxX + 12, boxY + textDy);
+}
+
+/**
+ * Fill a cols x rows grid of equal cells spanning width x height. `colorAt` returns the fill
+ * colour for a cell, or null to leave the cell untouched (fillStyle is not set for it).
+ */
+export function drawCellGrid(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  cols: number,
+  rows: number,
+  colorAt: (row: number, col: number, idx: number) => string | null,
+): void {
+  const cellW = width / cols;
+  const cellH = height / rows;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const color = colorAt(row, col, row * cols + col);
+      if (color === null) continue;
+      ctx.fillStyle = color;
+      ctx.fillRect(col * cellW, row * cellH, cellW, cellH);
+    }
+  }
+}
+
+/** Hairlines on every cell boundary of a cols x rows grid (cols+1 vertical, rows+1 horizontal). */
+export function drawGridLines(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  cols: number,
+  rows: number,
+  strokeStyle: string,
+): void {
+  const cellW = width / cols;
+  const cellH = height / rows;
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = 0.5;
+  for (let col = 0; col <= cols; col++) {
+    ctx.beginPath();
+    ctx.moveTo(col * cellW, 0);
+    ctx.lineTo(col * cellW, height);
+    ctx.stroke();
+  }
+  for (let row = 0; row <= rows; row++) {
+    ctx.beginPath();
+    ctx.moveTo(0, row * cellH);
+    ctx.lineTo(width, row * cellH);
+    ctx.stroke();
+  }
+}
+
 // Re-export getFrameTypeColor from colors for convenience
 import { getFrameTypeColor as getFrameTypeColorFromColors } from "./colors";
 export { getFrameTypeColorFromColors as getFrameTypeColor };
