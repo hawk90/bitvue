@@ -16,7 +16,13 @@
  */
 
 import { app, BrowserWindow, session, shell } from "electron";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +36,7 @@ import { registerFrameAnalysisIpcHandlers } from "./ipc/frameAnalysis.js";
 import { registerSyntaxHexIpcHandlers } from "./ipc/syntaxHex.js";
 import { registerCompareDiffIpcHandlers } from "./ipc/compareDiff.js";
 import { registerEvidenceExportIpcHandlers } from "./ipc/evidenceExport.js";
+import { registerFileExportIpcHandlers } from "./ipc/fileExport.js";
 import { registerWindowLifecycleIpcHandlers } from "./ipc/windowLifecycle.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -141,6 +148,7 @@ function registerIpcHandlers(): void {
   registerSyntaxHexIpcHandlers(requireSidecar);
   registerCompareDiffIpcHandlers(requireSidecar);
   registerEvidenceExportIpcHandlers(requireSidecar);
+  registerFileExportIpcHandlers();
   registerWindowLifecycleIpcHandlers(samplesDir);
 }
 
@@ -437,6 +445,30 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         return { load, referenceBytesHex, metrics, diffYAllZero: diffYBytes.every((b) => b === 0), firstDiff, metricsAll };
       })()
     `);
+    // Save dialog IPC (#605): the main process writes to the path the dialog returns (answered
+    // here through the test-only env var) and never to a path in the request; a malformed request
+    // is rejected without writing.
+    const savedPath = path.join(tempDir, "saved_frames.csv");
+    const smuggledPath = path.join(tempDir, "smuggled_should_not_exist.csv");
+    process.env.BITVUE_ELECTRON_SELFTEST_SAVE_PATH = savedPath;
+    const saveResult = await win.webContents.executeJavaScript(`
+      (async () => {
+        const saved = await window.bitvue.saveTextFile({
+          defaultName: "frames.csv", filterName: "CSV", extensions: ["csv"],
+          content: "Frame,Type\\n0,I", outputPath: ${JSON.stringify(smuggledPath)},
+        });
+        const rejected = await window.bitvue
+          .saveTextFile({ defaultName: "x", filterName: "CSV", extensions: ["../x"], content: "a" })
+          .then(() => false, () => true);
+        return { saved, rejected };
+      })()
+    `);
+    delete process.env.BITVUE_ELECTRON_SELFTEST_SAVE_PATH;
+    const saveTextFileOk =
+      saveResult.saved === savedPath &&
+      readFileSync(savedPath, "utf8") === "Frame,Type\n0,I" &&
+      !existsSync(smuggledPath) &&
+      saveResult.rejected === true;
     const expectedHex = knownBytes.subarray(10, 26).toString("hex");
     const selectOk = result.selectEvents?.[0]?.type === "SelectionUpdated";
     const closeOk = result.closeEvents?.[0]?.type === "ModelUpdated";
@@ -596,6 +628,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       debugYuvFindFirstDiffOk,
       " whole-stream metrics OK:",
       debugYuvMetricsAllOk,
+      " save dialog IPC OK:",
+      saveTextFileOk,
     );
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
     console.log(
@@ -652,6 +686,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       debugYuvDiffOk &&
       debugYuvFindFirstDiffOk &&
       debugYuvMetricsAllOk &&
+      saveTextFileOk &&
       frameAnalysisOk &&
       av1FeaturesOk &&
       codingFlowOk &&

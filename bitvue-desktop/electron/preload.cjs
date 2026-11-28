@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld("bitvue", {
   // Returns a `data:image/png;base64,...` string, or null if there's no window to capture.
   captureScreenshot: () => ipcRenderer.invoke("bitvue:captureScreenshot"),
   showDirectoryDialog: () => ipcRenderer.invoke("bitvue:showDirectoryDialog"),
+  saveTextFile: (request) => ipcRenderer.invoke("bitvue:saveTextFile", request),
   indexStream: (stream) => ipcRenderer.invoke("bitvue:indexStream", stream),
   getStreamInfo: (stream) => ipcRenderer.invoke("bitvue:getStreamInfo", stream),
   getFramesChunk: (stream, offset, limit) =>

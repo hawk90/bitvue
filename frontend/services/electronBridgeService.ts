@@ -30,4 +30,5 @@ export * from "./bridge/frameAnalysis";
 export * from "./bridge/syntaxHex";
 export * from "./bridge/compareDiff";
 export * from "./bridge/evidenceExport";
+export * from "./bridge/fileExport";
 export * from "./bridge/windowLifecycle";

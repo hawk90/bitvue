@@ -4,22 +4,12 @@
  * Utilities for exporting frame data, analysis results, and reports
  * in various formats (CSV, JSON, PDF).
  *
- * WARNING (2026-08-20 Tauri-leftover audit): `exportFramesToCsv`/`exportFramesToJson`/
- * `exportAnalysisReport` below are live (reachable from ExportDialog.tsx, a real File > Export
- * menu dialog) but broken under Electron -- `save()`/`invoke()` come from `@tauri-apps/*`, which
- * doesn't exist post-migration. This is NOT a simple bridge rewiring job like most other
- * Tauri-leftover fixes in this codebase: the Rust side (`export_frames_csv`/`export_frames_json`/
- * `export_analysis_report`, originally in the old `crates/app` package) was deleted along with
- * the rest of the Tauri command layer (2026-08-08) and never re-implemented in `bitvue-sidecar`.
- * Fixing this for real means writing new sidecar commands + Rust export logic, not just swapping
- * the transport -- out of scope for a cleanup pass, needs its own scoping. ExportDialog.tsx
- * already catches the resulting throw and shows an error state, so this is a broken feature, not
- * a crash. `exportToPdf`/`generateHtmlReport`/`generateAnalysisReport` below don't touch
- * @tauri-apps at all (pure client-side `window.open()` + HTML) and already work correctly.
+ * CSV, JSON and the text report are built here and saved through `saveTextFile` (a native save
+ * dialog shown by the main process, #605), so the renderer never picks a file path.
+ * `exportToPdf`/`generateHtmlReport` are pure client-side `window.open()` + HTML.
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { saveTextFile } from "../services/electronBridgeService";
 
 export type ExportFormat = "csv" | "json" | "txt" | "pdf";
 
@@ -80,47 +70,104 @@ function escapeHtml(unsafe: string | number): string {
     .replace(/'/g, "&#039;");
 }
 
+/** One CSV cell. A value with a comma, quote or line break is quoted; one that starts with a
+ *  formula character (`=`, `+`, `-`, `@`) gets a leading `'` so a spreadsheet shows it as text
+ *  instead of evaluating it. Numbers are written as they are (a negative number is not a formula). */
+function csvCell(value: string | number | undefined): string {
+  if (value === undefined) return "";
+  if (typeof value === "number") return String(value);
+  let text = value;
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/** The frame list as CSV text. */
+export function buildFramesCsv(frames: FrameExportData[]): string {
+  return [
+    "Frame,Type,Size,POC,PTS,KeyFrame,TemporalLayer,SpatialLayer,RefFrames",
+    ...frames.map((f) =>
+      [
+        csvCell(f.frame_index),
+        csvCell(f.frame_type),
+        csvCell(f.size),
+        csvCell(f.poc),
+        csvCell(f.pts),
+        f.key_frame ? "Y" : "N",
+        csvCell(f.temporal_id),
+        csvCell(f.spatial_id),
+        csvCell(f.ref_frames?.join(";")),
+      ].join(","),
+    ),
+  ].join("\n");
+}
+
+/** The frame list and stream metadata as JSON text. */
+export function buildFramesJson(
+  frames: FrameExportData[],
+  metadata: { codec: string; width: number; height: number },
+): string {
+  return JSON.stringify(
+    { metadata, frame_count: frames.length, frames },
+    null,
+    2,
+  );
+}
+
+/** The analysis report as plain text. */
+export function buildAnalysisReportText(data: AnalysisReportData): string {
+  const d = data.frame_type_distribution;
+  const s = data.size_statistics;
+  return [
+    "Bitvue Analysis Report",
+    "======================",
+    "",
+    `Codec:        ${data.codec}`,
+    `Resolution:   ${data.width}x${data.height}`,
+    `Total frames: ${data.total_frames}`,
+    "",
+    "Frame types",
+    `  I: ${d.i_frames}`,
+    `  P: ${d.p_frames}`,
+    `  B: ${d.b_frames}`,
+    "",
+    "Frame sizes (bytes)",
+    `  Total:   ${s.total}`,
+    `  Average: ${s.average}`,
+    `  Max:     ${s.max}`,
+    `  Min:     ${s.min}`,
+    "",
+    "GOPs",
+    `  Count:        ${data.gop_structure.count}`,
+    `  Average size: ${data.gop_structure.average_size} frames`,
+    "",
+  ].join("\n");
+}
+
+/** Saves `content` through the save dialog; throws "No file path selected" when the user
+ *  cancels (the dialog shows that as its error state). */
+async function saveThroughDialog(
+  defaultName: string,
+  filterName: string,
+  extension: string,
+  content: string,
+): Promise<string> {
+  const filePath = await saveTextFile({
+    defaultName,
+    filterName,
+    extensions: [extension],
+    content,
+  });
+  if (!filePath) throw new Error("No file path selected");
+  return filePath;
+}
+
 /**
  * Export frames to CSV format
  */
 export async function exportFramesToCsv(
   frames: FrameExportData[],
 ): Promise<string> {
-  const csvContent = [
-    "Frame,Type,Size,POC,PTS,KeyFrame,TemporalLayer,SpatialLayer,RefFrames",
-    ...frames.map((f) =>
-      [
-        f.frame_index,
-        f.frame_type,
-        f.size,
-        f.poc ?? "",
-        f.pts ?? "",
-        f.key_frame ? "Y" : "N",
-        f.temporal_id ?? "",
-        f.spatial_id ?? "",
-        f.ref_frames?.join(";") ?? "",
-      ].join(","),
-    ),
-  ].join("\n");
-
-  const filePath = await save({
-    defaultPath: "frames.csv",
-    filters: [
-      {
-        name: "CSV",
-        extensions: ["csv"],
-      },
-    ],
-  });
-
-  if (!filePath) throw new Error("No file path selected");
-
-  // Use Tauri command to write file (csvContent passed for potential future use)
-  await invoke("export_frames_csv", {
-    outputPath: filePath,
-    content: csvContent,
-  });
-  return filePath;
+  return saveThroughDialog("frames.csv", "CSV", "csv", buildFramesCsv(frames));
 }
 
 /**
@@ -134,54 +181,29 @@ export async function exportFramesToJson(
     height: number;
   },
 ): Promise<string> {
-  const filePath = await save({
-    defaultPath: "frames.json",
-    filters: [
-      {
-        name: "JSON",
-        extensions: ["json"],
-      },
-    ],
-  });
-
-  if (!filePath) throw new Error("No file path selected");
-
-  await invoke("export_frames_json", {
-    outputPath: filePath,
-    frames,
-    metadata,
-  });
-  return filePath;
+  return saveThroughDialog(
+    "frames.json",
+    "JSON",
+    "json",
+    buildFramesJson(frames, metadata),
+  );
 }
 
 /**
  * Export analysis report to text format
  */
 export async function exportAnalysisReport(
-  // Not yet used -- export_analysis_report has no sidecar equivalent (unlike CSV/JSON export,
-  // this needs real report-generation logic that never existed even in the old Tauri version,
-  // which only ever passed {outputPath, includeSyntax}, never the report data itself). Flagged,
-  // not implemented here -- see exportFramesToCsv/Json for the export paths that do work.
-  _data: AnalysisReportData,
-  includeSyntax: boolean = false,
+  data: AnalysisReportData,
+  // The report is built from `data` alone; there is no syntax data to include, so this flag
+  // (still passed by ExportDialog's checkbox) changes nothing.
+  _includeSyntax: boolean = false,
 ): Promise<string> {
-  const filePath = await save({
-    defaultPath: "analysis_report.txt",
-    filters: [
-      {
-        name: "Text",
-        extensions: ["txt"],
-      },
-    ],
-  });
-
-  if (!filePath) throw new Error("No file path selected");
-
-  await invoke("export_analysis_report", {
-    outputPath: filePath,
-    includeSyntax,
-  });
-  return filePath;
+  return saveThroughDialog(
+    "analysis_report.txt",
+    "Text",
+    "txt",
+    buildAnalysisReportText(data),
+  );
 }
 
 /**

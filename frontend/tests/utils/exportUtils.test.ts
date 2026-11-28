@@ -6,18 +6,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   exportUtils,
   generateAnalysisReport,
+  buildFramesCsv,
+  buildFramesJson,
+  buildAnalysisReportText,
   type FrameExportData,
 } from "@/utils/exportUtils";
-import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { saveTextFile } from "@/services/electronBridgeService";
 
-// Mock Tauri APIs
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
-}));
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  save: vi.fn(() => Promise.resolve("/mock/path/export.csv")),
+vi.mock("@/services/electronBridgeService", () => ({
+  saveTextFile: vi.fn(),
 }));
 
 describe("exportUtils", () => {
@@ -85,106 +82,140 @@ describe("exportUtils", () => {
     });
   });
 
-  describe("exportFramesToCsv", () => {
-    it("exports frame data to CSV format", async () => {
-      vi.mocked(save).mockResolvedValue("/test/export.csv");
-      vi.mocked(invoke).mockResolvedValue(
-        "Exported 3 frames to /test/export.csv",
+  const REPORT = {
+    codec: "hevc",
+    width: 1920,
+    height: 1080,
+    total_frames: 100,
+    frame_type_distribution: { i_frames: 10, p_frames: 40, b_frames: 50 },
+    size_statistics: { total: 3000000, average: 30000, max: 50000, min: 10000 },
+    gop_structure: { count: 10, average_size: 10 },
+  };
+
+  const FRAMES: FrameExportData[] = [
+    { frame_index: 0, frame_type: "I", size: 50000, key_frame: true },
+    {
+      frame_index: 1,
+      frame_type: "P",
+      size: 25000,
+      key_frame: false,
+      ref_frames: [0, 2],
+      pts: 3,
+    },
+  ];
+
+  describe("buildFramesCsv", () => {
+    it("writes a header and one row per frame, refs joined with ;", () => {
+      expect(buildFramesCsv(FRAMES).split("\n")).toEqual([
+        "Frame,Type,Size,POC,PTS,KeyFrame,TemporalLayer,SpatialLayer,RefFrames",
+        "0,I,50000,,,Y,,,",
+        "1,P,25000,,3,N,,,0;2",
+      ]);
+    });
+
+    it("quotes cells with commas/quotes and defuses spreadsheet formulas", () => {
+      const csv = buildFramesCsv([
+        { frame_index: 0, frame_type: 'a,"b"', size: 1 },
+        { frame_index: 1, frame_type: "=SUM(A1)", size: 1 },
+        { frame_index: 2, frame_type: "-1", size: 1 },
+      ]);
+      const rows = csv.split("\n");
+      expect(rows[1]).toBe('0,"a,""b""",1,,,N,,,');
+      expect(rows[2]).toBe("1,'=SUM(A1),1,,,N,,,");
+      expect(rows[3]).toBe("2,'-1,1,,,N,,,");
+    });
+
+    it("does not treat a negative number as a formula", () => {
+      const csv = buildFramesCsv([
+        { frame_index: 0, frame_type: "P", size: 1, poc: -2 },
+      ]);
+      expect(csv.split("\n")[1]).toBe("0,P,1,-2,,N,,,");
+    });
+  });
+
+  describe("buildFramesJson / buildAnalysisReportText", () => {
+    it("JSON carries the metadata, the count and every frame", () => {
+      const parsed = JSON.parse(
+        buildFramesJson(FRAMES, { codec: "av1", width: 320, height: 240 }),
       );
+      expect(parsed.metadata).toEqual({
+        codec: "av1",
+        width: 320,
+        height: 240,
+      });
+      expect(parsed.frame_count).toBe(2);
+      expect(parsed.frames).toEqual(FRAMES);
+    });
 
-      const frames: FrameExportData[] = [
-        {
-          frame_index: 0,
-          frame_type: "I",
-          size: 50000,
-          key_frame: true,
-        },
-        {
-          frame_index: 1,
-          frame_type: "P",
-          size: 25000,
-          key_frame: false,
-          ref_frames: [0],
-        },
-      ];
+    it("the report text states every number it was given", () => {
+      const text = buildAnalysisReportText(REPORT);
+      for (const needle of [
+        "hevc",
+        "1920x1080",
+        "Total frames: 100",
+        "I: 10",
+        "P: 40",
+        "B: 50",
+        "Total:   3000000",
+        "Average: 30000",
+        "Max:     50000",
+        "Min:     10000",
+        "Count:        10",
+        "Average size: 10 frames",
+      ]) {
+        expect(text).toContain(needle);
+      }
+    });
+  });
 
-      const result = await exportUtils.exportFramesToCsv(frames);
-
-      expect(invoke).toHaveBeenCalledWith("export_frames_csv", {
-        outputPath: "/test/export.csv",
-        content: expect.any(String),
+  describe("saving through the dialog (#605)", () => {
+    it("CSV: hands the content to saveTextFile with no path and returns the saved path", async () => {
+      vi.mocked(saveTextFile).mockResolvedValue("/test/export.csv");
+      const result = await exportUtils.exportFramesToCsv(FRAMES);
+      expect(saveTextFile).toHaveBeenCalledWith({
+        defaultName: "frames.csv",
+        filterName: "CSV",
+        extensions: ["csv"],
+        content: buildFramesCsv(FRAMES),
       });
       expect(result).toBe("/test/export.csv");
     });
-  });
 
-  describe("exportFramesToJson", () => {
-    it("exports frame data to JSON format", async () => {
-      vi.mocked(save).mockResolvedValue("/test/export.json");
-      vi.mocked(invoke).mockResolvedValue(
-        "Exported 2 frames to /test/export.json",
-      );
-
-      const frames: FrameExportData[] = [
-        {
-          frame_index: 0,
-          frame_type: "I",
-          size: 50000,
-          key_frame: true,
-        },
-      ];
-
-      const result = await exportUtils.exportFramesToJson(frames, {
-        codec: "hevc",
-        width: 1920,
-        height: 1080,
+    it("JSON and report use their own name, filter and content", async () => {
+      vi.mocked(saveTextFile).mockResolvedValue("/test/out");
+      const meta = { codec: "hevc", width: 1920, height: 1080 };
+      await exportUtils.exportFramesToJson(FRAMES, meta);
+      expect(saveTextFile).toHaveBeenLastCalledWith({
+        defaultName: "frames.json",
+        filterName: "JSON",
+        extensions: ["json"],
+        content: buildFramesJson(FRAMES, meta),
       });
-
-      expect(invoke).toHaveBeenCalledWith("export_frames_json", {
-        outputPath: "/test/export.json",
-        frames,
-        metadata: { codec: "hevc", width: 1920, height: 1080 },
+      await exportUtils.exportAnalysisReport(REPORT, false);
+      expect(saveTextFile).toHaveBeenLastCalledWith({
+        defaultName: "analysis_report.txt",
+        filterName: "Text",
+        extensions: ["txt"],
+        content: buildAnalysisReportText(REPORT),
       });
-      expect(result).toBe("/test/export.json");
     });
-  });
 
-  describe("exportAnalysisReport", () => {
-    it("exports analysis report to text format", async () => {
-      vi.mocked(save).mockResolvedValue("/test/report.txt");
-      vi.mocked(invoke).mockResolvedValue(
-        "Exported analysis report to /test/report.txt",
+    it("a cancelled dialog is reported as 'No file path selected'", async () => {
+      vi.mocked(saveTextFile).mockResolvedValue(null);
+      await expect(exportUtils.exportFramesToCsv(FRAMES)).rejects.toThrow(
+        "No file path selected",
       );
+    });
 
-      const reportData = {
-        codec: "hevc",
-        width: 1920,
-        height: 1080,
-        total_frames: 100,
-        frame_type_distribution: {
-          i_frames: 10,
-          p_frames: 40,
-          b_frames: 50,
-        },
-        size_statistics: {
-          total: 3000000,
-          average: 30000,
-          max: 50000,
-          min: 10000,
-        },
-        gop_structure: {
-          count: 10,
-          average_size: 10,
-        },
-      };
-
-      const result = await exportUtils.exportAnalysisReport(reportData, false);
-
-      expect(invoke).toHaveBeenCalledWith("export_analysis_report", {
-        outputPath: "/test/report.txt",
-        includeSyntax: false,
-      });
-      expect(result).toBe("/test/report.txt");
+    it("a failed write rejects", async () => {
+      vi.mocked(saveTextFile).mockRejectedValue(new Error("disk full"));
+      await expect(
+        exportUtils.exportFramesToJson(FRAMES, {
+          codec: "av1",
+          width: 1,
+          height: 1,
+        }),
+      ).rejects.toThrow("disk full");
     });
   });
 

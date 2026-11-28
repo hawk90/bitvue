@@ -52,6 +52,7 @@ import type {
   ExportEvidenceBundleParams,
 } from "./evidenceExport";
 import type { OpenFileDialogFilter } from "./windowLifecycle";
+import type { SaveTextFileRequest } from "./fileExport";
 
 export type StreamId = "A" | "B";
 
@@ -145,6 +146,7 @@ declare global {
         filters?: OpenFileDialogFilter[],
       ) => Promise<string | null>;
       showDirectoryDialog: () => Promise<string | null>;
+      saveTextFile: (request: SaveTextFileRequest) => Promise<string | null>;
       pathExists: (path: string) => Promise<boolean>;
       getSamplePath: (filename: string) => Promise<string>;
       closeWindow: () => Promise<void>;
