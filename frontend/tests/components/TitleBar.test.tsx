@@ -7,11 +7,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@/test/test-utils";
 import { TitleBar } from "@/components/TitleBar";
 
-// Mock file dialog
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: vi.fn(),
-}));
-
 describe("TitleBar", () => {
   const mockOnOpenFile = vi.fn();
 

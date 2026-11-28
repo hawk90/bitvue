@@ -28,7 +28,6 @@ allow = [
     "BSL-1.0",                    # Boost Software License (clipboard-win, error-code)
     "OFL-1.1",                    # SIL Open Font License (font data in epaint_default_fonts)
     "Unicode-3.0",                # Unicode License v3 (icu_collections, icu_locale_core)
-    "MPL-2.0",                    # Mozilla Public License (cssparser, dtoa-short via tauri)
     "NCSA",                       # University of Illinois/NCSA Open Source License (libfuzzer-sys via rav1e/ravif)
 ]
 

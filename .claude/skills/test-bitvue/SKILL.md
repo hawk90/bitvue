@@ -37,7 +37,7 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 **Frontend** (`frontend/`, vitest 1.6 + jsdom)
 - Tests only under `frontend/tests/{components,hooks,utils,contexts,services,types,constants}/` and `tests/App.test.tsx` — `vitest.config.ts` includes `tests/**` only; a test placed next to a component will not run.
-- Setup `frontend/test/setup.ts` (mocks `@tauri-apps/*`, `react-resizable-panels`).
+- Setup `frontend/test/setup.ts` (mocks `react-resizable-panels`).
 - Helpers `frontend/test/test-utils.tsx`: `render` (wraps all providers), `renderWithoutProviders`, `userEvent`, `mockFrames`.
 - Fixtures `frontend/test/fixtures/{analysisData,frames,videos}.ts` (`mockFrames`, `generateMockFrames(n)`, `mockStreamInfo`, `generateMockAnalysisData`, ...).
 - `@` aliases the `frontend/` root.

@@ -80,12 +80,6 @@ vi.mock("@/contexts/YuvDiffContext", () => ({
   })),
 }));
 
-// Mock Tauri invoke — still used by the debug-YUV path (get_decoded_frame_yuv's Tauri call was
-// replaced by the Electron bridge below; get_debug_yuv_frame has no sidecar equivalent yet).
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(() => Promise.resolve({ success: false, error: "Test mode" })),
-}));
-
 // Mock the Electron bridge's getDecodedFrameYuv — the real decode path (2026-08-08 migration
 // off Tauri's get_decoded_frame_yuv). The component actually calls the cancellable variant
 // (axis-6 cancellation wiring) -- that's implemented here as a thin wrapper around the same
