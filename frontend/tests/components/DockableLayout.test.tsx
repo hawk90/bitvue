@@ -266,8 +266,8 @@ describe("PANEL_SIZES constants", () => {
     expect(PANEL_SIZES.LEFT_SIDEBAR).toBe(25);
     expect(PANEL_SIZES.MAIN_CONTENT).toBe(75);
     expect(PANEL_SIZES.FILMSTRIP_BAR).toBe(24);
-    expect(PANEL_SIZES.YUV_VIEWER).toBe(71);
-    expect(PANEL_SIZES.BOTTOM_PANEL).toBe(29);
+    expect(PANEL_SIZES.YUV_VIEWER).toBe(60);
+    expect(PANEL_SIZES.BOTTOM_PANEL).toBe(40);
     // Filmstrip + body fill the outer vertical Group; viewer + bottom row fill the main column.
     expect(PANEL_SIZES.FILMSTRIP_BAR + PANEL_SIZES.BODY).toBe(100);
     expect(PANEL_SIZES.YUV_VIEWER + PANEL_SIZES.BOTTOM_PANEL).toBe(100);

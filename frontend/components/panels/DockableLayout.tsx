@@ -38,10 +38,11 @@ export const PANEL_SIZES = {
       Detail showed one to three rows (#489). */
   FILMSTRIP_BAR: 24,
   /** YUV viewer height percentage of the main column (the viewer above, the bottom row below). */
-  YUV_VIEWER: 71,
+  YUV_VIEWER: 60,
   /** Bottom row height percentage of the main column: tall enough for Info/Details/Stats/
-      Diagnostics' real content (e.g. Info's File/Frames/Duration rows) without clipping. */
-  BOTTOM_PANEL: 29,
+      Diagnostics' real content (e.g. Info's File/Frames/Duration rows) and the Bitrate bar graph
+      at the 1280x800 default window without clipping (29 left ~150px and hid the bars, #617). */
+  BOTTOM_PANEL: 40,
   /** Everything under the filmstrip (left sidebar + main column). */
   BODY: 76,
 } as const;
