@@ -120,7 +120,7 @@ Out of scope, by design: broadcast QC (live TS conformance TR 101290, SCTE-35, C
   but most of the documented hover tooltips, drag-range, semantic zoom and rich context menus were never built.
   Here the frontend interaction code is what's missing, not the engine.
 - **Dead Tauri-era UI.** Examples true on 2026-10-05 (see `UI-009`, `UX-006`, `EXP-002` for current status). Some components still call `@tauri-apps/api` `invoke()` and are unmounted:
-  `QualityMetricsPanel`, `ReferenceGraphPanel`. Some keyboard handlers dispatch CustomEvents that nothing listens
+  `ReferenceGraphPanel`. Some keyboard handlers dispatch CustomEvents that nothing listens
   to (Ctrl+S, Ctrl+Z, Ctrl+C, Escape clear-selection). If a file or a key binding exists, that doesn't mean the
   feature works.
 - **Static screenshots miss interaction bugs.** The PNL-02..05 reference-arrow bugs and the passive-wheel

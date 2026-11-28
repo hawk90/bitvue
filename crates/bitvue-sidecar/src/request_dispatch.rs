@@ -410,6 +410,14 @@ pub fn compute_frames(
                 request,
             ))
         }
+        "get_yuv_diff_metrics_all" => {
+            return single_control_frame(debug_yuv::get_yuv_diff_metrics_all(
+                core,
+                debug_yuv_state,
+                request,
+                cancel_flag,
+            ))
+        }
         "find_first_diff_frame" => {
             return single_control_frame(debug_yuv::find_first_diff_frame(
                 core,

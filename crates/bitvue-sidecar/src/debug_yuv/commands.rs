@@ -1,7 +1,9 @@
 //! Wire-protocol command handlers for the debug-YUV subsystem -- load/unload the reference
 //! session, mutate its offset/crop, and fetch the metrics/frame outputs `super::compare` computes.
 
-use super::compare::{compute_frame_metrics, find_first_diff, get_frame, FindFirstDiffError};
+use super::compare::{
+    compute_all_metrics, compute_frame_metrics, find_first_diff, get_frame, FindFirstDiffError,
+};
 use super::{load, Crop, LoadParams};
 use bitvue_engine::Core;
 use bitvue_protocol::{FrameKind, Request, Response, WireError, WireErrorCode};
@@ -161,6 +163,74 @@ pub fn find_first_diff_frame(
                 "total_checked": total_checked,
             }),
         ),
+        Err(FindFirstDiffError::Cancelled) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::Cancelled,
+                message: "cancelled".to_string(),
+                offset: None,
+            },
+        ),
+        Err(FindFirstDiffError::Other(message)) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::Internal,
+                message,
+                offset: None,
+            },
+        ),
+    }
+}
+
+/// Whole-stream PSNR/SSIM: stream A decoded once against the loaded reference (#606). Per-frame
+/// values plus `average_psnr`/`average_ssim`, the arithmetic mean of the per-frame `psnr_avg` /
+/// `ssim_y` (a byte-identical frame counts as the 100 dB sentinel `compute_frame_metrics` clamps
+/// to). `frame_count` is how many frames were compared -- fewer than the stream has when the
+/// reference ran out first.
+pub fn get_yuv_diff_metrics_all(
+    core: &Core,
+    state: &crate::DebugYuvSlot,
+    request: &Request,
+    cancel_flag: &AtomicBool,
+) -> Response {
+    let guard = state.lock().unwrap();
+    let session = match guard.as_ref() {
+        Some(s) => s,
+        None => return no_debug_yuv_loaded(request.id),
+    };
+    match compute_all_metrics(core, session, cancel_flag) {
+        Ok(all) => {
+            let count = all.len();
+            let mean = |f: fn(&super::compare::DiffMetrics) -> f64| -> Option<f64> {
+                (count > 0).then(|| all.iter().map(f).sum::<f64>() / count as f64)
+            };
+            let average_psnr = mean(|m| m.psnr_avg);
+            let average_ssim = mean(|m| m.ssim_y);
+            let frames: Vec<_> = all
+                .iter()
+                .map(|m| {
+                    serde_json::json!({
+                        "frame_index": m.frame_index,
+                        "psnr_y": m.psnr_y,
+                        "psnr_u": m.psnr_u,
+                        "psnr_v": m.psnr_v,
+                        "psnr_avg": m.psnr_avg,
+                        "ssim_y": m.ssim_y,
+                        "max_diff_y": m.max_diff_y,
+                        "has_mismatch": m.has_mismatch,
+                    })
+                })
+                .collect();
+            Response::success(
+                request.id,
+                serde_json::json!({
+                    "frame_count": count,
+                    "average_psnr": average_psnr,
+                    "average_ssim": average_ssim,
+                    "frames": frames,
+                }),
+            )
+        }
         Err(FindFirstDiffError::Cancelled) => Response::failure(
             request.id,
             WireError {
@@ -675,5 +745,152 @@ mod tests {
         );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+    /// A reference YUV holding every frame stream A decodes to (the fixture decoded through the
+    /// same path the single-frame commands use), so a whole-stream comparison against it is a
+    /// reproducible "identical" case. Returns (file, width, height, frame_count).
+    fn load_reference_matching_every_real_fixture_frame(
+        core: &Core,
+    ) -> (tempfile::NamedTempFile, u32, u32, usize) {
+        open_real_fixture(core, "A");
+        let decode_sessions = crate::decode_session::DecodeSessions::new();
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        let (mut width, mut height, mut count) = (0u32, 0u32, 0usize);
+        loop {
+            let frames = crate::commands::data_plane::get_decoded_frame_yuv(
+                core,
+                &decode_sessions,
+                &Request {
+                    id: 360,
+                    method: "get_decoded_frame_yuv".to_string(),
+                    params: serde_json::json!({"stream": "A", "frame_index": count}),
+                },
+                &AtomicBool::new(false),
+            );
+            let ctrl: Response = serde_json::from_slice(&frames[0].1).unwrap();
+            if !ctrl.ok || frames.len() < 2 {
+                break;
+            }
+            let meta = ctrl.result.unwrap();
+            width = meta["width"].as_u64().unwrap() as u32;
+            height = meta["height"].as_u64().unwrap() as u32;
+            file.write_all(&frames[1].1).unwrap();
+            count += 1;
+        }
+        assert!(
+            count > 1,
+            "the fixture must have several frames for this test"
+        );
+        (file, width, height, count)
+    }
+
+    fn load_i420_reference(file: &std::path::Path, width: u32, height: u32) -> crate::DebugYuvSlot {
+        let state = fresh_debug_yuv_state();
+        let response = load_debug_yuv(
+            &state,
+            &Request {
+                id: 361,
+                method: "load_debug_yuv".to_string(),
+                params: serde_json::json!({
+                    "path": file.to_str().unwrap(), "width": width, "height": height,
+                    "format": "i420", "bitdepth": 8,
+                }),
+            },
+        );
+        assert_eq!(response.result.unwrap()["success"], true);
+        state
+    }
+
+    fn metrics_all(core: &Core, state: &crate::DebugYuvSlot, cancel: &AtomicBool) -> Response {
+        get_yuv_diff_metrics_all(
+            core,
+            state,
+            &Request {
+                id: 362,
+                method: "get_yuv_diff_metrics_all".to_string(),
+                params: serde_json::json!({}),
+            },
+            cancel,
+        )
+    }
+
+    #[test]
+    fn get_yuv_diff_metrics_all_covers_every_frame_and_flags_the_corrupted_one() {
+        let core = Core::new();
+        let (file, width, height, count) = load_reference_matching_every_real_fixture_frame(&core);
+        let state = load_i420_reference(file.path(), width, height);
+
+        // Identical reference: every frame compared, none mismatched, mean at the 100 dB sentinel
+        let result = metrics_all(&core, &state, &AtomicBool::new(false))
+            .result
+            .unwrap();
+        assert_eq!(result["frame_count"], count);
+        let frames = result["frames"].as_array().unwrap();
+        assert_eq!(frames.len(), count);
+        assert!(frames.iter().all(|f| f["has_mismatch"] == false));
+        assert_eq!(result["average_psnr"], 100.0);
+        assert_eq!(result["average_ssim"], 1.0);
+
+        // Corrupt the first luma byte of frame 1 in the reference: only that frame changes
+        let frame_bytes = (width * height * 3 / 2) as usize;
+        let mut bytes = std::fs::read(file.path()).unwrap();
+        bytes[frame_bytes] = bytes[frame_bytes].wrapping_add(100);
+        std::fs::write(file.path(), &bytes).unwrap();
+        let state = load_i420_reference(file.path(), width, height);
+        let result = metrics_all(&core, &state, &AtomicBool::new(false))
+            .result
+            .unwrap();
+        let frames = result["frames"].as_array().unwrap();
+        for (i, f) in frames.iter().enumerate() {
+            assert_eq!(f["frame_index"], i);
+            assert_eq!(f["has_mismatch"], i == 1, "only frame 1 was corrupted");
+        }
+        assert!(frames[1]["psnr_avg"].as_f64().unwrap() < 100.0);
+        assert!(result["average_psnr"].as_f64().unwrap() < 100.0);
+    }
+
+    #[test]
+    fn get_yuv_diff_metrics_all_returns_each_frame_once_in_decode_order() {
+        // Each frame appears exactly once, in decode order. (That the stream is decoded in a single
+        // pass is by construction: `for_each_decoded_frame` is the only decode loop here.)
+        let core = Core::new();
+        let (file, width, height, count) = load_reference_matching_every_real_fixture_frame(&core);
+        let state = load_i420_reference(file.path(), width, height);
+        let guard = state.lock().unwrap();
+        let session = guard.as_ref().unwrap();
+        let all = compute_all_metrics(&core, session, &AtomicBool::new(false)).unwrap();
+        let indices: Vec<usize> = all.iter().map(|m| m.frame_index).collect();
+        assert_eq!(indices, (0..count).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn get_yuv_diff_metrics_all_stops_when_the_reference_has_fewer_frames() {
+        let core = Core::new();
+        let (file, width, height, count) = load_reference_matching_every_real_fixture_frame(&core);
+        let frame_bytes = (width * height * 3 / 2) as usize;
+        let mut bytes = std::fs::read(file.path()).unwrap();
+        bytes.truncate(frame_bytes * 2);
+        std::fs::write(file.path(), &bytes).unwrap();
+        let state = load_i420_reference(file.path(), width, height);
+        let result = metrics_all(&core, &state, &AtomicBool::new(false))
+            .result
+            .unwrap();
+        assert!(count > 2);
+        assert_eq!(result["frame_count"], 2);
+    }
+
+    #[test]
+    fn get_yuv_diff_metrics_all_reports_cancelled_and_not_found() {
+        let core = Core::new();
+        let (file, width, height, _) = load_reference_matching_every_real_fixture_frame(&core);
+        let state = load_i420_reference(file.path(), width, height);
+        let cancelled = metrics_all(&core, &state, &AtomicBool::new(true));
+        assert!(!cancelled.ok);
+        assert_eq!(cancelled.error.unwrap().code, WireErrorCode::Cancelled);
+
+        let none = fresh_debug_yuv_state();
+        let missing = metrics_all(&core, &none, &AtomicBool::new(false));
+        assert!(!missing.ok);
+        assert_eq!(missing.error.unwrap().code, WireErrorCode::NotFound);
     }
 }

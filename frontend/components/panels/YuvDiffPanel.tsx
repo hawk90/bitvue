@@ -10,7 +10,7 @@
  *   [Find First Diff]  Offset: [±n]  [Crop…]  [⟳ Auto]
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { setDebugYuvCrop } from "../../services/electronBridgeService";
 import { useYuvDiff } from "../../contexts/YuvDiffContext";
 import type { YuvDiffDisplayMode } from "../../contexts/YuvDiffContext";
@@ -57,12 +57,15 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
     amplifyFactor,
     pictureOffset,
     metrics,
+    streamMetrics,
     loading,
     error,
     setDisplayMode,
     setAmplifyFactor,
     setPictureOffset,
     fetchMetrics,
+    computeStreamMetrics,
+    invalidateStreamMetrics,
     findFirstDiff,
     unloadFile,
   } = useYuvDiff();
@@ -124,13 +127,25 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
     [setAmplifyFactor],
   );
 
-  const handleCropApply = useCallback((newCrop: CropValues) => {
-    setCrop(newCrop);
-    setShowCropDialog(false);
-    setDebugYuvCrop(newCrop).catch((e: unknown) =>
-      console.warn("setDebugYuvCrop:", e),
-    );
-  }, []);
+  const handleCropApply = useCallback(
+    (newCrop: CropValues) => {
+      setCrop(newCrop);
+      setShowCropDialog(false);
+      invalidateStreamMetrics();
+      setDebugYuvCrop(newCrop).catch((e: unknown) =>
+        console.warn("setDebugYuvCrop:", e),
+      );
+    },
+    [invalidateStreamMetrics],
+  );
+
+  // The lowest-PSNR frame of the whole-stream run: where the stream is furthest from the reference.
+  const worstFrame = useMemo(() => {
+    const frames = streamMetrics?.frames ?? [];
+    return frames.length === 0
+      ? null
+      : frames.reduce((worst, f) => (f.psnr_avg < worst.psnr_avg ? f : worst));
+  }, [streamMetrics]);
 
   if (!isLoaded) {
     return (
@@ -226,6 +241,48 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
         ) : (
           <span className="yuv-diff-metrics-placeholder">
             — press ⟳ to compute —
+          </span>
+        )}
+      </div>
+
+      {/* ── Whole-stream metrics: every frame against the reference, one decode pass ─── */}
+      <div className="yuv-diff-metrics-row">
+        <button
+          className="yuv-diff-metrics-btn"
+          onClick={() => void computeStreamMetrics()}
+          disabled={loading}
+          title="Decode the stream once and compute PSNR/SSIM of every frame against the reference"
+        >
+          {loading ? "Computing…" : "All Frames"}
+        </button>
+        {streamMetrics && streamMetrics.frame_count > 0 ? (
+          <div className="yuv-diff-metrics">
+            <span title="Frames compared (the reference may hold fewer than the stream)">
+              Frames: <strong>{streamMetrics.frame_count}</strong>
+            </span>
+            <span title="Mean of the per-frame average PSNR (6:1:1 weighted)">
+              Avg PSNR:{" "}
+              <strong>{fmt(streamMetrics.average_psnr ?? undefined)} dB</strong>
+            </span>
+            <span title="Mean of the per-frame luma SSIM">
+              Avg SSIM-Y:{" "}
+              <strong>{fmt(streamMetrics.average_ssim ?? undefined, 4)}</strong>
+            </span>
+            {worstFrame && (
+              <button
+                className="yuv-diff-find-btn"
+                onClick={() => onJumpToFrame?.(worstFrame.frame_index)}
+                title="Jump to the frame with the lowest average PSNR"
+              >
+                Worst: #{worstFrame.frame_index} ({fmt(worstFrame.psnr_avg)} dB)
+              </button>
+            )}
+          </div>
+        ) : (
+          <span className="yuv-diff-metrics-placeholder">
+            {streamMetrics
+              ? "— no frame overlapped the reference —"
+              : "— press All Frames to compute —"}
           </span>
         )}
       </div>

@@ -29,8 +29,8 @@ mod compare;
 mod planes;
 
 pub use commands::{
-    find_first_diff_frame, get_debug_yuv_frame, get_yuv_diff_metrics, load_debug_yuv,
-    set_debug_yuv_crop, set_debug_yuv_offset, unload_debug_yuv,
+    find_first_diff_frame, get_debug_yuv_frame, get_yuv_diff_metrics, get_yuv_diff_metrics_all,
+    load_debug_yuv, set_debug_yuv_crop, set_debug_yuv_offset, unload_debug_yuv,
 };
 pub(crate) use planes::frame_byte_size;
 

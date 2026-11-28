@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld("bitvue", {
   setDebugYuvCrop: (crop) => ipcRenderer.invoke("bitvue:setDebugYuvCrop", crop),
   getYuvDiffMetrics: (frameIndex) =>
     ipcRenderer.invoke("bitvue:getYuvDiffMetrics", frameIndex),
+  getYuvDiffMetricsAll: () => ipcRenderer.invoke("bitvue:getYuvDiffMetricsAll"),
   findFirstDiffFrame: () => ipcRenderer.invoke("bitvue:findFirstDiffFrame"),
   // Dual-stream compare workspace (docs/DEVELOPMENT_PHASES.md Phase 7.5) -- PTS-based A/B
   // alignment + real diff/heatmap overlay.

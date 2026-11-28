@@ -56,6 +56,10 @@ export function registerCompareDiffIpcHandlers(
     },
   );
 
+  ipcMain.handle("bitvue:getYuvDiffMetricsAll", async () => {
+    return requireSidecar().request("get_yuv_diff_metrics_all");
+  });
+
   ipcMain.handle("bitvue:findFirstDiffFrame", async () => {
     return requireSidecar().request("find_first_diff_frame");
   });
