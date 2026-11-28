@@ -54,6 +54,7 @@ export function unitNodeToFrameInfo(unit: BridgeUnitNode): FrameInfo {
     offset: unit.offset,
     pts: unit.pts ?? undefined,
     temporal_id: unit.temporal_id ?? undefined,
+    qp_avg: unit.qp_avg ?? undefined,
     key_frame: unit.frame_type === "I",
     ref_frames: unit.ref_frames ?? undefined,
     ref_slots: unit.ref_slots ?? undefined,

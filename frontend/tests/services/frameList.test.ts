@@ -40,6 +40,7 @@ describe("unitNodeToGraphFrame", () => {
           pts: 8,
           ref_frames: [2, 3],
           temporal_id: 1,
+          qp_avg: 90,
         }),
       ),
     ).toEqual({
@@ -49,8 +50,11 @@ describe("unitNodeToGraphFrame", () => {
       pts: 8,
       ref_frames: [2, 3],
       temporal_id: 1,
+      qp: 90,
     });
     expect(unitNodeToGraphFrame(unit({ pts: null }))?.pts).toBeNull();
+    // A unit with no QP (a repeated frame) stays null, never 0
+    expect(unitNodeToGraphFrame(unit({ qp_avg: null }))?.qp).toBeNull();
   });
 
   it("labels an unknown frame type '?' and drops a unit with no frame_index", () => {
