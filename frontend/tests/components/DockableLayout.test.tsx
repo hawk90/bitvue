@@ -3,9 +3,14 @@
  * Tests panel layout, tab switching, and resizing
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { act } from "@testing-library/react";
 import { render, screen, fireEvent } from "@/test/test-utils";
-import { DockableLayout, PANEL_SIZES } from "../DockableLayout";
+import {
+  DockableLayout,
+  PANEL_SIZES,
+  BOTTOM_ROW_MIN_PANEL_WIDTH_PX,
+} from "../DockableLayout";
 
 // Mock components for testing
 const MockMainView = () => <div data-testid="main-view">Main View</div>;
@@ -496,5 +501,81 @@ describe("DockableLayout bottom row separator", () => {
     // At least one horizontal handle inside the bottom row
     const handles = container.querySelectorAll(".resize-handle-horizontal");
     expect(handles.length).toBeGreaterThan(0);
+  });
+});
+
+describe("DockableLayout bottom row folds into tabs when its own width is too small (#628)", () => {
+  const bottomRowPanels = [
+    { id: "a", title: "Alpha", component: MockPanel1, icon: "icon-a" },
+    { id: "b", title: "Beta", component: MockPanel2, icon: "icon-b" },
+  ];
+  const needed = bottomRowPanels.length * BOTTOM_ROW_MIN_PANEL_WIDTH_PX;
+  let resizeCallback: ((entries: unknown[]) => void) | null = null;
+
+  function stubWidth(width: number) {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: (entries: unknown[]) => void) {
+          resizeCallback = cb;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+      width,
+      height: 200,
+    } as DOMRect);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    resizeCallback = null;
+  });
+
+  const renderLayout = () =>
+    render(
+      <DockableLayout
+        leftPanels={[]}
+        mainView={MockMainView}
+        bottomRowPanels={bottomRowPanels}
+      />,
+    );
+
+  it("keeps the panels side by side when each gets its minimum width", () => {
+    stubWidth(needed);
+    const { container } = renderLayout();
+    expect(container.querySelector(".bottom-row-layout")).toBeInTheDocument();
+    expect(
+      container.querySelector(".bottom-row-item-header"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows one panel at a time behind tabs when the row is narrower than that", () => {
+    stubWidth(needed - 1);
+    const { container } = renderLayout();
+    expect(container.querySelector(".bottom-row-layout")).toBeNull();
+    expect(screen.getByRole("tab", { name: /Alpha/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Beta/ })).toBeInTheDocument();
+    expect(screen.getByTestId("panel-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("panel-2")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /Beta/ }));
+    expect(screen.getByTestId("panel-2")).toBeInTheDocument();
+  });
+
+  it("switches when the row is resized, not only on first render", () => {
+    stubWidth(needed);
+    const { container } = renderLayout();
+    expect(container.querySelector(".bottom-row-layout")).toBeInTheDocument();
+    act(() => {
+      resizeCallback?.([{ contentRect: { width: needed - 50 } }]);
+    });
+    expect(container.querySelector(".bottom-row-layout")).toBeNull();
+    act(() => {
+      resizeCallback?.([{ contentRect: { width: needed + 50 } }]);
+    });
+    expect(container.querySelector(".bottom-row-layout")).toBeInTheDocument();
   });
 });
