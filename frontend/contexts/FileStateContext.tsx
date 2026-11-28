@@ -210,6 +210,10 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
             height: info.container.height ?? 0,
             codec: info.container.codec,
             bitDepth: info.container.bit_depth,
+            frameRate:
+              info.container.frame_rate_num && info.container.frame_rate_den
+                ? info.container.frame_rate_num / info.container.frame_rate_den
+                : null,
             // Filled in below once applyDisplayOrder's getTimeline call resolves -- a separate
             // sidecar call, not part of get_stream_info's response.
             ptsQuality: null,

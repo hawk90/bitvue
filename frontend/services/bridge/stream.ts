@@ -47,6 +47,9 @@ export interface BridgeContainerModel {
   width: number | null;
   height: number | null;
   bit_depth: number | null;
+  /** fps = frame_rate_num / frame_rate_den; both null when the container doesn't say. */
+  frame_rate_num: number | null;
+  frame_rate_den: number | null;
 }
 
 export interface StreamInfoResult {

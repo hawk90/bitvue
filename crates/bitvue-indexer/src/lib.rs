@@ -181,6 +181,13 @@ pub fn index_stream_with_cancel(
         width: Some(ivf_header.width as u32),
         height: Some(ivf_header.height as u32),
         bit_depth: None,
+        // `IvfHeader`'s two fields are named after the IVF timebase (`framerate_den` = the "rate"
+        // at byte 16, `framerate_num` = the "scale" at byte 20), so fps = framerate_den /
+        // framerate_num -- same reading as `bitvue-cli`'s `info`/`bd_rate`.
+        frame_rate_num: (ivf_header.framerate_den > 0 && ivf_header.framerate_num > 0)
+            .then_some(ivf_header.framerate_den),
+        frame_rate_den: (ivf_header.framerate_den > 0 && ivf_header.framerate_num > 0)
+            .then_some(ivf_header.framerate_num),
     };
     let unit_model = UnitModel {
         units,

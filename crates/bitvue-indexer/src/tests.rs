@@ -470,3 +470,40 @@ fn the_timeline_marks_only_key_and_intra_only_frames_as_random_access() {
         assert_eq!(av1_timeline_type(inter), "INTER_FRAME", "{inter:?}");
     }
 }
+
+/// `ContainerModel`'s frame rate is the IVF timebase read as fps = rate (byte 16) / scale
+/// (byte 20) (#615). Header-only IVF (no frames) indexes fine, so the model is checked directly
+/// for a 30000/1001 clip and for headers whose rate or scale is 0 (no fps, never a divide by 0).
+#[test]
+fn container_frame_rate_is_the_ivf_timebase_rate_over_scale() {
+    let frame_rate_of = |rate: u32, scale: u32| {
+        let mut header = vec![0u8; 32];
+        header[0..4].copy_from_slice(b"DKIF");
+        header[6..8].copy_from_slice(&32u16.to_le_bytes());
+        header[8..12].copy_from_slice(b"AV01");
+        header[12..14].copy_from_slice(&320u16.to_le_bytes());
+        header[14..16].copy_from_slice(&240u16.to_le_bytes());
+        header[16..20].copy_from_slice(&rate.to_le_bytes());
+        header[20..24].copy_from_slice(&scale.to_le_bytes());
+        let core = Core::new();
+        let mut file = tempfile::NamedTempFile::new().expect("create temp file");
+        file.write_all(&header).expect("write synthetic IVF header");
+        core.handle_command(Command::OpenFile {
+            stream: StreamId::A,
+            path: file.path().to_path_buf(),
+        });
+        std::mem::forget(file);
+        index_stream(&core, StreamId::A);
+        let stream_state = core.get_stream(StreamId::A);
+        let state = stream_state.read();
+        let container = state
+            .container
+            .clone()
+            .expect("a header-only AV01 IVF indexes");
+        (container.frame_rate_num, container.frame_rate_den)
+    };
+    assert_eq!(frame_rate_of(30000, 1001), (Some(30000), Some(1001)));
+    assert_eq!(frame_rate_of(25, 1), (Some(25), Some(1)));
+    assert_eq!(frame_rate_of(0, 1), (None, None));
+    assert_eq!(frame_rate_of(30, 0), (None, None));
+}
