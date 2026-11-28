@@ -35,6 +35,8 @@ mod bit_extractor;
 pub(crate) mod cu_spatial_index;
 mod deblocking;
 mod energy_extractor;
+#[cfg(test)]
+mod grid_golden_test;
 mod mv_extractor;
 mod parser;
 mod partition;
