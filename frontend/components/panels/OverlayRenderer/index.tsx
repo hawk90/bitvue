@@ -11,32 +11,12 @@
 
 import type { VisualizationMode } from "../../../contexts/ModeContext";
 import type { OverlayRenderOptions } from "./types";
-import { CodingFlowOverlay } from "./renderers/CodingFlowRenderer";
-import { PredictionOverlay } from "./renderers/PredictionRenderer";
-import { TransformOverlay } from "./renderers/TransformRenderer";
-import { QPMapOverlay } from "./renderers/QPMapRenderer";
-import { MVFieldOverlay } from "./renderers/MVFieldRenderer";
-import { ReferenceOverlay } from "./renderers/ReferenceRenderer";
-import { Av1CdefRenderer } from "./renderers/Av1CdefRenderer";
-import { Av1LoopRestorationRenderer } from "./renderers/Av1LoopRestorationRenderer";
-import { Av1SuperResRenderer } from "./renderers/Av1SuperResRenderer";
-import { Av1FilmGrainRenderer } from "./renderers/Av1FilmGrainRenderer";
-import { VvcDualTreeRenderer } from "./renderers/VvcDualTreeRenderer";
-import { VvcAdaptiveFilterRenderer } from "./renderers/VvcAdaptiveFilterRenderer";
-import { VvcInverseMapRenderer } from "./renderers/VvcInverseMapRenderer";
-import { Av1HeatMapOverlay } from "./renderers/Av1HeatMapRenderer";
-import { Av1EfficiencyMapOverlay } from "./renderers/Av1EfficiencyMapRenderer";
-import { Av1BlockTypeOverlay } from "./renderers/Av1BlockTypeRenderer";
-import { Avs3EsaoRenderer } from "./renderers/Avs3EsaoRenderer";
-import { Avs3CcsaoRenderer } from "./renderers/Avs3CcsaoRenderer";
-import { JpegXsPrecinctRenderer } from "./renderers/JpegXsPrecinctRenderer";
-import { JpegXsDequantRenderer } from "./renderers/JpegXsDequantRenderer";
-import { JpegXsTransformRenderer } from "./renderers/JpegXsTransformRenderer";
-import { JpegXsMctRenderer } from "./renderers/JpegXsMctRenderer";
-import { JpegXsNltRenderer } from "./renderers/JpegXsNltRenderer";
-import { Vc3SegmentRenderer } from "./renderers/Vc3SegmentRenderer";
-import { AvcMbTypeOverlay } from "./renderers/AvcMbTypeRenderer";
-import { AvcRefIdxOverlay } from "./renderers/AvcRefIdxRenderer";
+import {
+  INFO_OVERLAY_RENDERERS,
+  MAIN_OVERLAY_RENDERERS,
+  withSavedContext,
+  type OverlayRenderExtras,
+} from "./registry";
 
 // ─── Extended options ─────────────────────────────────────────────────────────
 
@@ -61,132 +41,14 @@ function renderMainModeOverlay(
   const width = canvas.width / dpr;
   const height = canvas.height / dpr;
 
-  switch (mode) {
-    case "coding-flow":
-      CodingFlowOverlay({ ctx, width, height, frame });
-      break;
-    case "prediction":
-      PredictionOverlay({ ctx, width, height, frame });
-      break;
-    case "transform":
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((frame as any).transform_map) {
-        ctx.save();
-        JpegXsTransformRenderer({ ctx, width, height, frame });
-        ctx.restore();
-      } else {
-        TransformOverlay({ ctx, width, height, frame });
-      }
-      break;
-    // Legacy standalone modes — kept so old code that sets these as the
-    // current mode still renders something.
-    case "qp-map":
-      QPMapOverlay({ ctx, width, height, frame });
-      break;
-    case "mv-field":
-      MVFieldOverlay({ ctx, width, height, frame, webglCanvas });
-      break;
-    case "reference":
-      ReferenceOverlay({ ctx, width, height, frame });
-      break;
-    // ── AV1 advanced modes ─────────────────────────────────────────────────
-    case "cdef-filter":
-      ctx.save();
-      Av1CdefRenderer({ ctx, width, height, frame, cdef: av1Features?.cdef });
-      ctx.restore();
-      break;
-    case "loop-restoration":
-      ctx.save();
-      Av1LoopRestorationRenderer({
-        ctx,
-        width,
-        height,
-        frame,
-        loopRestoration: av1Features?.loopRestoration,
-      });
-      ctx.restore();
-      break;
-    case "film-grain":
-      ctx.save();
-      Av1FilmGrainRenderer({
-        ctx,
-        width,
-        height,
-        frame,
-        filmGrain: av1Features?.filmGrain,
-      });
-      ctx.restore();
-      break;
-    case "super-res":
-      ctx.save();
-      Av1SuperResRenderer({
-        ctx,
-        width,
-        height,
-        frame,
-        superResolution: av1Features?.superResolution,
-      });
-      ctx.restore();
-      break;
-    // ── VVC exclusive modes ────────────────────────────────────────────────
-    case "dual-tree":
-      ctx.save();
-      VvcDualTreeRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    case "adaptive-filter":
-      ctx.save();
-      VvcAdaptiveFilterRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    case "inverse-map":
-      ctx.save();
-      VvcInverseMapRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    // ── AVS3 exclusive modes ───────────────────────────────────────────────
-    case "esao":
-      ctx.save();
-      Avs3EsaoRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    case "ccsao":
-      ctx.save();
-      Avs3CcsaoRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    // ── JPEG XS exclusive modes ───────────────────────────────────────────────
-    case "precinct":
-      ctx.save();
-      JpegXsPrecinctRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    case "dequant":
-      ctx.save();
-      JpegXsDequantRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    case "mct":
-      ctx.save();
-      JpegXsMctRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    case "nlt":
-      ctx.save();
-      JpegXsNltRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    // ── VC-3 exclusive modes ──────────────────────────────────────────────────
-    case "segment":
-      ctx.save();
-      Vc3SegmentRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    case "yuv":
-    case "overview":
-    default:
-      // Pure YUV / no overlay — nothing to draw
-      break;
+  const spec = MAIN_OVERLAY_RENDERERS[mode];
+  if (!spec) return; // yuv / overview / modes with no overlay -- nothing to draw
+  const props = { ctx, width, height, frame };
+  const extras: OverlayRenderExtras = { av1Features, webglCanvas };
+  if (spec.saveRestore) {
+    withSavedContext(ctx, () => spec.render(props, extras));
+  } else {
+    spec.render(props, extras);
   }
 }
 
@@ -207,45 +69,14 @@ function renderInfoOverlay(
   height: number,
   webglCanvas?: HTMLCanvasElement,
 ): void {
-  ctx.save();
-  ctx.globalAlpha = INFO_OVERLAY_ALPHA;
-
-  switch (mode) {
-    case "qp-map":
-      QPMapOverlay({ ctx, width, height, frame });
-      break;
-    case "mv-field":
-      MVFieldOverlay({ ctx, width, height, frame, webglCanvas });
-      break;
-    case "heat-map":
-      // Measured bits per pixel where the sidecar provides them (AV1); other codecs have no bit
-      // cost yet and keep showing the MV field as a magnitude heatmap.
-      if (frame.bit_grid) {
-        Av1HeatMapOverlay({ ctx, width, height, frame });
-      } else {
-        MVFieldOverlay({ ctx, width, height, frame, webglCanvas });
-      }
-      break;
-    case "block-type":
-      Av1BlockTypeOverlay({ ctx, width, height, frame });
-      break;
-    case "efficiency-map":
-      Av1EfficiencyMapOverlay({ ctx, width, height, frame });
-      break;
-    case "mb-type":
-      AvcMbTypeOverlay({ ctx, width, height, frame });
-      break;
-    case "reference-indices":
-      AvcRefIdxOverlay({ ctx, width, height, frame });
-      break;
-    // Future overlays (stubs — renderers will be added in later phases):
-    // case "psnr-overlay": PSNROverlay({ ctx, width, height, frame }); break;
-    // case "pu-type":      PuTypeOverlay({ ctx, width, height, frame }); break;
-    default:
-      break;
-  }
-
-  ctx.restore();
+  withSavedContext(ctx, () => {
+    ctx.globalAlpha = INFO_OVERLAY_ALPHA;
+    // Modes without a renderer still get the save/alpha/restore wrapper (no drawing).
+    INFO_OVERLAY_RENDERERS[mode]?.render(
+      { ctx, width, height, frame },
+      { webglCanvas },
+    );
+  });
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
