@@ -163,6 +163,8 @@ describe("FileStateContext", () => {
         width: 320,
         height: 240,
         bit_depth: 8,
+        frame_rate_num: 30000,
+        frame_rate_den: 1001,
       },
     } satisfies StreamInfoResult);
 
@@ -182,6 +184,8 @@ describe("FileStateContext", () => {
         height: 240,
         codec: "AV1",
         bitDepth: 8,
+        // 30000/1001 from the container's timebase, not guessed from PTS (#615)
+        frameRate: 30000 / 1001,
         // Merged in afterward by applyDisplayOrder once get_timeline resolves (EDGE-03) --
         // "Ok" here because beforeEach's default getTimeline mock returns pts_quality: "Ok".
         ptsQuality: "Ok",
@@ -422,6 +426,8 @@ describe("FileStateContext", () => {
           width: 320,
           height: 240,
           bit_depth: 8,
+          frame_rate_num: 30000,
+          frame_rate_den: 1001,
         },
       } satisfies StreamInfoResult);
       getTimeline.mockResolvedValueOnce(
@@ -457,6 +463,8 @@ describe("FileStateContext", () => {
         width: 320,
         height: 240,
         bit_depth: 8,
+        frame_rate_num: 30000,
+        frame_rate_den: 1001,
       },
     } satisfies StreamInfoResult);
     getTimeline.mockRejectedValueOnce(new Error("codec not supported"));
@@ -475,8 +483,42 @@ describe("FileStateContext", () => {
         height: 240,
         codec: "AV1",
         bitDepth: 8,
+        frameRate: 30000 / 1001,
         ptsQuality: null,
       }),
+    );
+  });
+
+  it("stores frameRate null when the container reports no frame rate (never a guess from PTS) (#615)", async () => {
+    getFramesChunk.mockResolvedValueOnce(
+      chunk([unit({ frame_index: 0, frame_type: "I" })], 1),
+    );
+    getStreamInfo.mockResolvedValueOnce({
+      indexed: true,
+      container: {
+        format: "IVF",
+        codec: "AV1",
+        track_count: 1,
+        duration_ms: null,
+        bitrate_bps: null,
+        width: 320,
+        height: 240,
+        bit_depth: null,
+        frame_rate_num: null,
+        frame_rate_den: null,
+      },
+    } satisfies StreamInfoResult);
+
+    const { result } = renderHook(
+      () => ({ file: useFileState(), data: useFrameData() }),
+      { wrapper },
+    );
+    await act(async () => {
+      await result.current.file.refreshFrames();
+    });
+
+    await waitFor(() =>
+      expect(result.current.data.streamInfo?.frameRate).toBeNull(),
     );
   });
 });

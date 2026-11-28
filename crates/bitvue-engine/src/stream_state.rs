@@ -162,6 +162,13 @@ pub struct ContainerModel {
 
     /// Bit depth (8, 10, 12) (from sequence header)
     pub bit_depth: Option<u8>,
+
+    /// Container frame rate as a ratio, frames per second = `frame_rate_num / frame_rate_den`
+    /// (IVF: the header's timebase `rate` / `scale`). `None` when the container does not say or a
+    /// term is 0. Frame `pts` values are in units of `frame_rate_den / frame_rate_num` seconds
+    /// for IVF, so this is what turns a PTS into seconds.
+    pub frame_rate_num: Option<u32>,
+    pub frame_rate_den: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

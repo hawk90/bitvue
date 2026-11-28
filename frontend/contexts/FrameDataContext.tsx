@@ -34,6 +34,9 @@ interface StreamInfo {
   height: number;
   codec: string;
   bitDepth: number | null;
+  /** Container frame rate in frames per second (IVF timebase rate / scale); `null` when the
+   *  container doesn't say -- never guessed from PTS, whose unit is the container's timebase. */
+  frameRate: number | null;
   /** Stream-wide PTS quality (EDGE-03) -- `null` until `applyDisplayOrder` resolves (non-fatal,
    *  same "falls back to N/A" convention as the rest of that function), not fabricated. */
   ptsQuality: "Ok" | "Warn" | "Bad" | null;

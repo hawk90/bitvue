@@ -18,6 +18,9 @@ fn container_model_to_json(container: &bitvue_engine::ContainerModel) -> serde_j
         "width": container.width,
         "height": container.height,
         "bit_depth": container.bit_depth,
+        // fps = frame_rate_num / frame_rate_den; both null when the container doesn't say.
+        "frame_rate_num": container.frame_rate_num,
+        "frame_rate_den": container.frame_rate_den,
     })
 }
 
@@ -241,6 +244,9 @@ mod tests {
         assert_eq!(result["container"]["codec"], "av1");
         assert_eq!(result["container"]["format"], "Ivf");
         assert!(result["container"]["width"].as_u64().unwrap() > 0);
+        // The fixture is a real 25 fps clip: IVF header rate 25 / scale 1 at bytes 16/20 (#615).
+        assert_eq!(result["container"]["frame_rate_num"], 25);
+        assert_eq!(result["container"]["frame_rate_den"], 1);
     }
 
     #[test]

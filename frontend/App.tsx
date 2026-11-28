@@ -163,9 +163,10 @@ const UnitHexPanelWrapper = memo(function UnitHexPanelWrapper() {
   );
 });
 const StatisticsPanelWrapper = memo(function StatisticsPanelWrapper() {
+  const { streamInfo } = useFrameData();
   return (
     <PanelErrorBoundary panelName="Stats">
-      <StatisticsPanel />
+      <StatisticsPanel frameRate={streamInfo?.frameRate ?? undefined} />
     </PanelErrorBoundary>
   );
 });
@@ -173,14 +174,17 @@ const StatisticsPanelWrapper = memo(function StatisticsPanelWrapper() {
  *  open and indexed, so it needs no request of its own. */
 const BitrateGraphPanelFromContext = memo(
   function BitrateGraphPanelFromContext() {
-    const { frames } = useFrameData();
+    const { frames, streamInfo } = useFrameData();
     const graphFrames = useMemo(
       () => frames.map(frameInfoToGraphFrame),
       [frames],
     );
     return (
       <PanelErrorBoundary panelName="Bitrate">
-        <BitrateGraphPanel frames={graphFrames} />
+        <BitrateGraphPanel
+          frames={graphFrames}
+          frameRate={streamInfo?.frameRate}
+        />
       </PanelErrorBoundary>
     );
   },
