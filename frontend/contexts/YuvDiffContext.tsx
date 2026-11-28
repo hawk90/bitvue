@@ -20,7 +20,9 @@ import {
   unloadDebugYuv,
   setDebugYuvOffset as bridgeSetDebugYuvOffset,
   getYuvDiffMetrics,
+  getYuvDiffMetricsAll,
   findFirstDiffFrame,
+  type YuvDiffMetricsAllResult,
 } from "../services/electronBridgeService";
 import { createLogger } from "../utils/logger";
 
@@ -73,6 +75,9 @@ export interface YuvDiffState {
   pictureOffset: number;
   /** Per-frame quality metrics (populated on demand). */
   metrics: YuvDiffMetrics | null;
+  /** PSNR/SSIM of every frame against the reference from one decode pass (`computeStreamMetrics`);
+   *  `null` until computed, and cleared whenever the reference, offset or crop changes. */
+  streamMetrics: YuvDiffMetricsAllResult | null;
   /** True while a backend operation is in flight. */
   loading: boolean;
   /** Last error message from backend operations. */
@@ -86,6 +91,9 @@ interface YuvDiffContextType extends YuvDiffState {
   setAmplifyFactor: (factor: number) => void;
   setPictureOffset: (offset: number) => void;
   fetchMetrics: (frameIndex: number) => Promise<YuvDiffMetrics | null>;
+  computeStreamMetrics: () => Promise<void>;
+  /** Drops `streamMetrics` -- call when something it depends on (crop) changed. */
+  invalidateStreamMetrics: () => void;
   findFirstDiff: () => Promise<number | null>;
 }
 
@@ -104,6 +112,7 @@ const INITIAL_STATE: YuvDiffState = {
   bitdepth: 8,
   pictureOffset: 0,
   metrics: null,
+  streamMetrics: null,
   loading: false,
   error: null,
 };
@@ -137,6 +146,7 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
         bitdepth: params.bitdepth,
         pictureOffset: params.picture_offset ?? 0,
         metrics: null,
+        streamMetrics: null,
         loading: false,
         error: null,
       }));
@@ -165,7 +175,7 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setPictureOffset = useCallback((offset: number) => {
-    setState((s) => ({ ...s, pictureOffset: offset }));
+    setState((s) => ({ ...s, pictureOffset: offset, streamMetrics: null }));
     bridgeSetDebugYuvOffset(offset).catch((e) =>
       logger.warn("setDebugYuvOffset:", e),
     );
@@ -185,6 +195,23 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
     },
     [state.isLoaded],
   );
+
+  const computeStreamMetrics = useCallback(async () => {
+    if (!state.isLoaded) return;
+    setState((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const streamMetrics = await getYuvDiffMetricsAll();
+      setState((s) => ({ ...s, streamMetrics, loading: false }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn("computeStreamMetrics:", msg);
+      setState((s) => ({ ...s, loading: false, error: msg }));
+    }
+  }, [state.isLoaded]);
+
+  const invalidateStreamMetrics = useCallback(() => {
+    setState((s) => ({ ...s, streamMetrics: null }));
+  }, []);
 
   const findFirstDiff = useCallback(async (): Promise<number | null> => {
     if (!state.isLoaded) return null;
@@ -210,6 +237,8 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
         setAmplifyFactor,
         setPictureOffset,
         fetchMetrics,
+        computeStreamMetrics,
+        invalidateStreamMetrics,
         findFirstDiff,
       }}
     >

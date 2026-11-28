@@ -58,6 +58,16 @@ export interface YuvDiffMetricsResult {
   has_mismatch: boolean;
 }
 
+/** Whole-stream PSNR/SSIM (`get_yuv_diff_metrics_all`): stream A decoded once against the loaded
+ *  reference. `frame_count` is how many frames were compared (fewer than the stream when the
+ *  reference ran out); the averages are `null` when none were. */
+export interface YuvDiffMetricsAllResult {
+  frame_count: number;
+  average_psnr: number | null;
+  average_ssim: number | null;
+  frames: YuvDiffMetricsResult[];
+}
+
 export interface FindFirstDiffFrameResult {
   frame_index: number | null;
   total_checked: number;
@@ -137,6 +147,10 @@ export async function getYuvDiffMetrics(
   frameIndex: number,
 ): Promise<YuvDiffMetricsResult> {
   return requireBridge().getYuvDiffMetrics(frameIndex);
+}
+
+export async function getYuvDiffMetricsAll(): Promise<YuvDiffMetricsAllResult> {
+  return requireBridge().getYuvDiffMetricsAll();
 }
 
 export async function findFirstDiffFrame(): Promise<FindFirstDiffFrameResult> {

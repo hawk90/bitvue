@@ -36,6 +36,7 @@ import type {
   LoadDebugYuvResult,
   DebugYuvCrop,
   YuvDiffMetricsResult,
+  YuvDiffMetricsAllResult,
   FindFirstDiffFrameResult,
   CompareWorkspaceSummary,
   AlignedFrameResult,
@@ -97,6 +98,7 @@ declare global {
       setDebugYuvOffset: (offset: number) => Promise<void>;
       setDebugYuvCrop: (crop: DebugYuvCrop) => Promise<void>;
       getYuvDiffMetrics: (frameIndex: number) => Promise<YuvDiffMetricsResult>;
+      getYuvDiffMetricsAll: () => Promise<YuvDiffMetricsAllResult>;
       findFirstDiffFrame: () => Promise<FindFirstDiffFrameResult>;
       createCompareWorkspace: () => Promise<CompareWorkspaceSummary>;
       getAlignedFrame: (streamAFrameIdx: number) => Promise<AlignedFrameResult>;

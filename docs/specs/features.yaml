@@ -3180,6 +3180,7 @@ items:
     evidence:
       - crates/bitvue-cli/src/commands/decode.rs::compute_psnr
       - crates/bitvue-sidecar/src/debug_yuv/commands.rs::get_yuv_diff_metrics
+      - crates/bitvue-sidecar/src/debug_yuv/commands.rs::get_yuv_diff_metrics_all
       - frontend/components/panels/YuvDiffPanel.tsx
     competitors:
       vqa: 'yes'
@@ -3193,10 +3194,9 @@ items:
       - PARITY_CHECKLIST.md §Layer 8
       - VQA_PARITY_SPEC_V3.md §4.1
       - UX_PARITY_MATRIX.md §1
-    notes: 'CLI --psnr has series+summary. GUI: QualityMetricsPanel.tsx is dead Tauri invoke() code (unmounted); only single-frame-pair
-      PSNR/SSIM via Compare/debug YUV. | QualityMetricsPanel exists but is not mounted in App.tsx; YuvDiffPanel shows per-frame
-      numbers only. | CLI real; GUI only single-frame-pair PSNR/SSIM in YuvDiffPanel; QualityMetricsPanel.tsx is dead Tauri
-      code.'
+    notes: 'CLI --psnr has series+summary. GUI: YuvDiffPanel shows one frame (⟳ Metrics) or, with "All Frames", the whole stream
+      from one decode pass: avg PSNR/SSIM and the lowest-PSNR frame (#606); no per-frame chart/series plot yet. | Values are
+      computed on samples reduced to 8-bit, so 10-bit streams are inexact (#636). | The dead QualityMetricsPanel was removed.'
   - id: UI-010
     title: Reference graph panel (node/edge graph with select/pin/zoom)
     area: ui
@@ -5701,8 +5701,8 @@ items:
     notes: 'Engine-only behind optional `vmaf` feature: vendored libvmaf via vmaf-head-sys (static, CPU only, no FFmpeg; build needs
       meson+ninja+C/C++ compiler, nasm on x86). Real per-frame + pooled scores, checked against FFmpeg libvmaf 3.2.0 on macOS/Ubuntu/Windows
       (tests/vmaf_reference.rs; identical on arm64, within 4e-4..3e-2 on x86-64 depending on content). The old libvmaf-rs wrapper (GPL-3.0, pinned ffmpeg-next 6) is gone, and
-      its per-frame function returned the pooled score repeated per frame. Gaps: CLI quality handles only psnr/ssim (`-m vmaf` alone errors, `psnr,vmaf` silently ignores vmaf); not in sidecar; QualityMetricsPanel
-      passes calculateVmaf=false; only the built-in vmaf_v0.6.1 model or a model path (no 4K/NEG selection).'
+      its per-frame function returned the pooled score repeated per frame. Gaps: CLI quality handles only psnr/ssim (`-m vmaf` alone errors, `psnr,vmaf` silently ignores vmaf); not in sidecar or GUI (the dead
+      QualityMetricsPanel that called it was removed, #606); only the built-in vmaf_v0.6.1 model or a model path (no 4K/NEG selection).'
   - id: MET-003
     title: VMAF sub-scores (ADM2, VIF, motion2)
     area: metrics

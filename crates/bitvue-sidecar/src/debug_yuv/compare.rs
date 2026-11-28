@@ -2,7 +2,7 @@
 //! PSNR/SSIM metrics (`compute_frame_metrics`), or scan for the first pixel mismatch
 //! (`find_first_diff`) against a loaded reference session.
 
-use super::planes::{decoded_to_planes8, planes_to_wire, read_reference_frame};
+use super::planes::{decoded_to_planes8, planes_to_wire, read_reference_frame, Planes8};
 use super::Session;
 use crate::decode_bridge::{self, DecodedYuvFrame};
 use bitvue_engine::{Core, StreamId};
@@ -158,6 +158,16 @@ pub fn compute_frame_metrics(
         ));
     }
 
+    metrics_for_planes(frame_index, &ref_planes, &decoded_planes)
+}
+
+/// PSNR/SSIM/max-diff of one decoded frame against one reference frame, both already 8-bit planes
+/// of the same size (the callers check that). Shared by the single-frame and whole-stream paths.
+fn metrics_for_planes(
+    frame_index: usize,
+    ref_planes: &Planes8,
+    decoded_planes: &Planes8,
+) -> Result<DiffMetrics, String> {
     let reference = bitvue_metrics::YuvFrame {
         y: &ref_planes.y,
         u: &ref_planes.u,
@@ -216,19 +226,18 @@ pub fn compute_frame_metrics(
     })
 }
 
-/// Scans stream A in decode order, comparing each decoded frame's Y plane against the
-/// corresponding reference frame (`decoded_index + picture_offset`), stopping at the first pixel
-/// mismatch. Unlike `get_frame`/`compute_frame_metrics` (one `get_decoded_frame_yuv`-style
-/// redecode-from-scratch per call), this does a single streaming decode pass -- same reasoning as
-/// `decode_bridge::get_thumbnails` batching one decode pass across many requested indices, just
-/// applied to "keep decoding until a mismatch instead of until every requested index is hit."
-/// Returns `(first_mismatched_frame_index, frames_actually_compared)` -- comparison stops early
-/// (without an error) once the reference file runs out of frames to compare against.
-pub fn find_first_diff(
+/// Decodes stream A once, in decode order, calling `visit(index, frame)` for every decoded frame
+/// until it returns `true` (stop) or the stream runs out. One streaming pass, unlike
+/// `get_frame`/`compute_frame_metrics` (one `get_decoded_frame_yuv`-style redecode-from-scratch
+/// per call) -- same reasoning as `decode_bridge::get_thumbnails` batching one decode pass across
+/// many requested indices. `cancel_flag` is checked once per encoded packet and once per decoded
+/// frame: each is a real decode/compare, so per-frame is the right granularity for a loop that
+/// can walk the whole stream.
+fn for_each_decoded_frame(
     core: &Core,
-    session: &Session,
     cancel_flag: &AtomicBool,
-) -> Result<(Option<usize>, usize), FindFirstDiffError> {
+    mut visit: impl FnMut(usize, &bitvue_decode::DecodedFrame) -> bool,
+) -> Result<(), FindFirstDiffError> {
     let stream_state = core.get_stream(StreamId::A);
     let state = stream_state.read();
     let byte_cache = state
@@ -247,43 +256,8 @@ pub fn find_first_diff(
     let mut dec = bitvue_decode::Av1Decoder::new()
         .map_err(|e| FindFirstDiffError::Other(format!("decoder init: {e}")))?;
     let mut decoded_count = 0usize;
-    let mut checked = 0usize;
-    let mut found: Option<usize> = None;
 
-    let check_one = |decoded: &bitvue_decode::DecodedFrame,
-                     index: usize,
-                     checked: &mut usize,
-                     found: &mut Option<usize>|
-     -> bool {
-        let ref_index_signed = index as i64 + session.picture_offset;
-        if ref_index_signed < 0 || ref_index_signed as usize >= session.frame_count {
-            return true; // out of reference frames -- stop
-        }
-        let Ok(ref_planes) = read_reference_frame(session, ref_index_signed as usize) else {
-            return true;
-        };
-        let decoded_wire = decode_bridge::to_wire(decoded);
-        let decoded_planes = decoded_to_planes8(&decoded_wire, session.crop);
-        *checked += 1;
-        if decoded_planes.width == ref_planes.width
-            && decoded_planes.height == ref_planes.height
-            && decoded_planes
-                .y
-                .iter()
-                .zip(ref_planes.y.iter())
-                .any(|(a, b)| a != b)
-        {
-            *found = Some(index);
-            return true;
-        }
-        false
-    };
-
-    'outer: for f in &frames {
-        // Checked once per encoded packet and once per decoded frame below -- each is a real
-        // decode/compare, not a cheap instruction, so per-frame is the right granularity. This
-        // loop can walk the *entire* stream (worst case: no mismatch exists), so it's one of the
-        // handlers worth making cancellable mid-scan rather than only before it starts.
+    for f in &frames {
         if cancel_flag.load(Ordering::SeqCst) {
             return Err(FindFirstDiffError::Cancelled);
         }
@@ -295,33 +269,114 @@ pub fn find_first_diff(
             }
             let index = decoded_count;
             decoded_count += 1;
-            if check_one(&decoded, index, &mut checked, &mut found) {
-                break 'outer;
+            if visit(index, &decoded) {
+                return Ok(());
             }
         }
     }
-    if found.is_none() {
+    if cancel_flag.load(Ordering::SeqCst) {
+        return Err(FindFirstDiffError::Cancelled);
+    }
+    // Not dec.flush() -- see decode_bridge::get_decoded_frame_yuv's comment: flush() clears
+    // dav1d's internal state instead of draining buffered frames.
+    let mut remaining = Vec::new();
+    dec.drain_decoder_frames(&mut remaining)
+        .map_err(|e| FindFirstDiffError::Other(e.to_string()))?;
+    for decoded in &remaining {
         if cancel_flag.load(Ordering::SeqCst) {
             return Err(FindFirstDiffError::Cancelled);
         }
-        // Not dec.flush() -- see decode_bridge::get_decoded_frame_yuv's comment: flush() clears
-        // dav1d's internal state instead of draining buffered frames.
-        let mut remaining = Vec::new();
-        dec.drain_decoder_frames(&mut remaining)
-            .map_err(|e| FindFirstDiffError::Other(e.to_string()))?;
-        for decoded in &remaining {
-            if cancel_flag.load(Ordering::SeqCst) {
-                return Err(FindFirstDiffError::Cancelled);
-            }
-            let index = decoded_count;
-            decoded_count += 1;
-            if check_one(decoded, index, &mut checked, &mut found) {
-                break;
-            }
+        let index = decoded_count;
+        decoded_count += 1;
+        if visit(index, decoded) {
+            break;
         }
     }
+    Ok(())
+}
 
+/// The reference frame for decoded frame `index` (`index + session.picture_offset`), or `None`
+/// once the reference file has no frame there (negative offset, past the end, unreadable).
+fn reference_for(session: &Session, index: usize) -> Option<Planes8> {
+    let ref_index_signed = index as i64 + session.picture_offset;
+    if ref_index_signed < 0 || ref_index_signed as usize >= session.frame_count {
+        return None;
+    }
+    read_reference_frame(session, ref_index_signed as usize).ok()
+}
+
+/// Scans stream A in decode order, comparing each decoded frame's Y plane against the
+/// corresponding reference frame (`decoded_index + picture_offset`), stopping at the first pixel
+/// mismatch. Returns `(first_mismatched_frame_index, frames_actually_compared)` -- comparison
+/// stops early (without an error) once the reference file runs out of frames to compare against.
+pub fn find_first_diff(
+    core: &Core,
+    session: &Session,
+    cancel_flag: &AtomicBool,
+) -> Result<(Option<usize>, usize), FindFirstDiffError> {
+    let mut checked = 0usize;
+    let mut found: Option<usize> = None;
+    for_each_decoded_frame(core, cancel_flag, |index, decoded| {
+        let Some(ref_planes) = reference_for(session, index) else {
+            return true; // out of reference frames -- stop
+        };
+        let decoded_planes = decoded_to_planes8(&decode_bridge::to_wire(decoded), session.crop);
+        checked += 1;
+        if decoded_planes.width == ref_planes.width
+            && decoded_planes.height == ref_planes.height
+            && decoded_planes
+                .y
+                .iter()
+                .zip(ref_planes.y.iter())
+                .any(|(a, b)| a != b)
+        {
+            found = Some(index);
+            return true;
+        }
+        false
+    })?;
     Ok((found, checked))
+}
+
+/// PSNR/SSIM of every decoded frame of stream A against the reference, in one decode pass.
+/// Stops without an error when the reference runs out of frames (the result then holds fewer
+/// entries than the stream has frames). A frame whose size differs from the reference's is an
+/// error, same as the single-frame path -- it would otherwise silently produce no number.
+pub fn compute_all_metrics(
+    core: &Core,
+    session: &Session,
+    cancel_flag: &AtomicBool,
+) -> Result<Vec<DiffMetrics>, FindFirstDiffError> {
+    let mut all = Vec::new();
+    let mut failure: Option<String> = None;
+    for_each_decoded_frame(core, cancel_flag, |index, decoded| {
+        let Some(ref_planes) = reference_for(session, index) else {
+            return true;
+        };
+        let decoded_planes = decoded_to_planes8(&decode_bridge::to_wire(decoded), session.crop);
+        if decoded_planes.width != ref_planes.width || decoded_planes.height != ref_planes.height {
+            failure = Some(format!(
+                "decoded frame {index} is {}x{} but reference frame (after crop) is {}x{} -- \
+                 load a matching-resolution reference or adjust crop",
+                decoded_planes.width, decoded_planes.height, ref_planes.width, ref_planes.height
+            ));
+            return true;
+        }
+        match metrics_for_planes(index, &ref_planes, &decoded_planes) {
+            Ok(m) => {
+                all.push(m);
+                false
+            }
+            Err(message) => {
+                failure = Some(message);
+                true
+            }
+        }
+    })?;
+    match failure {
+        Some(message) => Err(FindFirstDiffError::Other(message)),
+        None => Ok(all),
+    }
 }
 
 #[cfg(test)]

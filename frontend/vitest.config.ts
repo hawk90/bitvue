@@ -247,13 +247,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^\.\.\/QualityMetricsPanel$/,
-        replacement: path.resolve(
-          __dirname,
-          "components/panels/QualityMetricsPanel",
-        ),
-      },
-      {
         find: /^\.\.\/RDCurvesPanel$/,
         replacement: path.resolve(__dirname, "components/panels/RDCurvesPanel"),
       },

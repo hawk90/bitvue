@@ -18,7 +18,6 @@ export { YuvViewerPanel } from "./YuvViewerPanel";
 export { StatisticsPanel } from "./StatisticsPanel";
 export { BitViewPanel } from "./BitViewPanel";
 export { BitrateGraphPanel } from "./BitrateGraphPanel";
-export { QualityMetricsPanel } from "./QualityMetricsPanel";
 export { FilmstripPanel } from "./FilmstripPanel";
 export { DockableLayout } from "./DockableLayout";
 export type { PanelConfig } from "./DockableLayout";

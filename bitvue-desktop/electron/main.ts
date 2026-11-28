@@ -429,11 +429,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         // neutral 128, not 0, so only the Y portion should be all-zero here.
         const diffYBytes = Array.from(new Uint8Array(Object.values(diffFrame.bytes))).slice(0, diffFrame.yLen);
         const firstDiff = await window.bitvue.findFirstDiffFrame();
+        const metricsAll = await window.bitvue.getYuvDiffMetricsAll();
         await window.bitvue.setDebugYuvOffset(0);
         await window.bitvue.setDebugYuvCrop({ left: 0, right: 0, top: 0, bottom: 0 });
         await window.bitvue.unloadDebugYuv();
         await window.bitvue.closeStream("A");
-        return { load, referenceBytesHex, metrics, diffYAllZero: diffYBytes.every((b) => b === 0), firstDiff };
+        return { load, referenceBytesHex, metrics, diffYAllZero: diffYBytes.every((b) => b === 0), firstDiff, metricsAll };
       })()
     `);
     const expectedHex = knownBytes.subarray(10, 26).toString("hex");
@@ -498,6 +499,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     const debugYuvFindFirstDiffOk =
       debugYuvResult.firstDiff?.frame_index === null &&
       debugYuvResult.firstDiff?.total_checked === 1;
+    // Whole-stream metrics through the same IPC path: one frame, byte-identical to its reference
+    // (#606), so the single compared frame has no mismatch and the SSIM mean is exactly 1.
+    const debugYuvMetricsAllOk =
+      debugYuvResult.metricsAll?.frame_count === 1 &&
+      debugYuvResult.metricsAll?.frames?.[0]?.has_mismatch === false &&
+      debugYuvResult.metricsAll?.average_ssim === 1;
     // qp_grid.qp moved to a separate qp_bytes buffer (little-endian i16 per value, see
     // frame_analysis.rs's get_frame_analysis_command doc) -- this checks the raw window.bitvue
     // wire shape directly (bypassing the compiled app bundle's frontend/services/bridge/
@@ -587,6 +594,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       debugYuvDiffOk,
       " find_first_diff (none found) OK:",
       debugYuvFindFirstDiffOk,
+      " whole-stream metrics OK:",
+      debugYuvMetricsAllOk,
     );
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
     console.log(
@@ -642,6 +651,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       debugYuvMetricsOk &&
       debugYuvDiffOk &&
       debugYuvFindFirstDiffOk &&
+      debugYuvMetricsAllOk &&
       frameAnalysisOk &&
       av1FeaturesOk &&
       codingFlowOk &&
