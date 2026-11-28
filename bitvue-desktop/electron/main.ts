@@ -846,6 +846,36 @@ async function runScreenshotAndExit(
       );
       await settle(win);
     }
+    // `BITVUE_ELECTRON_SCREENSHOT_DEBUG_YUV=<path to a raw I420/8-bit .yuv>` (optional): runs the
+    // real Debug > Open debug YUV flow -- the menu event, the picker (answered with this path),
+    // then the confirm dialog (its width/height are read from a `WxH` in the file name, e.g.
+    // `ref_352x288.yuv`). Stream A has to be open first. Afterwards `CLICK_TAB=YUV Diff,All Frames`
+    // reaches the YUV Diff panel's metrics.
+    if (process.env.BITVUE_ELECTRON_SCREENSHOT_DEBUG_YUV) {
+      process.env.BITVUE_ELECTRON_SELFTEST_DEBUG_YUV_PATH =
+        process.env.BITVUE_ELECTRON_SCREENSHOT_DEBUG_YUV;
+      await win.webContents.executeJavaScript(
+        'window.dispatchEvent(new CustomEvent("menu-open-debug-yuv"))',
+      );
+      await win.webContents.executeJavaScript(`
+        new Promise((resolve, reject) => {
+          const deadline = Date.now() + 5000;
+          const tick = () => {
+            const load = document.querySelector(".yuv-diff-dialog-btn-load");
+            if (load) {
+              load.click();
+              resolve(undefined);
+            } else if (Date.now() > deadline) {
+              reject(new Error("debug YUV confirm dialog did not appear"));
+            } else {
+              setTimeout(tick, 100);
+            }
+          };
+          tick();
+        })
+      `);
+      await settle(win);
+    }
     const clickTabs = process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB?.split(
       ",",
     )

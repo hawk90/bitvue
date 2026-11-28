@@ -19,6 +19,14 @@ export function registerWindowLifecycleIpcHandlers(samplesDir: string): void {
       // lets BITVUE_ELECTRON_SCREENSHOT drive the actual production handleOpenFile() code path
       // (real dialog call site, just answered without a human) instead of calling bridge
       // functions directly the way BITVUE_ELECTRON_SELFTEST does.
+      // The debug-YUV picker (filter "Raw YUV") gets its own answer so one run can open a
+      // bitstream and a reference YUV (`BITVUE_ELECTRON_SCREENSHOT_DEBUG_YUV`).
+      if (
+        process.env.BITVUE_ELECTRON_SELFTEST_DEBUG_YUV_PATH &&
+        filters?.[0]?.name === "Raw YUV"
+      ) {
+        return process.env.BITVUE_ELECTRON_SELFTEST_DEBUG_YUV_PATH;
+      }
       if (process.env.BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH) {
         return process.env.BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH;
       }

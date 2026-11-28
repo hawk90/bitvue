@@ -31,6 +31,7 @@ Window is 1280x800 (2560x1600 PNG on retina); `BITVUE_ELECTRON_WINDOW_SIZE=900x6
 | `..._SCREENSHOT_CLICK_TAB` | click buttons by visible label | `Unit HEX,Hex` |
 | `..._SCREENSHOT_CLICK_SELECTOR` | click by CSS selector | `[data-frame-index="5"]` |
 | `..._SCREENSHOT_OPEN_DEPENDENT=1` | open fixture again as stream B (compare) | |
+| `..._SCREENSHOT_DEBUG_YUV` | Debug > Open debug YUV with this raw 8-bit I420 file (the name needs `WxH` with a `-` or `.` before it, not `_`: `ref-128x128.yuv`, #638). Needs stream A open. Then `CLICK_TAB=Syntax,YUV Diff,All Frames` | `/tmp/ref-352x288.yuv` |
 | `..._SCREENSHOT_KEY` | real keydown on window | `F5`, `ctrl+F1` |
 | `..._SCREENSHOT_DISPATCH` | menu-only actions (CustomEvent) | `menu-toggle-overlay:heat-map` |
 | `..._SCREENSHOT_CONTEXT_MENU` / `_MOUSEMOVE` / `_CTRL_WHEEL` | right-click / hover / zoom on selector | |
