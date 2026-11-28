@@ -10,6 +10,7 @@
  */
 
 import type { FrameInfo } from "../../../../types/video";
+import { drawNoDataNotice } from "../utils/drawing";
 import type { Av1LoopRestorationData } from "../types";
 
 interface Av1LoopRestorationRendererProps {
@@ -50,17 +51,11 @@ export function Av1LoopRestorationRenderer({
     // Av1FilmGrainRenderer/Av1SuperResRenderer's centered notice, rather than silently drawing
     // nothing at all.
     const msg = "Loop Restoration: disabled";
-    ctx.font = "14px monospace";
-    const measured = ctx.measureText(msg);
-    const boxW = measured.width + 24;
-    const boxH = 32;
-    const boxX = (width - boxW) / 2;
-    const boxY = (height - boxH) / 2;
-
-    ctx.fillStyle = "rgba(0, 0, 0, 0.70)";
-    ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.fillStyle = "#888888";
-    ctx.fillText(msg, boxX + 12, boxY + 21);
+    drawNoDataNotice(ctx, width, height, msg, {
+      font: "14px monospace",
+      boxH: 32,
+      textDy: 21,
+    });
     ctx.restore();
     return;
   }

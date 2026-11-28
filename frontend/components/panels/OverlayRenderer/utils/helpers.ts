@@ -4,7 +4,17 @@
  * General utility functions
  */
 
+import type { FrameInfo } from "../../../../types/video";
 import { QP_COLOR_STOPS } from "./colors";
+
+/**
+ * Read a codec-specific extra field (e.g. `ccsao_map`, `mct_info`) the backend attaches to a
+ * frame object but `FrameInfo` does not declare. The caller names the shape `T`; nothing is
+ * validated, so renderers still guard on the field being absent/empty.
+ */
+export function getFrameExtra<T>(frame: FrameInfo, key: string): T | undefined {
+  return (frame as unknown as Record<string, T | undefined>)[key];
+}
 
 /**
  * Linear interpolation between two values

@@ -7,6 +7,8 @@
  */
 
 import type { OverlayRendererProps } from "../types";
+import { drawNoDataNotice } from "../utils/drawing";
+import { getFrameExtra } from "../utils/helpers";
 
 interface SubbandNode {
   name: string;
@@ -40,19 +42,11 @@ export function JpegXsTransformRenderer({
   height,
   frame,
 }: OverlayRendererProps): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const map = (frame as any).transform_map as TransformMap | undefined;
+  const map = getFrameExtra<TransformMap>(frame, "transform_map");
 
   if (!map?.nodes?.length) {
     const msg = "Transform: no decomp data";
-    ctx.font = "13px monospace";
-    const bw = ctx.measureText(msg).width + 24;
-    const bx = (width - bw) / 2;
-    const by = (height - 30) / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.70)";
-    ctx.fillRect(bx, by, bw, 30);
-    ctx.fillStyle = "#888888";
-    ctx.fillText(msg, bx + 12, by + 20);
+    drawNoDataNotice(ctx, width, height, msg);
     return;
   }
 

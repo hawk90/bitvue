@@ -12,6 +12,8 @@
  */
 
 import type { OverlayRendererProps } from "../types";
+import { drawNoDataNotice } from "../utils/drawing";
+import { getFrameExtra } from "../utils/helpers";
 
 interface NltInfo {
   present: boolean;
@@ -71,19 +73,11 @@ export function JpegXsNltRenderer({
   height,
   frame,
 }: OverlayRendererProps): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nlt = (frame as any).nlt_info as NltInfo | undefined;
+  const nlt = getFrameExtra<NltInfo>(frame, "nlt_info");
 
   if (!nlt?.present) {
     const msg = "NLT: not present";
-    ctx.font = "13px monospace";
-    const bw = ctx.measureText(msg).width + 24;
-    const bx = (width - bw) / 2;
-    const by = (height - 30) / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.70)";
-    ctx.fillRect(bx, by, bw, 30);
-    ctx.fillStyle = "#888888";
-    ctx.fillText(msg, bx + 12, by + 20);
+    drawNoDataNotice(ctx, width, height, msg);
     return;
   }
 

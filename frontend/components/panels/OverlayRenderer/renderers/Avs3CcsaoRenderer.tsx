@@ -13,6 +13,12 @@
  */
 
 import type { OverlayRendererProps } from "../types";
+import {
+  drawCellGrid,
+  drawGridLines,
+  drawNoDataNotice,
+} from "../utils/drawing";
+import { getFrameExtra } from "../utils/helpers";
 
 interface CcsaoMapData {
   grid_w: number;
@@ -38,55 +44,23 @@ export function Avs3CcsaoRenderer({
   height,
   frame,
 }: OverlayRendererProps): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ccsaoMap = (frame as any).ccsao_map as CcsaoMapData | undefined;
+  const ccsaoMap = getFrameExtra<CcsaoMapData>(frame, "ccsao_map");
   if (!ccsaoMap?.ccsao_applied?.length) {
     const msg = "CCSAO: disabled or unavailable";
-    ctx.font = "13px monospace";
-    const bw = ctx.measureText(msg).width + 24;
-    const bh = 30;
-    const bx = (width - bw) / 2;
-    const by = (height - bh) / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.70)";
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = "#888888";
-    ctx.fillText(msg, bx + 12, by + 20);
+    drawNoDataNotice(ctx, width, height, msg);
     return;
   }
 
   const { grid_w, grid_h, ctu_size, ccsao_applied, luma_code } = ccsaoMap;
-  const cellW = width / grid_w;
-  const cellH = height / grid_h;
 
-  for (let row = 0; row < grid_h; row++) {
-    for (let col = 0; col < grid_w; col++) {
-      const idx = row * grid_w + col;
-      const applied = ccsao_applied[idx] ?? false;
-      if (applied) {
-        const lc = luma_code[idx] ?? 0;
-        ctx.fillStyle = ccsaoColor(lc);
-      } else {
-        ctx.fillStyle = "rgba(100,100,100,0.22)";
-      }
-      ctx.fillRect(col * cellW, row * cellH, cellW, cellH);
-    }
-  }
+  drawCellGrid(ctx, width, height, grid_w, grid_h, (_row, _col, idx) =>
+    (ccsao_applied[idx] ?? false)
+      ? ccsaoColor(luma_code[idx] ?? 0)
+      : "rgba(100,100,100,0.22)",
+  );
 
   // ── CTU grid lines ────────────────────────────────────────────────────────
-  ctx.strokeStyle = "rgba(255,255,255,0.15)";
-  ctx.lineWidth = 0.5;
-  for (let col = 0; col <= grid_w; col++) {
-    ctx.beginPath();
-    ctx.moveTo(col * cellW, 0);
-    ctx.lineTo(col * cellW, height);
-    ctx.stroke();
-  }
-  for (let row = 0; row <= grid_h; row++) {
-    ctx.beginPath();
-    ctx.moveTo(0, row * cellH);
-    ctx.lineTo(width, row * cellH);
-    ctx.stroke();
-  }
+  drawGridLines(ctx, width, height, grid_w, grid_h, "rgba(255,255,255,0.15)");
 
   // ── Legend ────────────────────────────────────────────────────────────────
   const padX = 8;

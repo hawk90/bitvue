@@ -10,6 +10,8 @@
  */
 
 import type { OverlayRendererProps } from "../types";
+import { drawGridLines, drawNoDataNotice } from "../utils/drawing";
+import { getFrameExtra } from "../utils/helpers";
 
 interface DequantMap {
   grid_w: number;
@@ -34,19 +36,11 @@ export function JpegXsDequantRenderer({
   height,
   frame,
 }: OverlayRendererProps): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const map = (frame as any).dequant_map as DequantMap | undefined;
+  const map = getFrameExtra<DequantMap>(frame, "dequant_map");
 
   if (!map?.energy?.length) {
     const msg = "Dequant: no sub-band data";
-    ctx.font = "13px monospace";
-    const bw = ctx.measureText(msg).width + 24;
-    const bx = (width - bw) / 2;
-    const by = (height - 30) / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.70)";
-    ctx.fillRect(bx, by, bw, 30);
-    ctx.fillStyle = "#888888";
-    ctx.fillText(msg, bx + 12, by + 20);
+    drawNoDataNotice(ctx, width, height, msg);
     return;
   }
 
@@ -72,20 +66,7 @@ export function JpegXsDequantRenderer({
   }
 
   // ── Grid lines ──────────────────────────────────────────────────────────────
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
-  ctx.lineWidth = 0.5;
-  for (let c = 0; c <= gw; c++) {
-    ctx.beginPath();
-    ctx.moveTo(c * cellW, 0);
-    ctx.lineTo(c * cellW, height);
-    ctx.stroke();
-  }
-  for (let r = 0; r <= gh; r++) {
-    ctx.beginPath();
-    ctx.moveTo(0, r * cellH);
-    ctx.lineTo(width, r * cellH);
-    ctx.stroke();
-  }
+  drawGridLines(ctx, width, height, gw, gh, "rgba(255,255,255,0.18)");
 
   // ── Footer ─────────────────────────────────────────────────────────────────
   ctx.fillStyle = "rgba(0,0,0,0.60)";

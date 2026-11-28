@@ -12,6 +12,11 @@
  */
 
 import type { OverlayRendererProps } from "../types";
+import {
+  drawCellGrid,
+  drawGridLines,
+  drawNoDataNotice,
+} from "../utils/drawing";
 
 interface MbGrid {
   cols: number;
@@ -41,52 +46,24 @@ export function Vc3SegmentRenderer({
   height,
   frame,
 }: OverlayRendererProps): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const vc3 = frame as any as Vc3FrameData;
+  const vc3 = frame as unknown as Vc3FrameData;
   const grid = vc3.mb_grid as MbGrid | undefined;
 
   if (!grid?.bits?.length || grid.cols === 0 || grid.rows === 0) {
     const msg = "VC-3: no MB grid data";
-    ctx.font = "13px monospace";
-    const bw = ctx.measureText(msg).width + 24;
-    const bx = (width - bw) / 2;
-    const by = (height - 30) / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.70)";
-    ctx.fillRect(bx, by, bw, 30);
-    ctx.fillStyle = "#888888";
-    ctx.fillText(msg, bx + 12, by + 20);
+    drawNoDataNotice(ctx, width, height, msg);
     return;
   }
 
   const { cols, rows, bits } = grid;
-  const cellW = width / cols;
-  const cellH = height / rows;
   const maxBits = Math.max(...bits, 1);
 
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const idx = row * cols + col;
-      const t = (bits[idx] ?? 0) / maxBits;
-      ctx.fillStyle = mbColor(t);
-      ctx.fillRect(col * cellW, row * cellH, cellW, cellH);
-    }
-  }
+  drawCellGrid(ctx, width, height, cols, rows, (_row, _col, idx) =>
+    mbColor((bits[idx] ?? 0) / maxBits),
+  );
 
   // ── MB grid lines ─────────────────────────────────────────────────────────
-  ctx.strokeStyle = "rgba(255,255,255,0.15)";
-  ctx.lineWidth = 0.5;
-  for (let c = 0; c <= cols; c++) {
-    ctx.beginPath();
-    ctx.moveTo(c * cellW, 0);
-    ctx.lineTo(c * cellW, height);
-    ctx.stroke();
-  }
-  for (let r = 0; r <= rows; r++) {
-    ctx.beginPath();
-    ctx.moveTo(0, r * cellH);
-    ctx.lineTo(width, r * cellH);
-    ctx.stroke();
-  }
+  drawGridLines(ctx, width, height, cols, rows, "rgba(255,255,255,0.15)");
 
   // ── Info box ───────────────────────────────────────────────────────────────
   const compId = vc3.comp_id ?? "DNxHD";
