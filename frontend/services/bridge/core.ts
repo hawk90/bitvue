@@ -140,12 +140,11 @@ declare global {
       ) => Promise<{ items: ContextMenuItemWire[] }>;
       exportEvidenceBundle: (
         params: ExportEvidenceBundleParams,
-      ) => Promise<EvidenceBundleExportResultWire>;
+      ) => Promise<EvidenceBundleExportResultWire | null>;
       captureScreenshot: () => Promise<string | null>;
       showOpenDialog: (
         filters?: OpenFileDialogFilter[],
       ) => Promise<string | null>;
-      showDirectoryDialog: () => Promise<string | null>;
       saveTextFile: (request: SaveTextFileRequest) => Promise<string | null>;
       pathExists: (path: string) => Promise<boolean>;
       getSamplePath: (filename: string) => Promise<string>;

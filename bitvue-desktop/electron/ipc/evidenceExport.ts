@@ -6,8 +6,8 @@
  */
 
 import { BrowserWindow, ipcMain, dialog } from "electron";
-import path from "node:path";
 import type { SidecarClient } from "../../src/sidecarClient.js";
+import { exportEvidenceBundleViaDialog } from "../evidenceBundle.js";
 
 export function registerEvidenceExportIpcHandlers(
   requireSidecar: () => SidecarClient,
@@ -28,45 +28,33 @@ export function registerEvidenceExportIpcHandlers(
     },
   );
 
+  // The renderer sends manifest fields and a screenshot, never an output directory: the folder
+  // comes from a dialog the main process shows itself (see `../evidenceBundle.ts`, #640).
   ipcMain.handle(
     "bitvue:exportEvidenceBundle",
-    async (
-      _event,
-      params: {
-        outputDir: string;
-        workspace?: string;
-        mode?: string;
-        orderType?: string;
-        screenshotDataUrl?: string;
-      },
-    ) => {
-      return requireSidecar().request("export_evidence_bundle", {
-        output_dir: params.outputDir,
-        workspace: params.workspace,
-        mode: params.mode,
-        order_type: params.orderType,
-        screenshot_data_url: params.screenshotDataUrl,
+    async (event, request: unknown) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      return exportEvidenceBundleViaDialog(request, {
+        chooseDirectory: async () => {
+          // Test-only bypass: a native dialog cannot be scripted in an offscreen run. Set only by
+          // the self-test tooling in the main process, never by the renderer.
+          if (process.env.BITVUE_ELECTRON_SELFTEST_EVIDENCE_DIR) {
+            return process.env.BITVUE_ELECTRON_SELFTEST_EVIDENCE_DIR;
+          }
+          const options: Electron.OpenDialogOptions = {
+            properties: ["openDirectory", "createDirectory"],
+          };
+          const result = win
+            ? await dialog.showOpenDialog(win, options)
+            : await dialog.showOpenDialog(options);
+          if (result.canceled || result.filePaths.length === 0) return null;
+          return result.filePaths[0];
+        },
+        exportBundle: (params) =>
+          requireSidecar().request("export_evidence_bundle", params),
       });
     },
   );
-
-  ipcMain.handle("bitvue:showDirectoryDialog", async (event) => {
-    // Test-only bypass: a real native OS dialog can't be scripted in an automated/offscreen run.
-    // Reused here as an arbitrary writable directory (a temp dir would need its own env var; the
-    // fixture path's parent directory is always writable in the test environment this runs in).
-    if (process.env.BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH) {
-      return path.dirname(process.env.BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH);
-    }
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const options: Electron.OpenDialogOptions = {
-      properties: ["openDirectory", "createDirectory"],
-    };
-    const result = win
-      ? await dialog.showOpenDialog(win, options)
-      : await dialog.showOpenDialog(options);
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0];
-  });
 
   // Captures the current window as a PNG, base64-encoded as a data: URL -- the same
   // `capturePage()`/`toPNG()` pair `runScreenshotAndExit` already uses for the

@@ -1,7 +1,9 @@
 /**
  * useExportEvidenceBundle
  *
- * Shared "choose a folder, write a diagnostic evidence bundle there" flow -- used by the MainMenu
+ * Shared "write a diagnostic evidence bundle into a folder the user picks" flow -- the folder
+ * dialog is shown by the main process inside `exportEvidenceBundle` (the renderer never supplies a
+ * path, #640). Used by the MainMenu
  * entry point (App.tsx's "menu-export-evidence" listener), the Player/HexView/Timeline/
  * DiagnosticsPanel context menus' "Export Evidence Bundle" item, and CompareWorkspace's toolbar
  * "Export Diff Bundle" button (`docs/UX_PARITY_MATRIX.md` §7 lists all 4 as the same
@@ -17,7 +19,6 @@
 
 import { useCallback } from "react";
 import {
-  showDirectoryDialog,
   exportEvidenceBundle,
   captureScreenshot,
 } from "../services/electronBridgeService";
@@ -39,24 +40,23 @@ export function useExportEvidenceBundle(
   const mode = options?.mode ?? "normal";
 
   return useCallback(async () => {
-    const dir = await showDirectoryDialog();
-    if (!dir) return;
-
     try {
-      // Best-effort: a bundle without a screenshot is still useful, so a capture failure
-      // shouldn't block the export itself.
+      // Captured before the folder dialog opens, so it shows the app as it was when the user
+      // asked for the export. Best-effort: a bundle without a screenshot is still useful, so a
+      // capture failure shouldn't block the export itself.
       const screenshotDataUrl = await captureScreenshot().catch((err) => {
         logger.warn("Screenshot capture failed, exporting without one", err);
         return null;
       });
 
       const result = await exportEvidenceBundle({
-        outputDir: dir,
         workspace,
         mode,
         orderType: "display",
         screenshotDataUrl: screenshotDataUrl ?? undefined,
       });
+      // The user cancelled the folder dialog: nothing was written, nothing to report.
+      if (result === null) return;
       if (result.success) {
         window.alert(`Evidence bundle exported to:\n${result.bundle_path}`);
       } else {
